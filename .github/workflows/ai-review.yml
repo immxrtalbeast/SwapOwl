@@ -1,0 +1,105 @@
+# .github/workflows/ai-review.yml
+# Ревьюер на Claude: запускается на каждый PR в main и на каждый push в него.
+# Маркер "[codex-review] round: N verdict: ..." собирает сам workflow, а не модель,
+# поэтому формат не поплывёт. Имя маркера оставлено прежним, чтобы не менять промпт исполнителей.
+#
+# Нужно:
+#   - Claude GitHub App установлен на репозиторий (https://github.com/apps/claude)
+#   - секрет CLAUDE_CODE_OAUTH_TOKEN: выполнить `claude setup-token` под подпиской,
+#     на которой будут идти ревью, и положить результат в секреты репозитория
+#   - метки round-1, round-2, round-3, needs-human уже созданы
+#   - опционально TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID для алерта о сбое ревью
+
+name: AI Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Go для проверки блокеров тестом
+        if: hashFiles('go.mod') != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Номер раунда и история
+        id: round
+        run: |
+          # Раунд = число прошлых ревью с CHANGES_REQUESTED + 1.
+          # Повторное ревью после merge из main с вердиктом APPROVED счётчик не увеличивает.
+          prev=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("[codex-review]")) | select(.body | test("verdict: CHANGES_REQUESTED")) | .id' | wc -l)
+          echo "n=$((prev + 1))" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select((.body | startswith("[codex-review]")) or (.body | startswith("[claude-fix]"))) | "----\n\(.body)"' \
+            > "$RUNNER_TEMP/prior-rounds.md" || true
+          cp "$RUNNER_TEMP/prior-rounds.md" prior-rounds.md
+
+      - name: Ревью
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Ты — ревьюер PR #${{ github.event.pull_request.number }} в репозитории ${{ github.repository }}.
+            Правила ревью — в файле .ai/review-prompt.md. Прочитай его целиком и следуй ему, включая раздел «Протокол».
+            Номер раунда: ${{ steps.round.outputs.n }}.
+            Метки PR: ${{ join(github.event.pull_request.labels.*.name, ', ') }}.
+            Прошлые раунды ревью и ответы исполнителя — в файле prior-rounds.md (если он пустой, это первый раунд).
+            Описание PR: `gh pr view ${{ github.event.pull_request.number }}`. Изменения: `gh pr diff ${{ github.event.pull_request.number }}`.
+            Замечания к строкам публикуй инструментом mcp__github_inline_comment__create_inline_comment.
+            В конце обязательно запиши два файла в корень рабочей папки:
+            - review-verdict.txt — ровно одно слово: APPROVED или CHANGES_REQUESTED;
+            - review-summary.md — итог ревью по структуре из review-prompt.md, без строки маркера.
+            Маркер и общий комментарий опубликует workflow — сам их не публикуй и не коммить ничего.
+          claude_args: |
+            --model claude-opus-5-5
+            --max-turns 60
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(go test:*),Bash(go vet:*)"
+
+      - name: Маркер, итог и метки
+        if: always() && steps.round.outcome == 'success'
+        run: |
+          verdict=$(tr -d '[:space:]' < review-verdict.txt 2>/dev/null || true)
+          n=${{ steps.round.outputs.n }}
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ "$verdict" != "APPROVED" ] && [ "$verdict" != "CHANGES_REQUESTED" ]; then
+            gh pr comment "$PR" --body "AI-ревью не завершилось: нет вердикта. Нужен человек. Лог: $run_url"
+            gh pr edit "$PR" --add-label needs-human || true
+            if [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]; then
+              curl -s "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+                -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+                -d text="Ревью PR #$PR упало без вердикта: $run_url" > /dev/null
+            fi
+            exit 1
+          fi
+          { echo "[codex-review] round: $n verdict: $verdict"; echo; cat review-summary.md 2>/dev/null || true; } > body.md
+          gh pr comment "$PR" --body-file body.md
+          for l in round-1 round-2 round-3; do gh pr edit "$PR" --remove-label "$l" > /dev/null 2>&1 || true; done
+          if [ "$n" -le 3 ]; then
+            gh pr edit "$PR" --add-label "round-$n"
+          else
+            gh pr edit "$PR" --add-label needs-human
+          fi
