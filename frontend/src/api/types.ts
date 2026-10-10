@@ -53,11 +53,48 @@ export interface DeliveryResult {
   warnings: { line_no: number; code: string; message: string }[];
 }
 
+export interface Dish {
+  id: string;
+  name: string;
+  recipe: { product_id: string; quantity: Qty }[];
+}
+
+export interface OrderItemInput {
+  dish_id: string;
+  portions: number;
+}
+
+export interface OrderMissing {
+  product_id: string;
+  product_name: string;
+  required: Qty;
+  available: Qty;
+  missing: Qty;
+}
+
+export interface OrderWriteoff {
+  product_id: string;
+  batch_id: number;
+  qty: Qty;
+  expires_at: string;
+}
+
+export interface Order {
+  id: string;
+  status: "accepted" | "rejected";
+  at: string;
+  replayed: boolean;
+  items: OrderItemInput[];
+  writeoffs: OrderWriteoff[];
+  missing: OrderMissing[];
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     public code: string,
     message: string,
+    public details: Record<string, unknown> = {},
   ) {
     super(message);
   }

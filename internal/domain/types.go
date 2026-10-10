@@ -141,13 +141,6 @@ type SupplySuggestion struct {
 	Explanation  string
 }
 
-// PlanWriteoff строит план FEFO по (ExpiresAt, ID). Партии уже отфильтрованы
-// по remaining > 0 и now < ExpiresAt. Возвращает либо план, либо нехватку — не оба.
-// Заглушка контракта: логика не реализована.
-func PlanWriteoff(needs []Need, batches []Batch) ([]Writeoff, []Shortage) {
-	return nil, nil
-}
-
 // Servings — сколько порций собирается из available: min floor(доступно/норма). Заглушка.
 func Servings(recipe []RecipeItem, available map[string]Qty) int64 {
 	return 0
