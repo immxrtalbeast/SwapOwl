@@ -6,15 +6,19 @@ import (
 	"time"
 )
 
+// randomDishes — справочник для случайных последовательностей (№1 и №8).
+var randomDishes = map[string]map[string]int64{
+	"d1": {"p1": 100, "p2": 50},
+	"d2": {"p2": 200},
+	"d3": {"p3": 150, "p1": 30},
+}
+
 // runRandom — случайная последовательность поставок, заказов и прыжков времени
 // с фиксированным seed. after вызывается после каждого шага.
 func runRandom(s *stand, steps int, seed int64, after func(step int, what string)) {
 	s.t.Helper()
 	rng := rand.New(rand.NewSource(seed))
 	s.pause()
-	s.addDish("d1", map[string]int64{"p1": 100, "p2": 50})
-	s.addDish("d2", map[string]int64{"p2": 200})
-	s.addDish("d3", map[string]int64{"p3": 150, "p1": 30})
 	products := []string{"p1", "p2", "p3"}
 	dishes := []string{"d1", "d2", "d3"}
 	for _, p := range products {

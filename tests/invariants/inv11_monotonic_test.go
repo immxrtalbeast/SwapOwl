@@ -38,18 +38,41 @@ func TestInv11MonotoneInExpiry(t *testing.T) {
 				after, _ := rank(moved)
 
 				prod := in.Batches[idx].ProductID
+				usesProd := map[string]bool{}
 				for _, d := range in.Dishes {
-					uses := false
 					for _, r := range d.Recipe {
-						uses = uses || r.ProductID == prod
+						if r.ProductID == prod {
+							usesProd[d.ID] = true
+						}
 					}
-					pb := place(before, d.ID)
-					if !uses || pb < 0 {
+				}
+				// «При прочих равных»: блюдо d с продуктом prod может уступить место только блюдам,
+				// которые тоже используют prod (их приоритет вырос от того же сдвига). Блюда без prod
+				// впереди d после сдвига должны были стоять впереди d и до него.
+				ahead := func(offers []hotoffers.Offer, pos int) map[string]bool {
+					m := map[string]bool{}
+					for _, o := range offers[:pos] {
+						if !usesProd[o.DishID] {
+							m[o.DishID] = true
+						}
+					}
+					return m
+				}
+				for d := range usesProd {
+					pb := place(before, d)
+					if pb < 0 {
 						continue
 					}
-					if pa := place(after, d.ID); pa < 0 || pa > pb {
-						t.Fatalf("итер %d: блюдо %s с продуктом %s было на месте %d, после приближения срока — %d",
-							iter, d.ID, prod, pb, pa)
+					pa := place(after, d)
+					if pa < 0 {
+						pa = len(after) // выпало из списка: впереди всё, что осталось
+					}
+					was := ahead(before, pb)
+					for o := range ahead(after, pa) {
+						if !was[o] {
+							t.Fatalf("итер %d: блюдо %s (продукт %s) было на месте %d, стало %d; его обогнало блюдо %s без этого продукта",
+								iter, d, prod, pb, pa, o)
+						}
 					}
 				}
 			}

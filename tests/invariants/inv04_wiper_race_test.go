@@ -10,48 +10,59 @@ import (
 
 // Инвариант 4 (БД). Заказы и проход «дворника» на границе истечения: просроченная
 // партия не получает остаток обратно, взаимных блокировок нет.
+//
+// Запас заведомо больше, чем продадут заказы (1000 порций против 50), поэтому к границе у партии
+// остаётся большой remaining, и «дворнику» есть что списывать. Часы стоят на паузе за 1 мс до
+// expires_at; ровно 50 заказов по одной порции стартуют одновременно с прыжком через границу
+// (прыжок выполняет проход «дворника», .ai/solution.md 2.4).
 func TestInv04OrdersVersusWiper(t *testing.T) {
-	s := newStand(t, standOpts{})
-	for round := 0; round < 20; round++ {
+	const rounds = 20
+	dishes := map[string]map[string]int64{}
+	for r := 0; r < rounds; r++ {
+		dishes[fmt.Sprintf("d%d", r)] = map[string]int64{fmt.Sprintf("p%d", r): 100}
+	}
+	s := newStand(t, standOpts{Dishes: dishes})
+	s.pause()
+	for round := 0; round < rounds; round++ {
 		prod, dish := fmt.Sprintf("p%d", round), fmt.Sprintf("d%d", round)
-		s.pause()
-		s.addDish(dish, map[string]int64{prod: 100})
-		s.mustDeliver(prod, 700, 24)
-		expires := s.now().Add(24 * time.Hour)
-		// Ставим часы за 100 мс до границы и отпускаем их на реальной скорости.
-		s.jump(24*time.Hour - 100*time.Millisecond)
-		s.speed(1)
+		s.mustDeliver(prod, 100*1000, 24)
+		s.jump(24*time.Hour - time.Millisecond)
 
+		start := make(chan struct{})
 		var wg sync.WaitGroup
-		var bad sync.Map
-		for w := 0; w < 50; w++ {
+		codes := make([]int, 50)
+		for i := range codes {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				for s.now().Before(expires.Add(300 * time.Millisecond)) {
-					if c, b := s.order(newUUID(), orderLine{dish, 1}); c != 201 && c != 409 {
-						bad.Store(c, string(b))
-					}
-				}
+				<-start
+				codes[i], _ = s.order(newUUID(), orderLine{dish, 1})
 			}()
 		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			s.jump(2 * time.Millisecond) // через expires_at
+		}()
+		close(start)
 		wg.Wait()
-		bad.Range(func(k, v any) bool {
-			t.Errorf("раунд %d: статус %v: %v", round, k, v)
-			return true
-		})
-		s.pause()
 
-		deadline := time.Now().Add(15 * time.Second)
-		for s.queryInt(`SELECT COALESCE(SUM(remaining),0) FROM batches WHERE product_id = $1`, prod) != 0 {
-			if time.Now().After(deadline) {
-				t.Fatalf("раунд %d: у просроченной партии остался remaining > 0", round)
+		for _, c := range codes {
+			if c != 201 && c != 409 {
+				t.Fatalf("раунд %d: неожиданный статус заказа %d", round, c)
 			}
-			time.Sleep(100 * time.Millisecond)
 		}
-		out := s.queryInt(`SELECT COALESCE(SUM(quantity),0) FROM movements WHERE product_id = $1 AND kind IN ('sale','writeoff')`, prod)
-		if out != 700 {
-			t.Fatalf("раунд %d: продано и списано %d, поступило 700", round, out)
+		if left := s.queryInt(`SELECT COALESCE(SUM(remaining),0) FROM batches WHERE product_id = $1`, prod); left != 0 {
+			t.Fatalf("раунд %d: у просроченной партии remaining = %d, ожидался 0", round, left)
+		}
+		sold := s.queryInt(`SELECT COALESCE(SUM(quantity),0) FROM movements WHERE product_id = $1 AND kind = 'sale'`, prod)
+		written := s.queryInt(`SELECT COALESCE(SUM(quantity),0) FROM movements WHERE product_id = $1 AND kind = 'writeoff'`, prod)
+		if sold+written != 100*1000 {
+			t.Fatalf("раунд %d: продано %d + списано %d ≠ поступило %d", round, sold, written, 100*1000)
+		}
+		if written == 0 {
+			t.Fatalf("раунд %d: нет списания по сроку — гонка с «дворником» не состоялась", round)
 		}
 		s.checkConservation(fmt.Sprintf("раунд %d", round))
 		if strings.Contains(s.log.String(), "deadlock detected") {

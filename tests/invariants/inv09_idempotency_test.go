@@ -21,9 +21,8 @@ func withoutReplayed(t *testing.T, b []byte) []byte {
 
 // Инвариант 9 (БД). Идемпотентность заказа.
 func TestInv09OrderIdempotency(t *testing.T) {
-	s := newStand(t, standOpts{})
+	s := newStand(t, standOpts{Dishes: map[string]map[string]int64{"dish": {"prod": 100}}})
 	s.pause()
-	s.addDish("dish", map[string]int64{"prod": 100})
 	s.mustDeliver("prod", 5000, 48)
 
 	id := newUUID()

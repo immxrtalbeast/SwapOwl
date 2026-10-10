@@ -5,10 +5,9 @@ import "testing"
 // Инвариант 2 (БД). Атомарность заказа: потребность суммируется по блюдам заказа;
 // заказ либо списывает всё, либо не меняет ни одной партии.
 func TestInv02OrderAtomicity(t *testing.T) {
-	s := newStand(t, standOpts{})
+	s := newStand(t, standOpts{Dishes: map[string]map[string]int64{
+		"a": {"shared": 100}, "b": {"shared": 100}}})
 	s.pause()
-	s.addDish("a", map[string]int64{"shared": 100})
-	s.addDish("b", map[string]int64{"shared": 100})
 	s.mustDeliver("shared", 150, 48) // каждому блюду хватает, обоим — нет
 
 	before := s.batchesSnapshot()

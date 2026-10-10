@@ -8,7 +8,7 @@ import (
 // Инвариант 1 (БД). Сохранение количества: поступило − продано − списано = remaining ≥ 0;
 // остаток продукта = Σ remaining его непросроченных партий.
 func TestInv01QuantityConservation(t *testing.T) {
-	s := newStand(t, standOpts{})
+	s := newStand(t, standOpts{Dishes: randomDishes})
 	runRandom(s, 1000, 1, func(step int, what string) {
 		s.checkConservation(what)
 		now := s.now()

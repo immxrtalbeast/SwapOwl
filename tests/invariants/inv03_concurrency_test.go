@@ -9,11 +9,14 @@ import (
 // Инвариант 3 (БД). Параллельные заказы не продают одну порцию дважды:
 // 50 горутин по одной порции при остатке на 7 порций — ровно 7 принято, 43 отклонено.
 func TestInv03ConcurrentOrders(t *testing.T) {
-	s := newStand(t, standOpts{})
+	dishes := map[string]map[string]int64{}
+	for round := 0; round < 20; round++ {
+		dishes[fmt.Sprintf("d%d", round)] = map[string]int64{fmt.Sprintf("p%d", round): 100}
+	}
+	s := newStand(t, standOpts{Dishes: dishes})
 	s.pause()
 	for round := 0; round < 20; round++ {
 		prod, dish := fmt.Sprintf("p%d", round), fmt.Sprintf("d%d", round)
-		s.addDish(dish, map[string]int64{prod: 100})
 		s.mustDeliver(prod, 700, 48)
 
 		var wg sync.WaitGroup

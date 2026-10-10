@@ -100,6 +100,9 @@ type stand struct {
 
 type standOpts struct {
 	TZ string // RESTAURANT_TZ
+	// Dishes — справочник теста: блюдо → продукт → норма. Он готовится до рабочего запуска
+	// сервиса: .ai/solution.md (2.3) разрешает реализации читать справочник один раз при старте.
+	Dishes map[string]map[string]int64
 }
 
 func newStand(t testing.TB, o standOpts) *stand {
@@ -134,28 +137,61 @@ func newStand(t testing.TB, o standOpts) *stand {
 	_ = ln.Close()
 
 	logb := &lockedBuf{}
-	cmd := exec.Command(bin)
-	cmd.Stdout, cmd.Stderr = logb, logb
 	tz := o.TZ
 	if tz == "" {
 		tz = "Europe/Moscow"
 	}
-	cmd.Env = append(os.Environ(),
-		"DATABASE_URL="+dbURL, "PORT="+fmt.Sprint(port),
-		"DEMO_MODE=true", "DEMO_TOKEN="+demoToken, "CLOCK_MODE=simulated",
-		"AUTH_REQUIRED=false", "SEED_ON_EMPTY=true", "RESTAURANT_TZ="+tz,
-		"DB_POOL_SIZE=40", "LOG_LEVEL=debug")
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
 	s := &stand{t: t, base: fmt.Sprintf("http://127.0.0.1:%d", port), log: logb,
 		cli: &http.Client{Timeout: 30 * time.Second}}
-	t.Cleanup(func() {
+	spawn := func(extra ...string) *exec.Cmd {
+		cmd := exec.Command(bin)
+		cmd.Stdout, cmd.Stderr = logb, logb
+		cmd.Env = append(append(os.Environ(),
+			"DATABASE_URL="+dbURL, "PORT="+fmt.Sprint(port), "AUTH_REQUIRED=false",
+			"RESTAURANT_TZ="+tz, "DB_POOL_SIZE=40", "LOG_LEVEL=debug"), extra...)
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			if st, _ := s.raw("GET", "/healthz", nil, false); st == 200 {
+				return cmd
+			}
+			if time.Now().After(deadline) {
+				_ = cmd.Process.Kill()
+				t.Fatalf("сервис не стал готов за 30 с\n%s", logb.String())
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	stop := func(cmd *exec.Cmd) {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
-		if s.pool != nil {
-			s.pool.Close()
+	}
+
+	// Запуск 1: чистый экземпляр без сида — только чтобы применились миграции.
+	first := spawn("DEMO_MODE=false", "CLOCK_MODE=real", "SEED_ON_EMPTY=false")
+	stop(first)
+	s.pool, err = pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Справочник теста: у каждого продукта из рецептов справочная цена > 0 (проверка старта, 2.2).
+	for d, recipe := range o.Dishes {
+		s.exec("INSERT INTO dishes (id, name) VALUES ($1, $1)", d)
+		for p, q := range recipe {
+			s.exec("INSERT INTO products (id, name, unit, price_minor_per_1000) VALUES ($1, $1, 'g', 100) ON CONFLICT DO NOTHING", p)
+			s.exec("INSERT INTO recipe_items (dish_id, product_id, quantity) VALUES ($1, $2, $3)", d, p, q)
 		}
+	}
+	if len(o.Dishes) == 0 {
+		t.Fatal("сторожу нужно хотя бы одно блюдо в справочнике: на пустом справочнике сервис загрузил бы сид")
+	}
+	// Запуск 2: рабочий. Справочник непуст, сид повторно не загружается.
+	cmd := spawn("DEMO_MODE=true", "DEMO_TOKEN="+demoToken, "CLOCK_MODE=simulated", "SEED_ON_EMPTY=true")
+	t.Cleanup(func() {
+		stop(cmd)
+		s.pool.Close()
 		if c, err := pgx.Connect(ctx, admin); err == nil {
 			_, _ = c.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 			_ = c.Close(ctx)
@@ -164,23 +200,6 @@ func newStand(t testing.TB, o standOpts) *stand {
 			t.Logf("журнал сервиса:\n%s", logb.String())
 		}
 	})
-
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		if st, _ := s.raw("GET", "/healthz", nil, false); st == 200 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("сервис не стал готов за 30 с\n%s", logb.String())
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	s.pool, err = pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Сид (если сервис его загрузил) мешает точным проверкам: оставляем только часы.
-	s.exec("TRUNCATE movements, order_items, orders, batches, deliveries, recipe_items, dishes, products CASCADE")
 	return s
 }
 
@@ -250,16 +269,6 @@ func (s *stand) pause()               { s.demo("/api/demo/clock/speed", map[stri
 func (s *stand) speed(v float64)      { s.demo("/api/demo/clock/speed", map[string]any{"speed": v}) }
 func (s *stand) jumpHours(h float64)  { s.demo("/api/demo/clock/jump", map[string]any{"hours": h}) }
 func (s *stand) jump(d time.Duration) { s.jumpHours(d.Hours()) }
-
-// addDish создаёт блюдо напрямую в справочнике (схема 7.1): API справочников в контрактах нет.
-func (s *stand) addDish(id string, recipe map[string]int64) {
-	s.t.Helper()
-	s.exec("INSERT INTO dishes (id, name) VALUES ($1, $1)", id)
-	for p, q := range recipe {
-		s.exec("INSERT INTO products (id, name, unit) VALUES ($1, $1, 'g') ON CONFLICT DO NOTHING", p)
-		s.exec("INSERT INTO recipe_items (dish_id, product_id, quantity) VALUES ($1, $2, $3)", id, p, q)
-	}
-}
 
 var deliverySeq int
 

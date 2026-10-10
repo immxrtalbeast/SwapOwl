@@ -24,7 +24,7 @@ func TestInv07EndOfDay(t *testing.T) {
 		{"Europe/Berlin", "2027-10-31"},
 	} {
 		t.Run(tc.zone+" "+tc.day, func(t *testing.T) {
-			s := newStand(t, standOpts{TZ: tc.zone})
+			s := newStand(t, standOpts{TZ: tc.zone, Dishes: map[string]map[string]int64{"cream-dish": {"cream": 100}}})
 			s.pause()
 			loc, _ := time.LoadLocation(tc.zone)
 			d, _ := time.ParseInLocation("2006-01-02", tc.day, loc)

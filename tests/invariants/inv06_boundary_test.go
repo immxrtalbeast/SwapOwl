@@ -18,9 +18,8 @@ func TestInv06StrictExpiryBoundary(t *testing.T) {
 		{"ровно в срок", 72 * time.Hour, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := newStand(t, standOpts{})
+			s := newStand(t, standOpts{Dishes: map[string]map[string]int64{"dish": {"prod": 100}}})
 			s.pause()
-			s.addDish("dish", map[string]int64{"prod": 100})
 			s.mustDeliver("prod", 100, 72)
 			start := s.now()
 			s.jump(tc.jump)
