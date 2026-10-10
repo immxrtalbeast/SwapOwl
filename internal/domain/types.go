@@ -163,16 +163,6 @@ func StopList(dishes []Dish, available map[string]Qty) []StoppedDish {
 	return nil
 }
 
-// WorkingHours — W(from, to): рабочие часы в интервале. Заглушка.
-func WorkingHours(from, to time.Time, sch Schedule) float64 {
-	return 0
-}
-
-// RiskByBatch — проекция FEFO: количество под риском по каждой партии. Заглушка.
-func RiskByBatch(batches []Batch, ratePerHour float64, now time.Time, sch Schedule) []BatchRisk {
-	return nil
-}
-
 // SupplySuggestions — предложение необходимых поставок. Заглушка.
 func SupplySuggestions(in SupplyInput) []SupplySuggestion {
 	return nil
