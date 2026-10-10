@@ -1,5 +1,5 @@
 import { ApiError } from "./types";
-import type { Batch, DeliveryInput, DeliveryResult, Dish, Order, OrderItemInput, ProductStock } from "./types";
+import type { Batch, DeliveryInput, DeliveryResult, Dish, DishServings, Order, OrderItemInput, ProductStock } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -21,6 +21,7 @@ export const api = {
     request<Batch[]>(`/api/batches${productId ? `?product_id=${encodeURIComponent(productId)}` : ""}`),
   receiveDelivery: (d: DeliveryInput) =>
     request<DeliveryResult>("/api/deliveries", { method: "POST", body: JSON.stringify(d) }),
+  servings: () => request<DishServings[]>("/api/servings"),
   dishes: () => request<Dish[]>("/api/dishes"),
   orders: (status?: Order["status"]) => request<Order[]>(`/api/orders${status ? `?status=${status}` : ""}`),
   // Заказ, отклонённый по нехватке (409 insufficient_stock), приходит как обычный результат со статусом rejected.
