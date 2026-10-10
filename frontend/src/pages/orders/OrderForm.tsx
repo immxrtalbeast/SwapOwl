@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../../api/client";
+import { ApiError } from "../../api/types";
 import type { Dish, Order } from "../../api/types";
 import { formatQty } from "../stock/format";
 
@@ -17,7 +18,12 @@ export function OrderForm({ dishes, onPlaced }: { dishes: Dish[]; onPlaced: () =
   // Идентификатор заказа создаётся на каждое нажатие; при ошибке сети повтор идёт с тем же id (идемпотентность).
   const [orderId, setOrderId] = useState(() => crypto.randomUUID());
 
-  const update = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  // Любое изменение состава заказа — новый заказ: тот же id допустим только для повтора того же тела.
+  const edit = (fn: (ls: Line[]) => Line[]) => {
+    setLines(fn);
+    setOrderId(crypto.randomUUID());
+  };
+  const update = (i: number, patch: Partial<Line>) => edit((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const taken = new Set(lines.map((l) => l.dish_id));
 
   async function submit(e: FormEvent) {
@@ -34,6 +40,7 @@ export function OrderForm({ dishes, onPlaced }: { dishes: Dish[]; onPlaced: () =
       setOrderId(crypto.randomUUID());
       await onPlaced();
     } catch (err) {
+      if (err instanceof ApiError && err.code === "order_conflict") setOrderId(crypto.randomUUID());
       setError(err instanceof Error ? err.message : "Не удалось отправить заказ");
     } finally {
       setSending(false);
@@ -61,13 +68,13 @@ export function OrderForm({ dishes, onPlaced }: { dishes: Dish[]; onPlaced: () =
             <input required type="number" min={1} max={10000} step={1} value={l.portions} onChange={(e) => update(i, { portions: e.target.value })} />
           </label>{" "}
           {lines.length > 1 && (
-            <button type="button" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>
+            <button type="button" onClick={() => edit((ls) => ls.filter((_, j) => j !== i))}>
               Убрать
             </button>
           )}
         </div>
       ))}
-      <button type="button" onClick={() => setLines((ls) => [...ls, { dish_id: "", portions: "1" }])}>
+      <button type="button" onClick={() => edit((ls) => [...ls, { dish_id: "", portions: "1" }])}>
         Добавить блюдо
       </button>{" "}
       <button type="submit" disabled={sending}>
