@@ -26,6 +26,11 @@ type Deps struct {
 	// Auth — вход и роли (2.9). nil — доступ не настроен: все запросы идут с ролью operator,
 	// как при AUTH_REQUIRED=false, а маршруты /api/auth, /api/users и /api/api-keys не регистрируются.
 	Auth *auth.Service
+
+	// Stock — поставки и остатки (2.1). nil — маршруты склада не регистрируются.
+	Stock Stock
+	// Location — часовой пояс ресторана для expires_on; nil — UTC.
+	Location *time.Location
 }
 
 // Router — хаб-файл маршрутов. Следующие тикеты добавляют строки в Routes(),
@@ -60,6 +65,7 @@ func NewRouter(deps Deps) *Router {
 func (rt *Router) Routes() {
 	rt.HandlePublic(http.MethodGet, "/healthz", rt.healthz)
 	rt.authRoutes()
+	rt.stockRoutes()
 }
 
 // Handle регистрирует хендлер для метода и шаблона пути (синтаксис ServeMux без метода: "/api/x/{id}").
