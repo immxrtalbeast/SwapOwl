@@ -1,2 +1,58 @@
-# Заглушка: сервисы api, simulator, frontend, БД — добавить.
-services: {}
+# Локальный запуск: cp .env.example .env && docker compose -f deploy/docker-compose.yml --env-file .env up --build
+# Пароль PostgreSQL обязателен: без POSTGRES_PASSWORD контейнер postgres не стартует.
+# Наружу опубликован только порт API; PostgreSQL виден лишь внутри сети compose.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-umirhack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: ${POSTGRES_DB:-umirhack}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-umirhack}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-umirhack}?sslmode=disable
+      PORT: "8080"
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      OPEN_AT: ${OPEN_AT:-10:00}
+      CLOSE_AT: ${CLOSE_AT:-23:00}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+      CLOCK_MODE: ${CLOCK_MODE:-real}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
+      ADMIN_LOGIN: ${ADMIN_LOGIN:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  pgdata:
