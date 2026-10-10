@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -200,5 +201,34 @@ func TestLockProductsSortedAndUnknown(t *testing.T) {
 	err = db.InTx(ctx, func(tx pgx.Tx) error { return LockProducts(ctx, tx, []string{"nope"}) })
 	if !errors.Is(err, ErrUnknownProduct) {
 		t.Fatalf("unknown: %v", err)
+	}
+}
+
+// Автосоздание новых продуктов идёт в отсортированном порядке id: поставки [a,b] и [b,a]
+// с ещё не существующими продуктами не должны давать deadlock.
+func TestConcurrentAutoCreateOppositeOrderNoDeadlock(t *testing.T) {
+	db, clk := stockDB(t)
+	ctx := context.Background()
+	mk := func(id string, products ...string) DeliveryInput {
+		in := DeliveryInput{ID: id, Number: "n", CreatedAt: t0}
+		for _, p := range products {
+			in.Items = append(in.Items, DeliveryItem{ProductID: p, Unit: domain.UnitG, Qty: 10, ShelfLifeHours: 5})
+		}
+		return in
+	}
+	for round := 0; round < 40; round++ {
+		a, b := "a"+strconv.Itoa(round), "b"+strconv.Itoa(round)
+		var wg sync.WaitGroup
+		errs := make([]error, 2)
+		for i, in := range []DeliveryInput{mk("X"+a, a, b), mk("Y"+a, b, a)} {
+			wg.Add(1)
+			go func() { defer wg.Done(); _, errs[i] = db.ReceiveDelivery(ctx, in, clk.Now, time.UTC) }()
+		}
+		wg.Wait()
+		for _, err := range errs {
+			if err != nil {
+				t.Fatalf("round %d: %v", round, err)
+			}
+		}
 	}
 }

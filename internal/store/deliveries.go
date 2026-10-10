@@ -162,9 +162,19 @@ func (d *DB) ReceiveDelivery(ctx context.Context, in DeliveryInput, now func() t
 			return nil
 		}
 
+		// Автосоздание — в порядке отсортированных уникальных id, иначе вставки новых продуктов
+		// в противоположном порядке дают deadlock. Имя и единица — из первой позиции с этим id.
+		first := map[string]DeliveryItem{}
 		ids := make([]string, 0, len(in.Items))
 		for _, it := range in.Items {
-			ids = append(ids, it.ProductID)
+			if _, ok := first[it.ProductID]; !ok {
+				first[it.ProductID] = it
+				ids = append(ids, it.ProductID)
+			}
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			it := first[id]
 			name := it.Name
 			if name == "" {
 				name = it.ProductID

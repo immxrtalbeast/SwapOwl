@@ -32,7 +32,9 @@ func (f *fakeStock) ReceiveDelivery(_ context.Context, in store.DeliveryInput, _
 	f.in = in
 	return store.DeliveryResponse{ID: in.ID, Batches: []store.BatchJSON{}, Warnings: []store.WarningJSON{}}, f.err
 }
-func (f *fakeStock) ListDeliveries(context.Context) ([]store.DeliveryResponse, error) { return nil, nil }
+func (f *fakeStock) ListDeliveries(context.Context) ([]store.DeliveryResponse, error) {
+	return nil, nil
+}
 func (f *fakeStock) GetDelivery(context.Context, string) (store.DeliveryResponse, error) {
 	return store.DeliveryResponse{}, store.ErrNotFound
 }
