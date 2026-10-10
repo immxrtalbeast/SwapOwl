@@ -141,13 +141,6 @@ type SupplySuggestion struct {
 	Explanation  string
 }
 
-// PlanWriteoff строит план FEFO по (ExpiresAt, ID). Партии уже отфильтрованы
-// по remaining > 0 и now < ExpiresAt. Возвращает либо план, либо нехватку — не оба.
-// Заглушка контракта: логика не реализована.
-func PlanWriteoff(needs []Need, batches []Batch) ([]Writeoff, []Shortage) {
-	return nil, nil
-}
-
 // Status возвращает статус партии на момент now. Заглушка.
 func Status(b Batch, now time.Time, cfg ExpiryConfig) BatchStatus {
 	return ""

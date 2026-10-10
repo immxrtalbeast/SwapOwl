@@ -66,7 +66,7 @@ func run() error {
 	}
 
 	clk := clock.Real{}
-	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc, Stock: db, Location: cfg.Location})
+	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc, Stock: db, Orders: db, Location: cfg.Location})
 	srv := &http.Server{
 		Addr:              ":" + envOr("PORT", "8080"),
 		Handler:           router.Handler(),
