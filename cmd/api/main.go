@@ -17,6 +17,7 @@ import (
 	"umirhack/internal/auth"
 	"umirhack/internal/clock"
 	"umirhack/internal/config"
+	"umirhack/internal/janitor"
 	"umirhack/internal/store"
 )
 
@@ -66,6 +67,7 @@ func run() error {
 	}
 
 	clk := clock.Real{}
+	go janitor.New(db, clk.Now, nil).Run(ctx) // OnSweep и Kick — в тикетах SSE и управления часами
 	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc, Stock: db, Location: cfg.Location})
 	srv := &http.Server{
 		Addr:              ":" + envOr("PORT", "8080"),
