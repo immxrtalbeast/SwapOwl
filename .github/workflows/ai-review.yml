@@ -25,10 +25,6 @@ on:
   issue_comment:
     types: [created]
 
-concurrency:
-  group: ai-review-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: true
-
 jobs:
   review:
     # issue_comment — только на PR и только на оспаривание замечаний исполнителем.
@@ -37,6 +33,13 @@ jobs:
       (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
        startsWith(github.event.comment.body, '[claude-fix]') &&
        contains(github.event.comment.body, 'замечания оспорены'))
+    # GitHub применяет concurrency раньше, чем проверяет if. Поэтому любой комментарий в PR
+    # (например, «[claude-fix] правки внесены») попадал в ту же очередь и отменял идущее ревью.
+    # Теперь в общую очередь PR попадают только push и оспаривание; остальные комментарии —
+    # каждый в свою очередь по run_id и никого не отменяют.
+    concurrency:
+      group: ai-review-${{ github.event.pull_request.number || github.event.issue.number }}-${{ (github.event_name == 'pull_request' || (startsWith(github.event.comment.body, '[claude-fix]') && contains(github.event.comment.body, 'замечания оспорены'))) && 'review' || github.run_id }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -114,7 +117,8 @@ jobs:
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Read,Grep,Glob,Write,Edit,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git log:*),Bash(git diff:*),Bash(git show:*),Bash(go test:*),Bash(go vet:*),Bash(go build:*),Bash(rm:*)"
 
       - name: Маркер, итог и метки
-        if: always() && steps.pr.outputs.skip == 'false'
+        # !cancelled(): отменённый запуск (его заменил более новый) ничего не публикует.
+        if: ${{ !cancelled() && steps.pr.outputs.skip == 'false' }}
         run: |
           n=${{ steps.pr.outputs.n }}
           head=${{ steps.pr.outputs.head }}
@@ -139,7 +143,7 @@ jobs:
             echo "head сменился ($head → $now) — итог не публикуем"; exit 0
           fi
 
-          { echo "[codex-review] round: $n verdict: $verdict"; echo "head: $head"; echo; cat review-summary.md 2>/dev/null || true; } > body.md
+          { echo "[codex-review] round: $n verdict: $verdict"; echo "head: $head"; echo; grep -v '^head:' review-summary.md 2>/dev/null || true; } > body.md
           gh pr comment "$PR" --body-file body.md
 
           for l in round-1 round-2 round-3 needs-human; do gh label create "$l" >/dev/null 2>&1 || true; done
