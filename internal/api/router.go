@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"umirhack/internal/auth"
 )
 
 // Pinger — то, что /healthz спрашивает у БД.
@@ -20,6 +22,10 @@ type Deps struct {
 	Log *slog.Logger
 	DB  Pinger
 	Now func() time.Time // время стенда для X-Stand-Time
+
+	// Auth — вход и роли (2.9). nil — доступ не настроен: все запросы идут с ролью operator,
+	// как при AUTH_REQUIRED=false, а маршруты /api/auth, /api/users и /api/api-keys не регистрируются.
+	Auth *auth.Service
 }
 
 // Router — хаб-файл маршрутов. Следующие тикеты добавляют строки в Routes(),
@@ -28,6 +34,7 @@ type Router struct {
 	deps   Deps
 	mux    *http.ServeMux
 	routes map[string]map[string]http.Handler // шаблон → метод → хендлер
+	access map[string]map[string]access       // шаблон → метод → требуемый доступ
 }
 
 // NewRouter собирает роутер с маршрутами каркаса.
@@ -38,7 +45,10 @@ func NewRouter(deps Deps) *Router {
 	if deps.Now == nil {
 		deps.Now = time.Now
 	}
-	rt := &Router{deps: deps, mux: http.NewServeMux(), routes: map[string]map[string]http.Handler{}}
+	// Запись журнала запроса получает роль и id пользователя или ключа (см. authLogHandler).
+	deps.Log = slog.New(authLogHandler{deps.Log.Handler()})
+	rt := &Router{deps: deps, mux: http.NewServeMux(),
+		routes: map[string]map[string]http.Handler{}, access: map[string]map[string]access{}}
 	rt.mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		WriteError(w, http.StatusNotFound, CodeNotFound, "not found", nil)
 	}))
@@ -48,11 +58,38 @@ func NewRouter(deps Deps) *Router {
 
 // Routes — единственное место регистрации маршрутов.
 func (rt *Router) Routes() {
-	rt.Handle(http.MethodGet, "/healthz", rt.healthz)
+	rt.HandlePublic(http.MethodGet, "/healthz", rt.healthz)
+	rt.authRoutes()
 }
 
 // Handle регистрирует хендлер для метода и шаблона пути (синтаксис ServeMux без метода: "/api/x/{id}").
+// Доступ по умолчанию (2.9): чтение — viewer, всё изменяющее — operator. Иное требование — HandleRole.
 func (rt *Router) Handle(method, pattern string, h http.HandlerFunc) {
+	min := auth.Operator
+	if method == http.MethodGet || method == http.MethodHead {
+		min = auth.Viewer
+	}
+	rt.register(method, pattern, h, access{min: min})
+}
+
+// HandleRole — как Handle, но с явно заданной минимальной ролью (проверка — звено роутера, не хендлера).
+func (rt *Router) HandleRole(method, pattern string, min auth.Role, h http.HandlerFunc) {
+	rt.register(method, pattern, h, access{min: min})
+}
+
+// HandlePublic регистрирует маршрут без входа: только /healthz и POST /api/auth/login (2.9).
+func (rt *Router) HandlePublic(method, pattern string, h http.HandlerFunc) {
+	rt.register(method, pattern, h, access{public: true})
+}
+
+func (rt *Router) register(method, pattern string, h http.HandlerFunc, acc access) {
+	if rt.access[pattern] == nil {
+		rt.access[pattern] = map[string]access{}
+	}
+	rt.access[pattern][method] = acc
+	if method == http.MethodGet {
+		rt.access[pattern][http.MethodHead] = acc
+	}
 	byMethod, ok := rt.routes[pattern]
 	if !ok {
 		byMethod = map[string]http.Handler{}
@@ -81,13 +118,17 @@ func (rt *Router) dispatch(pattern string, byMethod map[string]http.Handler) htt
 			WriteError(w, http.StatusMethodNotAllowed, CodeMethodNotAllowed, "method not allowed", nil)
 			return
 		}
+		r, ok = rt.guard(w, r, rt.access[pattern][r.Method])
+		if !ok {
+			return
+		}
 		h.ServeHTTP(w, r)
 	})
 }
 
 // Handler возвращает готовый http.Handler со сквозными слоями.
 func (rt *Router) Handler() http.Handler {
-	return wrap(rt.mux, rt.deps.Log, rt.deps.Now)
+	return withAuthInfo(wrap(rt.mux, rt.deps.Log, rt.deps.Now))
 }
 
 func (rt *Router) healthz(w http.ResponseWriter, r *http.Request) {

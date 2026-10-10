@@ -1,0 +1,147 @@
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+	"unicode"
+
+	"umirhack/internal/auth"
+)
+
+const (
+	maxBody      = 1 << 20
+	maxLoginLen  = 128
+	minPassBytes = 8
+	maxPassBytes = 72 // предел bcrypt
+)
+
+// authRoutes регистрирует маршруты доступа (7.4); без сервиса auth их нет.
+func (rt *Router) authRoutes() {
+	if rt.deps.Auth == nil {
+		return
+	}
+	rt.HandlePublic(http.MethodPost, "/api/auth/login", rt.login)
+	rt.HandleRole(http.MethodPost, "/api/auth/logout", auth.Viewer, rt.logout)
+	rt.HandleRole(http.MethodGet, "/api/auth/me", auth.Viewer, rt.me)
+
+	rt.HandleRole(http.MethodGet, "/api/users", auth.Admin, rt.listUsers)
+	rt.HandleRole(http.MethodPost, "/api/users", auth.Admin, rt.createUser)
+	rt.HandleRole(http.MethodDelete, "/api/users/{id}", auth.Admin, rt.deleteUser)
+	rt.HandleRole(http.MethodGet, "/api/api-keys", auth.Admin, rt.listAPIKeys)
+	rt.HandleRole(http.MethodPost, "/api/api-keys", auth.Admin, rt.createAPIKey)
+	rt.HandleRole(http.MethodDelete, "/api/api-keys/{id}", auth.Admin, rt.deleteAPIKey)
+}
+
+// decodeBody читает JSON-тело без неизвестных полей; при ошибке пишет 400 и возвращает false.
+func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		WriteError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body", nil)
+		return false
+	}
+	if dec.More() {
+		WriteError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body", nil)
+		return false
+	}
+	return true
+}
+
+func validationError(w http.ResponseWriter, field, msg string) {
+	WriteError(w, http.StatusBadRequest, CodeValidation, msg, map[string]any{"field": field})
+}
+
+// validLabel — непустая строка без управляющих символов (логин, имя ключа).
+func validLabel(s string) bool {
+	if s == "" || len(s) > maxLoginLen || strings.TrimSpace(s) != s {
+		return false
+	}
+	for _, c := range s {
+		if unicode.IsControl(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func (rt *Router) internalError(w http.ResponseWriter, r *http.Request, err error) {
+	rt.deps.Log.LogAttrs(r.Context(), slog.LevelError, "handler failed",
+		slog.String("request_id", RequestID(r.Context())), slog.String("error", err.Error()))
+	WriteError(w, http.StatusInternalServerError, CodeInternal, "internal error", nil)
+}
+
+func (rt *Router) login(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Login    string `json:"login"`
+		Password string `json:"password"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	if in.Login == "" || len(in.Login) > maxLoginLen || in.Password == "" {
+		validationError(w, "login", "login and password are required")
+		return
+	}
+	svc := rt.deps.Auth
+	token, u, err := svc.Login(r.Context(), in.Login, in.Password)
+	switch {
+	case err == nil:
+	case errors.Is(err, auth.ErrTooManyAttempts):
+		rt.audit(r, "login_blocked", slog.String("login", in.Login))
+		WriteError(w, http.StatusTooManyRequests, CodeTooManyTries, "too many failed attempts, try later", nil)
+		return
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		rt.audit(r, "login_failed", slog.String("login", in.Login))
+		WriteError(w, http.StatusUnauthorized, CodeUnauthorized, "invalid login or password", nil)
+		return
+	default:
+		rt.internalError(w, r, err)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    token,
+		Path:     "/",
+		Expires:  svc.Now().Add(svc.SessionTTL),
+		MaxAge:   int(svc.SessionTTL / time.Second),
+		HttpOnly: true,
+		Secure:   svc.SecureCookie,
+		SameSite: http.SameSiteStrictMode,
+	})
+	p := auth.Principal{Kind: auth.KindSession, Role: u.Role, UserID: u.ID, Login: u.Login}
+	if ai, ok := r.Context().Value(authInfoKey).(*authInfo); ok {
+		ai.set(p)
+	}
+	rt.audit(r, "login_ok", slog.String("login", u.Login))
+	WriteJSON(w, http.StatusOK, map[string]any{"login": u.Login, "role": u.Role})
+}
+
+func (rt *Router) logout(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
+		if err := rt.deps.Auth.Logout(r.Context(), c.Value); err != nil {
+			rt.internalError(w, r, err)
+			return
+		}
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookie, Value: "", Path: "/", MaxAge: -1,
+		HttpOnly: true, Secure: rt.deps.Auth.SecureCookie, SameSite: http.SameSiteStrictMode,
+	})
+	rt.audit(r, "logout")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (rt *Router) me(w http.ResponseWriter, r *http.Request) {
+	p, _ := PrincipalFrom(r.Context())
+	var login any
+	if p.Kind == auth.KindSession {
+		login = p.Login
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{
+		"login": login, "role": p.Role, "auth_required": rt.deps.Auth.Required,
+	})
+}

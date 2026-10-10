@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"umirhack/internal/api"
+	"umirhack/internal/auth"
 	"umirhack/internal/clock"
 	"umirhack/internal/config"
 	"umirhack/internal/store"
@@ -48,8 +49,24 @@ func run() error {
 		return err
 	}
 
+	users, err := db.CountUsers(ctx)
+	if err != nil {
+		return err
+	}
+	if err := cfg.CheckAdminBootstrap(users == 0); err != nil {
+		return err
+	}
+	authSvc := auth.New(db, auth.Options{
+		Required:     cfg.AuthRequired,
+		SessionTTL:   time.Duration(cfg.SessionTTLHours) * time.Hour,
+		SecureCookie: cfg.SiteDomain != "", // локальный HTTP — cookie без Secure (2.9)
+	})
+	if err := authSvc.Bootstrap(ctx, cfg.AdminLogin, cfg.AdminPassword); err != nil {
+		return fmt.Errorf("auth bootstrap: %w", err)
+	}
+
 	clk := clock.Real{}
-	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now})
+	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc})
 	srv := &http.Server{
 		Addr:              ":" + envOr("PORT", "8080"),
 		Handler:           router.Handler(),
