@@ -141,16 +141,6 @@ type SupplySuggestion struct {
 	Explanation  string
 }
 
-// Servings — сколько порций собирается из available: min floor(доступно/норма). Заглушка.
-func Servings(recipe []RecipeItem, available map[string]Qty) int64 {
-	return 0
-}
-
-// StopList возвращает блюда, для которых нельзя собрать ни одной порции. Заглушка.
-func StopList(dishes []Dish, available map[string]Qty) []StoppedDish {
-	return nil
-}
-
 // SupplySuggestions — предложение необходимых поставок. Заглушка.
 func SupplySuggestions(in SupplyInput) []SupplySuggestion {
 	return nil

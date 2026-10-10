@@ -99,3 +99,21 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+export interface StopReason {
+  product_id: string;
+  product_name: string;
+  required: Qty;
+  available: Qty;
+  missing: Qty;
+}
+
+// Строка GET /api/dishes: порции считает бэкенд.
+export interface DishServings {
+  id: string;
+  name: string;
+  available: boolean;
+  servings: number;
+  missing: StopReason[];
+  recipe: { product_id: string; quantity: Qty }[];
+}

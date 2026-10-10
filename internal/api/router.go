@@ -31,6 +31,8 @@ type Deps struct {
 	Stock Stock
 	// Orders — заказы и меню (2.3). nil — маршруты заказов не регистрируются.
 	Orders Orders
+	// Menu — стоп-лист и порции (2.5). nil — маршруты не регистрируются.
+	Menu MenuSource
 	// Location — часовой пояс ресторана для expires_on; nil — UTC.
 	Location *time.Location
 }
@@ -69,6 +71,7 @@ func (rt *Router) Routes() {
 	rt.authRoutes()
 	rt.stockRoutes()
 	rt.orderRoutes()
+	rt.stopListRoutes()
 }
 
 // Handle регистрирует хендлер для метода и шаблона пути (синтаксис ServeMux без метода: "/api/x/{id}").
