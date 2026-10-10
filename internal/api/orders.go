@@ -47,7 +47,9 @@ func (rt *Router) orderRoutes() {
 	}
 	rt.Handle(http.MethodPost, "/api/orders", rt.postOrder)
 	rt.Handle(http.MethodGet, "/api/orders", rt.listOrders)
-	rt.Handle(http.MethodGet, "/api/dishes", rt.listDishes)
+	if rt.deps.Menu == nil { // иначе /api/dishes отдаёт меню с порциями (stoplist.go)
+		rt.Handle(http.MethodGet, "/api/dishes", rt.listDishes)
+	}
 }
 
 func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {

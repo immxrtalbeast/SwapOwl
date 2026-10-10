@@ -47,15 +47,15 @@ func TestStopListAndServings(t *testing.T) {
 		return out
 	}
 
-	all := get("/api/servings")
+	all := get("/api/dishes")
 	if len(all) != 2 || !all[0].Available || all[0].Servings != 3 || all[1].Available || all[1].Servings != 0 {
 		t.Fatalf("servings: %+v", all)
 	}
 	stop := get("/api/stop-list")
-	if len(stop) != 1 || stop[0].ID != "steak" || len(stop[0].Reasons) != 1 {
+	if len(stop) != 1 || stop[0].ID != "steak" || len(stop[0].Missing) != 1 {
 		t.Fatalf("stop-list: %+v", stop)
 	}
-	r := stop[0].Reasons[0]
+	r := stop[0].Missing[0]
 	if r.ProductID != "beef" || r.ProductName != "Говядина" || r.Missing.Qty != 200 || r.Available.Qty != 0 {
 		t.Fatalf("reason: %+v", r)
 	}

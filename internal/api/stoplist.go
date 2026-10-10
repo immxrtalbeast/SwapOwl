@@ -23,13 +23,20 @@ type ReasonJSON struct {
 	Missing     store.QtyJSON `json:"missing"`
 }
 
+// RecipeJSON — норма продукта на порцию.
+type RecipeJSON struct {
+	ProductID string        `json:"product_id"`
+	Quantity  store.QtyJSON `json:"quantity"`
+}
+
 // DishAvailability — строка меню: число доступных порций и, для блюд в стоп-листе, причина.
 type DishAvailability struct {
 	ID        string       `json:"id"`
 	Name      string       `json:"name"`
 	Available bool         `json:"available"`
 	Servings  int64        `json:"servings"`
-	Reasons   []ReasonJSON `json:"reasons"`
+	Missing   []ReasonJSON `json:"missing"`
+	Recipe    []RecipeJSON `json:"recipe"`
 }
 
 func (rt *Router) stopListRoutes() {
@@ -37,7 +44,7 @@ func (rt *Router) stopListRoutes() {
 		return
 	}
 	rt.Handle(http.MethodGet, "/api/stop-list", rt.getStopList)
-	rt.Handle(http.MethodGet, "/api/servings", rt.getServings)
+	rt.Handle(http.MethodGet, "/api/dishes", rt.getDishes)
 }
 
 // menuAvailability считает по снимку меню: все блюда с порциями и причинами для стоп-листа.
@@ -49,16 +56,20 @@ func menuAvailability(snap store.MenuSnapshot) []DishAvailability {
 	}
 	out := make([]DishAvailability, 0, len(snap.Dishes))
 	for _, d := range snap.Dishes {
-		row := DishAvailability{ID: d.ID, Name: d.Name, Reasons: []ReasonJSON{}}
+		row := DishAvailability{ID: d.ID, Name: d.Name, Missing: []ReasonJSON{}, Recipe: []RecipeJSON{}}
 		miss, isStopped := stopped[d.ID]
 		if !isStopped {
 			row.Available = true
 			row.Servings = domain.Servings(d.Recipe, snap.Available)
 		}
+		for _, it := range d.Recipe {
+			row.Recipe = append(row.Recipe, RecipeJSON{ProductID: it.ProductID,
+				Quantity: store.QtyJSON{Qty: int64(it.Quantity), Unit: snap.Products[it.ProductID].Unit}})
+		}
 		for _, m := range miss {
 			p := snap.Products[m.ProductID]
 			q := func(v domain.Qty) store.QtyJSON { return store.QtyJSON{Qty: int64(v), Unit: p.Unit} }
-			row.Reasons = append(row.Reasons, ReasonJSON{
+			row.Missing = append(row.Missing, ReasonJSON{
 				ProductID: m.ProductID, ProductName: p.Name,
 				Required: q(m.Required), Available: q(m.Available), Missing: q(m.Missing),
 			})
@@ -77,8 +88,8 @@ func (rt *Router) menu(w http.ResponseWriter, r *http.Request) ([]DishAvailabili
 	return menuAvailability(snap), true
 }
 
-// getServings — GET /api/servings: всё меню, по каждому блюду число порций; для блюд в стоп-листе — причина.
-func (rt *Router) getServings(w http.ResponseWriter, r *http.Request) {
+// getDishes — GET /api/dishes: всё меню с рецептами, порциями и причинами для блюд в стоп-листе.
+func (rt *Router) getDishes(w http.ResponseWriter, r *http.Request) {
 	if rows, ok := rt.menu(w, r); ok {
 		WriteJSON(w, http.StatusOK, rows)
 	}

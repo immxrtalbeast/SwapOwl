@@ -13,7 +13,7 @@ export function StopListPage() {
 
   const load = useCallback(async () => {
     try {
-      setState({ kind: "ready", dishes: await api.servings() });
+      setState({ kind: "ready", dishes: await api.menu() });
     } catch (e) {
       setState({ kind: "error", message: e instanceof Error ? e.message : "Не удалось загрузить меню" });
     }

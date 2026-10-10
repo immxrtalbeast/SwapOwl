@@ -108,11 +108,12 @@ export interface StopReason {
   missing: Qty;
 }
 
-// Строка GET /api/servings: порции считает бэкенд.
+// Строка GET /api/dishes: порции считает бэкенд.
 export interface DishServings {
   id: string;
   name: string;
   available: boolean;
   servings: number;
-  reasons: StopReason[];
+  missing: StopReason[];
+  recipe: { product_id: string; quantity: Qty }[];
 }

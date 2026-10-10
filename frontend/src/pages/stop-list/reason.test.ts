@@ -7,7 +7,8 @@ const stopped: DishServings = {
   name: "Стейк",
   available: false,
   servings: 0,
-  reasons: [
+  recipe: [],
+  missing: [
     {
       product_id: "beef",
       product_name: "Говядина",
@@ -31,6 +32,6 @@ describe("stop-list text", () => {
   });
   it("labels servings", () => {
     expect(servingsLabel(stopped)).toBe("нет в наличии");
-    expect(servingsLabel({ ...stopped, available: true, servings: 4, reasons: [] })).toBe("4 порц.");
+    expect(servingsLabel({ ...stopped, available: true, servings: 4, missing: [] })).toBe("4 порц.");
   });
 });
