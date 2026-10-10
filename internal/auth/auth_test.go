@@ -3,6 +3,8 @@ package auth_test
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -146,5 +148,33 @@ func TestRoleAllows(t *testing.T) {
 		if got := c.have.Allows(c.need); got != c.want {
 			t.Errorf("%q.Allows(%q) = %v", c.have, c.need, got)
 		}
+	}
+}
+
+// Параллельная пачка не обходит лимит: проверок пароля не больше пяти.
+func TestLoginRateLimitHoldsUnderConcurrency(t *testing.T) {
+	now := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	svc, _ := newSvc(&now)
+	ctx := context.Background()
+	_, _ = svc.CreateUser(ctx, "bob", "password1", auth.Viewer)
+
+	var wg sync.WaitGroup
+	var checked, blocked int32
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, err := svc.Login(ctx, "bob", "wrong")
+			switch {
+			case errors.Is(err, auth.ErrInvalidCredentials):
+				atomic.AddInt32(&checked, 1)
+			case errors.Is(err, auth.ErrTooManyAttempts):
+				atomic.AddInt32(&blocked, 1)
+			}
+		}()
+	}
+	wg.Wait()
+	if checked != 5 || blocked != 45 {
+		t.Fatalf("checked=%d blocked=%d, want 5 and 45", checked, blocked)
 	}
 }

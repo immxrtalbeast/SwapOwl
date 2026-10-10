@@ -187,20 +187,18 @@ func (s *Service) burnPassword(password string) {
 
 // Login проверяет пароль и открывает сессию. Возвращает токен (для cookie) и пользователя.
 func (s *Service) Login(ctx context.Context, login, password string) (string, User, error) {
-	if s.limiter.Blocked(login) {
+	if !s.limiter.Acquire(login) {
 		return "", User{}, ErrTooManyAttempts
 	}
 	u, err := s.Repo.UserByLogin(ctx, login)
 	switch {
 	case errors.Is(err, ErrNotFound):
 		s.burnPassword(password)
-		s.limiter.Fail(login)
 		return "", User{}, ErrInvalidCredentials
 	case err != nil:
 		return "", User{}, err
 	}
 	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) != nil {
-		s.limiter.Fail(login)
 		return "", User{}, ErrInvalidCredentials
 	}
 	s.limiter.Reset(login)

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Limiter считает неудачные входы по логину в скользящем окне. Живёт в памяти процесса
+// Limiter считает попытки входа по логину в скользящем окне. Живёт в памяти процесса
 // (2.9: для одного экземпляра достаточно).
 type Limiter struct {
 	max    int
@@ -37,15 +37,10 @@ func (l *Limiter) prune(login string, now time.Time) []time.Time {
 	return ts
 }
 
-// Blocked — уже было max неудач за окно; следующая попытка получает 429.
-func (l *Limiter) Blocked(login string) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return len(l.prune(login, l.now())) >= l.max
-}
-
-// Fail записывает неудачную попытку.
-func (l *Limiter) Fail(login string) {
+// Acquire атомарно проверяет лимит и занимает попытку: false — уже было max попыток за окно
+// (ответ 429). Занятая попытка считается неудачной, пока вызывающий не вызовет Reset после
+// успешного входа; так параллельная пачка запросов не обходит лимит, пока идёт bcrypt.
+func (l *Limiter) Acquire(login string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -54,7 +49,12 @@ func (l *Limiter) Fail(login string) {
 			l.prune(k, now)
 		}
 	}
-	l.fails[login] = append(l.prune(login, now), now)
+	ts := l.prune(login, now)
+	if len(ts) >= l.max {
+		return false
+	}
+	l.fails[login] = append(ts, now)
+	return true
 }
 
 // Reset сбрасывает счётчик после успешного входа.
