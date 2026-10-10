@@ -148,11 +148,6 @@ func PlanWriteoff(needs []Need, batches []Batch) ([]Writeoff, []Shortage) {
 	return nil, nil
 }
 
-// Status возвращает статус партии на момент now. Заглушка.
-func Status(b Batch, now time.Time, cfg ExpiryConfig) BatchStatus {
-	return ""
-}
-
 // Servings — сколько порций собирается из available: min floor(доступно/норма). Заглушка.
 func Servings(recipe []RecipeItem, available map[string]Qty) int64 {
 	return 0
