@@ -54,3 +54,42 @@ func (d *DB) DeleteExpiredSessions(ctx context.Context, now time.Time) error {
 	}
 	return nil
 }
+
+// TakeLoginAttempt — счётчик неудачных входов в БД (login_attempts). Проверка и занятие попытки
+// атомарны: транзакция берёт advisory-блокировку по ключу, поэтому параллельные запросы по одному
+// логину не обходят лимит. Старые отметки (всех ключей) чистятся при каждом вызове.
+func (d *DB) TakeLoginAttempt(ctx context.Context, key string, now time.Time, window time.Duration, max int) (bool, error) {
+	tx, err := d.Pool.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("store: login attempt: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 7))`, key); err != nil {
+		return false, fmt.Errorf("store: login attempt: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM login_attempts WHERE at <= $1`, now.Add(-window)); err != nil {
+		return false, fmt.Errorf("store: login attempt: %w", err)
+	}
+	var n int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM login_attempts WHERE login = $1`, key).Scan(&n); err != nil {
+		return false, fmt.Errorf("store: login attempt: %w", err)
+	}
+	if n >= max {
+		return false, nil
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO login_attempts (login, at) VALUES ($1, $2)`, key, now); err != nil {
+		return false, fmt.Errorf("store: login attempt: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("store: login attempt: %w", err)
+	}
+	return true, nil
+}
+
+// ClearLoginAttempts сбрасывает счётчик ключа.
+func (d *DB) ClearLoginAttempts(ctx context.Context, key string) error {
+	if _, err := d.Pool.Exec(ctx, `DELETE FROM login_attempts WHERE login = $1`, key); err != nil {
+		return fmt.Errorf("store: clear login attempts: %w", err)
+	}
+	return nil
+}

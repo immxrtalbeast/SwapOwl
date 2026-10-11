@@ -1,4 +1,4 @@
-// Package auth — роли, сессии, ключи интеграции и ограничитель попыток входа
+// Package auth — роли, сессии, ключи интеграции, смена пароля и ограничитель попыток входа
 // (.ai/solution.md, 2.9). Пакет не знает о HTTP и о конкретной БД: хранилище приходит через Repo.
 package auth
 
@@ -98,6 +98,7 @@ type Repo interface {
 	CountUsers(ctx context.Context) (int, error)
 	CreateUser(ctx context.Context, login, passwordHash string, role Role) (User, error)
 	UserByLogin(ctx context.Context, login string) (User, error)
+	UserByID(ctx context.Context, id int64) (User, error)
 	ListUsers(ctx context.Context) ([]User, error)
 	// DeleteUser возвращает ErrNotFound или ErrLastAdmin.
 	DeleteUser(ctx context.Context, id int64) error
@@ -107,6 +108,14 @@ type Repo interface {
 	SessionUser(ctx context.Context, tokenHash []byte, now time.Time) (User, error)
 	DeleteSession(ctx context.Context, tokenHash []byte) error
 	DeleteExpiredSessions(ctx context.Context, now time.Time) error
+	// ChangePassword атомарно меняет хэш пароля и удаляет все сессии пользователя, кроме keepTokenHash.
+	ChangePassword(ctx context.Context, userID int64, passwordHash string, keepTokenHash []byte) error
+
+	// TakeLoginAttempt атомарно проверяет лимит по ключу и занимает попытку: false — за окно
+	// window уже было max попыток (429). Счётчик живёт в БД и общий для всех экземпляров и рестартов.
+	TakeLoginAttempt(ctx context.Context, key string, now time.Time, window time.Duration, max int) (bool, error)
+	// ClearLoginAttempts сбрасывает счётчик ключа после успешного входа.
+	ClearLoginAttempts(ctx context.Context, key string) error
 
 	CreateAPIKey(ctx context.Context, name string, keyHash []byte, role Role) (APIKey, error)
 	APIKeyByHash(ctx context.Context, keyHash []byte) (APIKey, error)
@@ -127,8 +136,13 @@ type Options struct {
 type Service struct {
 	Repo Repo
 	Options
-	limiter *Limiter
 }
+
+// Лимит попыток входа по одному логину (2.9): больше 5 за 15 минут — отказ.
+const (
+	MaxLoginAttempts = 5
+	LoginWindow      = 15 * time.Minute
+)
 
 // New создаёт сервис. Часы сессий — реальные: ускоренное время стенда на сроки входа не влияет.
 func New(repo Repo, opt Options) *Service {
@@ -141,7 +155,7 @@ func New(repo Repo, opt Options) *Service {
 	if opt.SessionTTL <= 0 {
 		opt.SessionTTL = 12 * time.Hour
 	}
-	return &Service{Repo: repo, Options: opt, limiter: NewLimiter(5, 15*time.Minute, opt.Now)}
+	return &Service{Repo: repo, Options: opt}
 }
 
 // HashPassword — bcrypt.
@@ -187,8 +201,8 @@ func (s *Service) burnPassword(password string) {
 
 // Login проверяет пароль и открывает сессию. Возвращает токен (для cookie) и пользователя.
 func (s *Service) Login(ctx context.Context, login, password string) (string, User, error) {
-	if !s.limiter.Acquire(login) {
-		return "", User{}, ErrTooManyAttempts
+	if err := s.takeAttempt(ctx, login); err != nil {
+		return "", User{}, err
 	}
 	u, err := s.Repo.UserByLogin(ctx, login)
 	switch {
@@ -201,7 +215,9 @@ func (s *Service) Login(ctx context.Context, login, password string) (string, Us
 	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) != nil {
 		return "", User{}, ErrInvalidCredentials
 	}
-	s.limiter.Reset(login)
+	if err := s.Repo.ClearLoginAttempts(ctx, login); err != nil {
+		return "", User{}, err
+	}
 
 	now := s.Now()
 	if err := s.Repo.DeleteExpiredSessions(ctx, now); err != nil {
@@ -215,6 +231,49 @@ func (s *Service) Login(ctx context.Context, login, password string) (string, Us
 		return "", User{}, err
 	}
 	return token, u, nil
+}
+
+// takeAttempt занимает попытку по ключу; занятая попытка считается неудачной, пока вызывающий
+// не сбросит счётчик после успеха — так параллельная пачка запросов не обходит лимит, пока идёт bcrypt.
+func (s *Service) takeAttempt(ctx context.Context, key string) error {
+	ok, err := s.Repo.TakeLoginAttempt(ctx, key, s.Now(), LoginWindow, MaxLoginAttempts)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return ErrTooManyAttempts
+	}
+	return nil
+}
+
+// ChangePassword меняет пароль пользователя userID: проверяет старый, пишет bcrypt нового и
+// удаляет все его сессии, кроме текущей (keepToken; пустой — удаляются все). Неверный старый
+// пароль — ErrInvalidCredentials; больше 5 неверных за 15 минут — ErrTooManyAttempts.
+// Длину и отличие нового пароля от старого проверяет вызывающий.
+func (s *Service) ChangePassword(ctx context.Context, userID int64, keepToken, oldPassword, newPassword string) error {
+	u, err := s.Repo.UserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	key := "password:" + u.Login // отдельный счётчик: подбор старого пароля не блокирует вход
+	if err := s.takeAttempt(ctx, key); err != nil {
+		return err
+	}
+	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(oldPassword)) != nil {
+		return ErrInvalidCredentials
+	}
+	if err := s.Repo.ClearLoginAttempts(ctx, key); err != nil {
+		return err
+	}
+	h, err := HashPassword(newPassword, s.Cost)
+	if err != nil {
+		return err
+	}
+	var keep []byte
+	if keepToken != "" {
+		keep = HashToken(keepToken)
+	}
+	return s.Repo.ChangePassword(ctx, userID, h, keep)
 }
 
 // Logout удаляет сессию; неизвестный токен — не ошибка.

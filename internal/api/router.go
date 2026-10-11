@@ -28,12 +28,18 @@ type Deps struct {
 	// как при AUTH_REQUIRED=false, а маршруты /api/auth, /api/users и /api/api-keys не регистрируются.
 	Auth *auth.Service
 
+	// Audit — журнал действий в БД (2.9, 8.3 п. 6). nil — записи идут только в журнал запросов,
+	// а GET /api/audit не регистрируется.
+	Audit AuditLog
+
 	// Stock — поставки и остатки (2.1). nil — маршруты склада не регистрируются.
 	Stock Stock
 	// Catalog — импорт справочников (8.3 п. 5). nil — маршрут не регистрируется.
 	Catalog Catalog
 	// Orders — заказы и меню (2.3). nil — маршруты заказов не регистрируются.
 	Orders Orders
+	// Corrections — списание брака, инвентаризация, отмена заказа. nil — маршруты не регистрируются.
+	Corrections Corrections
 	// Menu — стоп-лист и порции (2.5). nil — маршруты не регистрируются.
 	Menu MenuSource
 	// HotOffers — снимок для горячих предложений (2.7). nil — маршрут не регистрируется.
@@ -42,6 +48,8 @@ type Deps struct {
 	HotConfig HotOffersConfig
 	// Supply — предложение поставок (2.6). nil — маршрут не регистрируется.
 	Supply SupplySource
+	// Analytics — деньги: списания и расхождения кассы (7.4). nil — маршруты не регистрируются.
+	Analytics Analytics
 	// Location — часовой пояс ресторана для expires_on; nil — UTC.
 	Location *time.Location
 	// Monitor — лента предупреждений и журнал движений (2.6). nil — маршруты не регистрируются.
@@ -100,10 +108,12 @@ func (rt *Router) Routes() {
 	rt.stockRoutes()
 	rt.catalogRoutes()
 	rt.orderRoutes()
+	rt.correctionRoutes()
 	rt.stopListRoutes()
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()
 	rt.supplyRoutes()
+	rt.analyticsRoutes()
 	rt.eventsRoutes()
 	rt.clockRoutes()
 	rt.demoRoutes()

@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
+	"umirhack/internal/audit"
 	"umirhack/internal/auth"
 )
 
@@ -161,7 +163,12 @@ func (rt *Router) authenticate(w http.ResponseWriter, r *http.Request) (auth.Pri
 	return auth.Principal{}, false
 }
 
-// audit пишет запись аудита (2.9). Секреты в attrs не передаются.
+// auditSkip — события, которые остаются только в журнале запросов: открытие и закрытие SSE
+// происходят при каждом переподключении клиента и забили бы таблицу.
+var auditSkip = map[string]bool{"events_open": true, "events_close": true}
+
+// audit пишет запись аудита (2.9) в журнал запросов и, кроме auditSkip, в таблицу audit_log.
+// Секреты в attrs не передаются. Сбой записи в БД не ломает запрос: он попадает в журнал ошибок.
 func (rt *Router) audit(r *http.Request, event string, attrs ...slog.Attr) {
 	all := append([]slog.Attr{
 		slog.Bool("audit", true),
@@ -169,4 +176,41 @@ func (rt *Router) audit(r *http.Request, event string, attrs ...slog.Attr) {
 		slog.String("request_id", RequestID(r.Context())),
 	}, attrs...)
 	rt.deps.Log.LogAttrs(r.Context(), slog.LevelInfo, "audit", all...)
+	if rt.deps.Audit == nil || auditSkip[event] {
+		return
+	}
+	details := make(map[string]any, len(attrs)+1)
+	for _, a := range attrs {
+		details[a.Key] = a.Value.Resolve().Any()
+	}
+	details["request_id"] = RequestID(r.Context())
+	if err := audit.Record(r.Context(), rt.deps.Audit, rt.actor(r, attrs), event, details); err != nil {
+		rt.deps.Log.LogAttrs(r.Context(), slog.LevelError, "audit insert failed",
+			slog.String("request_id", RequestID(r.Context())), slog.String("event", event), slog.String("error", err.Error()))
+	}
+}
+
+// actor — кто совершил действие: user:<login>, key:<id>, либо login:<попытка> для событий
+// входа без сессии, иначе anonymous.
+func (rt *Router) actor(r *http.Request, attrs []slog.Attr) string {
+	p, ok := PrincipalFrom(r.Context())
+	if !ok {
+		if ai, k := r.Context().Value(authInfoKey).(*authInfo); k {
+			p, ok = ai.get()
+		}
+	}
+	if ok {
+		switch p.Kind {
+		case auth.KindSession:
+			return "user:" + p.Login
+		case auth.KindAPIKey:
+			return "key:" + strconv.FormatInt(p.KeyID, 10)
+		}
+	}
+	for _, a := range attrs {
+		if a.Key == "login" {
+			return "login:" + a.Value.String()
+		}
+	}
+	return "anonymous"
 }

@@ -17,6 +17,7 @@ var resetOrder = []string{
 	`DELETE FROM orders`,
 	`DELETE FROM batches`,
 	`DELETE FROM deliveries`,
+	`DELETE FROM corrections`,
 	`DELETE FROM clock_jumps`,
 	// Справочники целиком лежат в сиде, а импорт каталога (PUT /api/catalog) мог добавить или
 	// переписать блюда, рецепты и продукты: чистим всё и даём сиду загрузить эталон заново.
