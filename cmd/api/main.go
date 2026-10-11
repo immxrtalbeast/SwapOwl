@@ -112,6 +112,7 @@ func run() error {
 	sweeps.last.Store(time.Now().UnixNano()) // до первого прохода отсчёт идёт от старта
 	jan := janitor.New(sweeps, now, pub.onSweep)
 	expiry := domain.ExpiryConfig{Share: cfg.ExpiringShare, MinHours: cfg.ExpiringMinHours, MaxShare: cfg.ExpiringMaxShare}
+	db.Expiry = expiry
 	jan.Expiry, jan.OnExpiring = &expiry, pub.onExpiring
 	go jan.Run(ctx)
 	st := &stand.Stand{DB: db, Clock: accl, Gate: gate, Sweep: jan, Bus: bus, Loc: cfg.Location,
