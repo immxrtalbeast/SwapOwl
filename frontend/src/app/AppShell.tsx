@@ -3,6 +3,7 @@ import { StockPage } from "../pages/stock/StockPage";
 import { StopListPage } from "../pages/stop-list/StopListPage";
 import { OrdersPage } from "../pages/orders/OrdersPage";
 import { AlertsPage } from "../pages/alerts";
+import { AlertsCounter } from "../pages/alerts/AlertsCounter";
 import { SupplyPage } from "../pages/supply";
 import { HotOffersPage } from "../pages/hot-offers";
 import { MoneyPage } from "../pages/money";
@@ -47,7 +48,7 @@ export function AppShell() {
   return (
     <ConnectionProvider>
       <ClockProvider>
-        <AppHeader />
+        <AppHeader alerts={<AlertsCounter />} />
         <div style={{ display: "flex", flexWrap: "wrap", fontFamily: "system-ui, sans-serif" }}>
           <nav aria-label="Экраны" style={{ minWidth: 200, padding: 16 }}>
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>

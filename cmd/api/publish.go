@@ -61,6 +61,15 @@ func (p *publisher) recheckStopList(ctx context.Context) {
 	p.stop.Update(ids)
 }
 
+// onExpiring — janitor.OnExpiring: batch.expiring по одному на партию (7.5). Каждая партия
+// приходит сюда ровно один раз: метку в БД ставит тот же проход, что вернул список.
+func (p *publisher) onExpiring(expiring []store.ExpiringBatch) {
+	for _, e := range expiring {
+		p.bus.Publish(events.BatchExpiring, map[string]any{
+			"batch_id": e.BatchID, "product_id": e.ProductID, "expires_at": e.ExpiresAt})
+	}
+}
+
 // onSweep — janitor.OnSweep: одно batch.expired на проход.
 func (p *publisher) onSweep(expired []store.ExpiredBatch) {
 	batchIDs := make([]int64, 0, maxExpiredIDs)

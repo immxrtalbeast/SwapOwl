@@ -7,13 +7,15 @@ import (
 	"log/slog"
 	"time"
 
+	"umirhack/internal/domain"
 	"umirhack/internal/store"
 )
 
 // Store — то, что нужно «дворнику» от хранилища.
 type Store interface {
-	SweepExpired(ctx context.Context, now func() time.Time) ([]store.ExpiredBatch, error)
+	Sweep(ctx context.Context, now func() time.Time, cfg *domain.ExpiryConfig) (store.SweepResult, error)
 	NextExpiry(ctx context.Context, now time.Time) (*time.Time, error)
+	NextExpiringAt(ctx context.Context, now time.Time, cfg domain.ExpiryConfig) (*time.Time, error)
 }
 
 // Janitor периодически вызывает SweepExpired.
@@ -23,6 +25,10 @@ type Janitor struct {
 	MinInterval time.Duration // минимальный реальный интервал между проходами
 	MaxWait     time.Duration // верхняя граница ожидания, если истекающих партий нет
 	OnSweep     func([]store.ExpiredBatch)
+	// Expiry — порог «истекает». Задан — проход ставит expiring_notified_at и сообщает о новых
+	// истекающих партиях через OnExpiring (один раз на партию, 2.4); nil — сигнала нет.
+	Expiry     *domain.ExpiryConfig
+	OnExpiring func([]store.ExpiringBatch)
 
 	kick chan struct{}
 }
@@ -43,11 +49,18 @@ func (j *Janitor) Kick() {
 
 // Sweep делает один проход и сообщает о результате через OnSweep.
 func (j *Janitor) Sweep(ctx context.Context) ([]store.ExpiredBatch, error) {
-	got, err := j.Store.SweepExpired(ctx, j.Now)
-	if err == nil && len(got) > 0 && j.OnSweep != nil {
-		j.OnSweep(got)
+	res, err := j.Store.Sweep(ctx, j.Now, j.Expiry)
+	if err != nil {
+		return nil, err
 	}
-	return got, err
+	// Сначала «истекает», потом «просрочено»: так события идут в порядке жизни партии.
+	if len(res.Expiring) > 0 && j.OnExpiring != nil {
+		j.OnExpiring(res.Expiring)
+	}
+	if len(res.Expired) > 0 && j.OnSweep != nil {
+		j.OnSweep(res.Expired)
+	}
+	return res.Expired, nil
 }
 
 // Run работает до отмены ctx: проход, затем ожидание до ближайшего истечения или Kick.
@@ -57,9 +70,18 @@ func (j *Janitor) Run(ctx context.Context) {
 			slog.Error("janitor sweep", "err", err)
 		}
 		wait := j.MaxWait
-		if next, err := j.Store.NextExpiry(ctx, j.Now()); err == nil && next != nil {
-			if d := next.Sub(j.Now()); d < wait {
+		// Просыпаемся на ближайшее истечение и на ближайший переход в «истекает».
+		now := j.Now()
+		if next, err := j.Store.NextExpiry(ctx, now); err == nil && next != nil {
+			if d := next.Sub(now); d < wait {
 				wait = d
+			}
+		}
+		if j.Expiry != nil {
+			if next, err := j.Store.NextExpiringAt(ctx, now, *j.Expiry); err == nil && next != nil {
+				if d := next.Sub(now); d < wait {
+					wait = d
+				}
 			}
 		}
 		if wait < j.MinInterval {

@@ -137,3 +137,15 @@ export interface ApiKeyInfo {
 export interface CreatedApiKey extends ApiKeyInfo {
   key: string;
 }
+
+// Строка GET /api/alerts: истекающие партии и просроченные за последние 24 ч стенда (7.4).
+export interface Alert {
+  batch_id: number;
+  product_id: string;
+  product_name: string;
+  remaining: Qty;
+  expires_at: string;
+  time_left_seconds: number;
+  status: "expiring" | "expired";
+  doomed: boolean;
+}
