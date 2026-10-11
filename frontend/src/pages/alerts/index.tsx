@@ -1,6 +1,7 @@
 import { formatQty, formatTimeLeft } from "../stock/format";
 import { useAlerts } from "./useAlerts";
 import { hotOffersUrl } from "../hot-offers/query";
+import { batchLabel } from "./batch";
 import { alertUrgency, urgencyView } from "./urgency";
 
 export function AlertsPage() {
@@ -33,7 +34,9 @@ export function AlertsPage() {
               const v = urgencyView(u);
               return (
                 <tr key={a.batch_id} data-urgency={u} style={{ background: v.background, borderBottom: "1px solid #ddd" }}>
-                  <td>{a.product_name}</td>
+                  <td>
+                    {a.product_name} <small style={{ opacity: 0.75 }}>{batchLabel(a.batch_id)}</small>
+                  </td>
                   <td align="right" style={{ fontWeight: u === "doomed" ? 700 : 400, textDecoration: u === "expired" ? "line-through" : "none" }}>
                     {formatQty(a.remaining)}
                   </td>
