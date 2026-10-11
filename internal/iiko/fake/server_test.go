@@ -193,3 +193,27 @@ func TestStopList(t *testing.T) {
 		t.Fatalf("неизвестный id: %d", resp.StatusCode)
 	}
 }
+
+func TestPieceProductPrice(t *testing.T) {
+	ts, tok := newTS(t)
+	_, b := get(t, ts.URL+iiko.PathIncomingInvoice+"?key="+tok+"&from=2026-03-01&to=2026-03-03")
+	var inv iiko.IncomingInvoices
+	if err := xml.Unmarshal(b, &inv); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]float64{"bun": 0.015, "egg": 0.012, "salmon": 1800}
+	seen := 0
+	for _, d := range inv.Documents {
+		for _, it := range d.Items {
+			if w, ok := want[it.Product]; ok {
+				seen++
+				if it.Price < w*0.999 || it.Price > w*1.001 {
+					t.Errorf("%s: цена %v, ожидалась %v", it.Product, it.Price, w)
+				}
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("нет проверяемых позиций")
+	}
+}

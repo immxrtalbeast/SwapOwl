@@ -124,6 +124,12 @@ func mainUnit(u string) (string, float64) {
 	}
 }
 
+// unitPrice — руб за основную единицу продукта (цена в сиде — копейки за 1000 базовых).
+func unitPrice(p seed.Product) float64 {
+	_, k := mainUnit(string(p.Unit))
+	return float64(p.PriceMinorPer1000) / 100 * k / 1000
+}
+
 func round(v float64, n int) float64 {
 	p := math.Pow10(n)
 	return math.Round(v*p) / p
@@ -208,8 +214,7 @@ func (s *Server) invoices(w http.ResponseWriter, r *http.Request) {
 	}
 	prices := map[string]float64{}
 	for _, p := range seed.Products() {
-		_, k := mainUnit(string(p.Unit))
-		prices[p.ID] = float64(p.PriceMinorPer1000) / 100 * 1000 / k // руб за основную единицу
+		prices[p.ID] = unitPrice(p)
 	}
 	out := iiko.IncomingInvoices{}
 	for _, e := range evs {
@@ -224,8 +229,8 @@ func (s *Server) invoices(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			pr := round(prices[it.ProductID], 2)
-			doc.Items = append(doc.Items, iiko.InvoiceItem{Num: i + 1, Product: it.ProductID, Amount: a, Price: pr, Sum: round(pr*a, 2)})
+			pr := prices[it.ProductID]
+			doc.Items = append(doc.Items, iiko.InvoiceItem{Num: i + 1, Product: it.ProductID, Amount: a, Price: round(pr, 5), Sum: round(pr*a, 2)})
 		}
 		out.Documents = append(out.Documents, doc)
 	}
@@ -372,7 +377,7 @@ func (s *Server) balance(w http.ResponseWriter, r *http.Request) {
 		case generator.KindOrder:
 			for _, oi := range e.Order.Items {
 				for _, ri := range recipes[oi.DishID] {
-					bal[ri.product] -= ri.qty * float64(oi.Portions) / mainFactor(ri.product)
+					bal[ri.product] = math.Max(0, bal[ri.product]-ri.qty*float64(oi.Portions)/mainFactor(ri.product))
 				}
 			}
 		}
@@ -384,9 +389,7 @@ func (s *Server) balance(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		a := math.Max(0, bal[p.ID])
-		_, k := mainUnit(string(p.Unit))
-		price := float64(p.PriceMinorPer1000) / 100 * 1000 / k
-		out = append(out, iiko.BalanceItem{Store: StoreID, Product: p.ID, Amount: round(a, 3), Sum: round(a*price, 2)})
+		out = append(out, iiko.BalanceItem{Store: StoreID, Product: p.ID, Amount: round(a, 3), Sum: round(a*unitPrice(p), 2)})
 	}
 	writeJSON(w, out)
 }
