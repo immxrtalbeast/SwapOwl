@@ -45,7 +45,7 @@ function UsersAdmin() {
   return (
     <section aria-labelledby="users-title">
       <ScreenTitle>Пользователи и ключи</ScreenTitle>
-      <p style={{ margin: "0 0 16px" }}><a href="#/account" style={{ color: "var(--primary)" }}>Аккаунт: сменить свой пароль</a></p>
+      <p style={{ margin: "0 0 16px" }}><a href="#/account" style={{ color: "var(--brand-ink)" }}>Аккаунт: сменить свой пароль</a></p>
       {notice && <Alert color="red" role="alert" data-testid="users-notice" mb="md">{notice}</Alert>}
       {state.kind === "loading" && <LoadingState label="Загрузка пользователей и ключей" />}
       {state.kind === "error" && (

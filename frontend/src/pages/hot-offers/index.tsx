@@ -71,7 +71,7 @@ export function HotOffersPage() {
       {productId && (
         <p style={{ font: "var(--type-body)" }}>
           Блюда, которые спасают выбранный продукт ({state.kind === "ready" ? productName(state.data.offers, productId) : productId}).{" "}
-          <a href="#/hot-offers" style={{ font: "var(--type-button)", color: "var(--primary)", textDecoration: "none" }}>Показать все</a>
+          <a href="#/hot-offers" style={{ font: "var(--type-button)", color: "var(--brand-ink)", textDecoration: "none" }}>Показать все</a>
         </p>
       )}
       {state.kind === "loading" && <LoadingState rows={3} label="Загрузка предложений" />}

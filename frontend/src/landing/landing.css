@@ -8,7 +8,7 @@
 .ld-btn:hover { background: var(--primary-hover); }
 .ld-btn.big { padding: 22px 34px; font-size: 16px; border-radius: 10px; box-shadow: 0 8px 24px color-mix(in srgb, var(--primary) 30%, transparent); }
 .ld-btn.ghost { background: transparent; color: var(--brand-ink); border-color: var(--brand-ink); box-shadow: none; }
-.ld-link { font: var(--type-button); font-size: 16px; color: var(--primary); text-decoration: none; }
+.ld-link { font: var(--type-button); font-size: 16px; color: var(--brand-ink); text-decoration: none; }
 .ld-hero { background-color: var(--paper);
   background-image: linear-gradient(var(--brand-grid) 1px, transparent 1px), linear-gradient(90deg, var(--brand-grid) 1px, transparent 1px);
   background-size: var(--grid-step) var(--grid-step); background-position: -1px -1px; }
