@@ -40,6 +40,8 @@ type Deps struct {
 	HotOffers HotOffersSource
 	// HotConfig — основной алгоритм и параметры R/Bg.
 	HotConfig HotOffersConfig
+	// Supply — предложение поставок (2.6). nil — маршрут не регистрируется.
+	Supply SupplySource
 	// Location — часовой пояс ресторана для expires_on; nil — UTC.
 	Location *time.Location
 	// Monitor — лента предупреждений и журнал движений (2.6). nil — маршруты не регистрируются.
@@ -99,6 +101,7 @@ func (rt *Router) Routes() {
 	rt.stopListRoutes()
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()
+	rt.supplyRoutes()
 	rt.eventsRoutes()
 	rt.clockRoutes()
 	rt.demoRoutes()

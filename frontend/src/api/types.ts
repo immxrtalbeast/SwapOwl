@@ -149,3 +149,16 @@ export interface Alert {
   status: "expiring" | "expired";
   doomed: boolean;
 }
+
+// Строка GET /api/supply-suggestions (7.4).
+export interface SupplySuggestion {
+  product_id: string;
+  product_name: string;
+  quantity: Qty;
+  usable_stock: Qty;
+  rate_per_day: Qty;
+  stockout_at: string | null;
+  blocks_dishes: number;
+  urgency: "now" | "soon" | "planned";
+  explanation: string;
+}
