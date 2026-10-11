@@ -3,15 +3,25 @@ package simulator
 import (
 	"fmt"
 	"math"
+	"sync"
 )
 
-// SeedRow — результаты трёх вариантов на одном seed.
-type SeedRow struct {
-	Seed    int64  `json:"seed"`
-	C0      Result `json:"c0"`
-	R       Result `json:"r"`
-	Bg      Result `json:"bg"`
-	DiffBgR int64  `json:"diff_bg_minus_r"` // списания Bg − R, копейки; < 0 — Bg лучше
+// Agg — суммы по seed для одного варианта в клетке.
+type Agg struct {
+	Waste    int64 `json:"waste_cost"`    // списания по просрочке, копейки
+	Received int64 `json:"received_cost"` // поступило, копейки
+	WasteQty int64 `json:"waste_qty"`     // списания по количеству
+	Orders   int   `json:"orders"`
+	Rejected int   `json:"rejected"`
+	HotLines int   `json:"hot_lines"`
+}
+
+// WasteShare — доля списанного от поступившего.
+func (a Agg) WasteShare() float64 {
+	if a.Received == 0 {
+		return 0
+	}
+	return float64(a.Waste) / float64(a.Received)
 }
 
 // Stat — среднее и 95 % интервал среднего (нормальное приближение).
@@ -21,88 +31,159 @@ type Stat struct {
 	Hi   float64 `json:"ci95_hi"`
 }
 
-// Point — результаты для одного значения u.
-type Point struct {
-	U          float64   `json:"u"`
-	Main       bool      `json:"main"`
-	Rows       []SeedRow `json:"rows"`
-	TotalC0    int64     `json:"total_c0"`
-	TotalR     int64     `json:"total_r"`
-	TotalBg    int64     `json:"total_bg"`
-	RejectsC0  int       `json:"rejects_c0"`
-	RejectsR   int       `json:"rejects_r"`
-	RejectsBg  int       `json:"rejects_bg"`
-	OrdersC0   int       `json:"orders_c0"`
-	DiffBgR    Stat      `json:"diff_bg_minus_r"`
-	SignBgVsR  string    `json:"sign_bg_vs_r"` // "bg<r", "bg>r", "tie" (интервал включает 0)
-	ReductionR float64   `json:"r_vs_c0"`      // снижение списаний R относительно C0, доля
-	ReductionB float64   `json:"bg_vs_c0"`
+// Cell — сценарий × модель × u: все варианты на общих seed.
+type Cell struct {
+	Scenario  string       `json:"scenario"`
+	Title     string       `json:"title"`
+	Model     Model        `json:"model"`
+	U         float64      `json:"u"`
+	Main      bool         `json:"main"` // M2 при основном u
+	Seeds     int          `json:"seeds"`
+	Algos     map[Algo]Agg `json:"algos"`
+	DiffBgR   Stat         `json:"diff_bg_minus_r"` // парная разность списаний Bg − R, копейки на seed
+	SignBgVsR string       `json:"sign_bg_vs_r"`    // "bg<r", "bg>r", "tie"
 }
 
-// Report — итог bench. Победитель не выбирается: это отдельный тикет (этап 3).
+// Report — итог bench.
 type Report struct {
-	Days   int     `json:"days"`
-	Points []Point `json:"points"`
+	Days    int     `json:"days"`
+	Seeds   int     `json:"seeds"`
+	Cells   []Cell  `json:"cells"`
+	Verdict Verdict `json:"verdict"`
 }
 
-// Bench гонит seed'ы seed0 … seed0+n−1 для каждого u. Основная точка us[0] идёт
-// первой; остальные значения — после неё.
+// Models — порядок моделей в отчёте.
+var Models = []Model{ModelM2, ModelM1}
+
+// Bench гонит seed'ы seed0 … seed0+n−1 по пяти сценариям, двум моделям и значениям u.
+// Основная точка — us[0] в модели M2; остальные u проверяются на знак. Затем
+// применяется правило победителя.
 func Bench(seed0 int64, n, days int, us []float64) (Report, error) {
 	if n < 1 || days < 1 || len(us) == 0 {
 		return Report{}, fmt.Errorf("simulator: нужны n ≥ 1, days ≥ 1 и хотя бы одно u")
 	}
-	rep := Report{Days: days}
-	for i, u := range us {
-		pt := Point{U: u, Main: i == 0}
-		var diffs []float64
-		for k := 0; k < n; k++ {
-			p := Params{Seed: seed0 + int64(k), Days: days, U: u, Cfg: DefaultConfig()}
-			ev, err := Events(p)
-			if err != nil {
-				return Report{}, err
-			}
-			row := SeedRow{Seed: p.Seed}
-			for _, a := range Algos {
-				r, err := Run(p, a, ev)
-				if err != nil {
-					return Report{}, err
-				}
-				switch a {
-				case AlgoC0:
-					row.C0 = r
-				case AlgoR:
-					row.R = r
-				case AlgoBg:
-					row.Bg = r
-				}
-			}
-			row.DiffBgR = row.Bg.WriteoffCost - row.R.WriteoffCost
-			diffs = append(diffs, float64(row.DiffBgR))
-			pt.Rows = append(pt.Rows, row)
-			pt.TotalC0 += row.C0.WriteoffCost
-			pt.TotalR += row.R.WriteoffCost
-			pt.TotalBg += row.Bg.WriteoffCost
-			pt.RejectsC0 += row.C0.Rejected
-			pt.RejectsR += row.R.Rejected
-			pt.RejectsBg += row.Bg.Rejected
-			pt.OrdersC0 += row.C0.Orders
-		}
-		pt.DiffBgR = stat(diffs)
-		switch {
-		case n < 2 || (pt.DiffBgR.Lo <= 0 && pt.DiffBgR.Hi >= 0):
-			pt.SignBgVsR = "tie"
-		case pt.DiffBgR.Mean < 0:
-			pt.SignBgVsR = "bg<r"
-		default:
-			pt.SignBgVsR = "bg>r"
-		}
-		if pt.TotalC0 > 0 {
-			pt.ReductionR = 1 - float64(pt.TotalR)/float64(pt.TotalC0)
-			pt.ReductionB = 1 - float64(pt.TotalBg)/float64(pt.TotalC0)
-		}
-		rep.Points = append(rep.Points, pt)
+	scs := Scenarios()
+	type cellKey struct {
+		m Model
+		u float64
 	}
+	var keys []cellKey
+	for _, m := range Models {
+		for _, u := range us {
+			keys = append(keys, cellKey{m, u})
+		}
+	}
+
+	// results[сценарий][seed][клетка][вариант]
+	results := make([][][]map[Algo]Result, len(scs))
+	var firstErr error
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for si := range scs {
+		results[si] = make([][]map[Algo]Result, n)
+		for k := 0; k < n; k++ {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(si, k int) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				out, err := benchSeed(scs[si].World, seed0+int64(k), days, func(yield func(Model, float64)) {
+					for _, key := range keys {
+						yield(key.m, key.u)
+					}
+				})
+				mu.Lock()
+				defer mu.Unlock()
+				if err != nil {
+					if firstErr == nil {
+						firstErr = err
+					}
+					return
+				}
+				results[si][k] = out
+			}(si, k)
+		}
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return Report{}, firstErr
+	}
+
+	rep := Report{Days: days, Seeds: n}
+	for si, sc := range scs {
+		for ci, key := range keys {
+			c := Cell{Scenario: sc.Name, Title: sc.Title, Model: key.m, U: key.u, Seeds: n,
+				Main: key.m == ModelM2 && key.u == us[0], Algos: map[Algo]Agg{}}
+			var diffs []float64
+			for k := 0; k < n; k++ {
+				row := results[si][k][ci]
+				for _, a := range Algos {
+					r := row[a]
+					g := c.Algos[a]
+					g.Waste += r.WriteoffCost
+					g.Received += r.ReceivedCost
+					g.WasteQty += r.WriteoffQty
+					g.Orders += r.Orders
+					g.Rejected += r.Rejected
+					g.HotLines += r.HotLines
+					c.Algos[a] = g
+				}
+				diffs = append(diffs, float64(row[AlgoBg].WriteoffCost-row[AlgoR].WriteoffCost))
+			}
+			c.DiffBgR = stat(diffs)
+			switch {
+			case n < 2 || (c.DiffBgR.Lo <= 0 && c.DiffBgR.Hi >= 0):
+				c.SignBgVsR = "tie"
+			case c.DiffBgR.Mean < 0:
+				c.SignBgVsR = "bg<r"
+			default:
+				c.SignBgVsR = "bg>r"
+			}
+			rep.Cells = append(rep.Cells, c)
+		}
+	}
+	rep.Verdict = Winner(rep)
 	return rep, nil
+}
+
+// benchSeed прогоняет один seed одного сценария по всем клеткам; C0 считается один раз.
+func benchSeed(w World, seedValue int64, days int, cells func(yield func(Model, float64))) ([]map[Algo]Result, error) {
+	t0, _, err := Start()
+	if err != nil {
+		return nil, err
+	}
+	ev, err := w.Events(seedValue, t0, days)
+	if err != nil {
+		return nil, err
+	}
+	var out []map[Algo]Result
+	var c0 *Result
+	var rerr error
+	cells(func(m Model, u float64) {
+		if rerr != nil {
+			return
+		}
+		p := Params{Seed: seedValue, Days: days, U: u, Model: m, Cfg: DefaultConfig()}
+		row := map[Algo]Result{}
+		for _, a := range Algos {
+			if a == AlgoC0 && c0 != nil {
+				row[a] = *c0
+				continue
+			}
+			r, err := RunWorld(w, p, a, ev)
+			if err != nil {
+				rerr = err
+				return
+			}
+			if a == AlgoC0 {
+				c0 = &r
+			}
+			row[a] = r
+		}
+		out = append(out, row)
+	})
+	return out, rerr
 }
 
 func stat(x []float64) Stat {

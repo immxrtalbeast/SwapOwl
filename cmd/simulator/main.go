@@ -32,8 +32,8 @@ func run(args []string, out io.Writer) error {
 	seed := fs.Int64("seed", 1, "первый seed")
 	n := fs.Int("n", 1, "число seed подряд")
 	days := fs.Int("days", 7, "длина прогона, суток")
-	u := fs.Float64("u", 1.5, "основная точка u (модель M2)")
-	extra := fs.String("u-extra", "", "дополнительные значения u через запятую (считаются последними)")
+	u := fs.Float64("u", 1.5, "основная точка u (модель M2); модель M1 считается при тех же u")
+	extra := fs.String("u-extra", "1.2,2.0", "дополнительные значения u через запятую: проверяется только знак (считаются последними)")
 	asJSON := fs.Bool("json", false, "вывод в JSON")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err

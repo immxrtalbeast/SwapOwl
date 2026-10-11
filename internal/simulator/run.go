@@ -13,18 +13,30 @@ import (
 	"umirhack/internal/seed"
 )
 
-// Algo — вариант прогона: без рекомендаций (C0) либо один из алгоритмов.
+// Algo — вариант прогона: без рекомендаций (C0), алгоритм (R, Bg) или контроль (RND, POP, C1).
 type Algo string
 
 // Варианты прогона.
 const (
-	AlgoC0 Algo = "C0"
-	AlgoR  Algo = "R"
-	AlgoBg Algo = "Bg"
+	AlgoC0  Algo = "C0"  // без рекомендаций
+	AlgoR   Algo = "R"   // hotoffers/a
+	AlgoBg  Algo = "Bg"  // hotoffers/b
+	AlgoRND Algo = "RND" // случайные блюда не из стоп-листа
+	AlgoPOP Algo = "POP" // самые популярные по оценке спроса
+	AlgoC1  Algo = "C1"  // блюда с ближайшим сроком партии
 )
 
 // Algos — порядок вывода.
-var Algos = []Algo{AlgoC0, AlgoR, AlgoBg}
+var Algos = []Algo{AlgoC0, AlgoR, AlgoBg, AlgoRND, AlgoPOP, AlgoC1}
+
+// Model — модель влияния рекомендации на спрос (solution.md, 2.7).
+type Model string
+
+// Модели влияния.
+const (
+	ModelM1 Model = "M1" // множитель u на спрос блюда
+	ModelM2 Model = "M2" // число гостей фиксировано, меняется вес выбора
+)
 
 // Параметры оценки спроса (solution.md, 2.6).
 const (
@@ -41,8 +53,10 @@ func DefaultConfig() hotoffers.Config {
 type Params struct {
 	Seed int64
 	Days int
-	U    float64 // множитель подъёма (модель M2); U <= 1 — без влияния
-	Cfg  hotoffers.Config
+	U    float64 // множитель подъёма; U <= 1 — без влияния
+	// Model — модель влияния; пусто — M2.
+	Model Model
+	Cfg   hotoffers.Config
 }
 
 // Result — итог прогона.
@@ -85,9 +99,14 @@ func Events(p Params) ([]generator.Event, error) {
 	return generator.Generate(p.Seed, t0, t0.Add(time.Duration(p.Days)*24*time.Hour))
 }
 
-// Run гонит поток событий через модель склада с выбранным алгоритмом.
+// Run гонит поток событий базового сида через модель склада с выбранным алгоритмом.
 // Один seed и параметры — один результат.
 func Run(p Params, algo Algo, events []generator.Event) (Result, error) {
+	return RunWorld(seedWorld(), p, algo, events)
+}
+
+// RunWorld — Run для произвольного мира (справочники и стартовые поставки сценария).
+func RunWorld(w0 World, p Params, algo Algo, events []generator.Event) (Result, error) {
 	t0, loc, err := Start()
 	if err != nil {
 		return Result{}, err
@@ -98,14 +117,16 @@ func Run(p Params, algo Algo, events []generator.Event) (Result, error) {
 
 	products := map[string]seed.Product{}
 	price := map[string]int64{}
-	for _, pr := range seed.Products() {
+	for _, pr := range w0.Products {
 		products[pr.ID] = pr
 		price[pr.ID] = pr.PriceMinorPer1000
 	}
 	var dishes []domain.Dish
 	recipes := map[string]map[string]domain.Qty{}
 	priors := map[string]float64{}
-	for _, d := range seed.Dishes() {
+	var total float64
+	for _, d := range w0.Dishes {
+		total += d.PriorDaily
 		dishes = append(dishes, domain.Dish{ID: d.ID, Name: d.Name, Recipe: d.Recipe})
 		priors[d.ID] = d.PriorDaily
 		r := map[string]domain.Qty{}
@@ -138,7 +159,7 @@ func Run(p Params, algo Algo, events []generator.Event) (Result, error) {
 		return nil
 	}
 
-	for _, d := range seed.StartingDeliveries(t0) {
+	for _, d := range w0.Start(t0) {
 		if err := receive(d, t0.Add(-time.Second)); err != nil {
 			return Result{}, err
 		}
@@ -159,22 +180,33 @@ func Run(p Params, algo Algo, events []generator.Event) (Result, error) {
 		case generator.KindOrder:
 			var offers []hotoffers.Offer
 			if algo != AlgoC0 && p.U > 1 {
-				offers, err = rankOffers(algo, ev.At, w, dishes, recipes, priors, price, history, sch, p.Cfg)
+				offers, err = rankOffers(algo, p.Seed, orderIdx, ev.At, w, dishes, recipes, priors, price, history, sch, p.Cfg)
 				if err != nil {
 					return Result{}, err
 				}
 			}
 			needs := map[string]domain.Qty{}
+			add := func(id string, portions int) {
+				history = append(history, domain.OrderedDish{At: ev.At, DishID: id, Portions: int64(portions)})
+				for pid, q := range recipes[id] {
+					needs[pid] += q * domain.Qty(portions)
+				}
+			}
 			for li, it := range ev.Order.Items {
 				id := it.DishID
-				if sub, ok := substitute(p, orderIdx, li, offers, priors); ok {
+				if p.Model == ModelM1 {
+					add(id, it.Portions)
+					for _, extra := range raise(p, orderIdx, li, offers, priors, total) {
+						add(extra, 1)
+						res.HotLines++
+					}
+					continue
+				}
+				if sub, ok := substitute(p, orderIdx, li, offers, priors, total); ok {
 					id = sub
 					res.HotLines++
 				}
-				history = append(history, domain.OrderedDish{At: ev.At, DishID: id, Portions: int64(it.Portions)})
-				for pid, q := range recipes[id] {
-					needs[pid] += q * domain.Qty(it.Portions)
-				}
+				add(id, it.Portions)
 			}
 			res.Orders++
 			if !w.consume(needs, ev.At) {
@@ -188,8 +220,24 @@ func Run(p Params, algo Algo, events []generator.Event) (Result, error) {
 }
 
 // rankOffers считает горячие предложения по текущему снимку склада и истории заказов.
-func rankOffers(algo Algo, now time.Time, w *warehouse, dishes []domain.Dish, recipes map[string]map[string]domain.Qty,
+func rankOffers(algo Algo, seedValue int64, orderIdx int, now time.Time, w *warehouse, dishes []domain.Dish, recipes map[string]map[string]domain.Qty,
 	priors map[string]float64, price map[string]int64, history []domain.OrderedDish, sch domain.Schedule, cfg hotoffers.Config) ([]hotoffers.Offer, error) {
+	stock := w.stock(now)
+	stopped := map[string]bool{}
+	for id, r := range recipes {
+		for pid, q := range r {
+			if stock[pid] < q {
+				stopped[id] = true
+				break
+			}
+		}
+	}
+	switch algo {
+	case AlgoRND:
+		return randomOffers(seedValue, orderIdx, dishes, stopped, cfg.TopN), nil
+	case AlgoC1:
+		return nearestOffers(now, w.available(now), dishes, recipes, stopped, cfg.TopN), nil
+	}
 	lambda, err := domain.DishDemand(domain.DemandInput{
 		Now: now, WindowDays: windowDays, PriorDays: priorDays, Priors: priors, History: history,
 	})
@@ -200,15 +248,8 @@ func rankOffers(algo Algo, now time.Time, w *warehouse, dishes []domain.Dish, re
 	for pid, perDay := range domain.ProductDemandPerDay(dishes, lambda) {
 		rate[pid] = domain.RatePerHour(perDay, sch)
 	}
-	stock := w.stock(now)
-	stopped := map[string]bool{}
-	for id, r := range recipes {
-		for pid, q := range r {
-			if stock[pid] < q {
-				stopped[id] = true
-				break
-			}
-		}
+	if algo == AlgoPOP {
+		return popularOffers(lambda, dishes, stopped, cfg.TopN), nil
 	}
 	in := hotoffers.Input{
 		Now: now, Batches: w.available(now), Dishes: dishes, Stopped: stopped,
@@ -229,14 +270,11 @@ func rankOffers(algo Algo, now time.Time, w *warehouse, dishes []domain.Dish, re
 // вес блюда при выборе. Позиция i получает вес prior·u_i, u_i = 1 + (u−1)/i.
 // Случайные числа зависят только от (seed, заказ, строка) — не от алгоритма,
 // поэтому прогоны парные.
-func substitute(p Params, orderIdx, line int, offers []hotoffers.Offer, priors map[string]float64) (string, bool) {
+func substitute(p Params, orderIdx, line int, offers []hotoffers.Offer, priors map[string]float64, total float64) (string, bool) {
 	if len(offers) == 0 || p.U <= 1 {
 		return "", false
 	}
-	var total, extra float64
-	for _, v := range priors {
-		total += v
-	}
+	var extra float64
 	extras := make([]float64, len(offers))
 	for i, o := range offers {
 		ui := 1 + (p.U-1)/float64(i+1)
@@ -258,6 +296,23 @@ func substitute(p Params, orderIdx, line int, offers []hotoffers.Offer, priors m
 		x -= e
 	}
 	return offers[len(offers)-1].DishID, true
+}
+
+// raise — модель M1: множитель u_i на спрос блюда в позиции i. К строке заказа с
+// вероятностью (u_i−1)·prior_i/Σprior добавляется ещё одна порция горячего блюда.
+// Случайные числа зависят только от (seed, заказ, строка, позиция).
+func raise(p Params, orderIdx, line int, offers []hotoffers.Offer, priors map[string]float64, total float64) []string {
+	if p.U <= 1 || total <= 0 {
+		return nil
+	}
+	var out []string
+	for i, o := range offers {
+		ui := 1 + (p.U-1)/float64(i+1)
+		if unit(hash(p.Seed, int64(orderIdx), int64(line*16+i+100))) < (ui-1)*priors[o.DishID]/total {
+			out = append(out, o.DishID)
+		}
+	}
+	return out
 }
 
 func hash(a, b, c int64) uint64 {
