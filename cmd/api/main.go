@@ -21,6 +21,7 @@ import (
 	"umirhack/internal/events"
 	"umirhack/internal/hotoffers"
 	"umirhack/internal/janitor"
+	"umirhack/internal/stand"
 	"umirhack/internal/store"
 )
 
@@ -36,8 +37,8 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
-	if cfg.ClockMode != "real" {
-		return fmt.Errorf("CLOCK_MODE=%s is not supported yet", cfg.ClockMode)
+	if cfg.DemoMode && cfg.DemoToken == "" {
+		return errors.New("DEMO_MODE=true requires DEMO_TOKEN")
 	}
 	log := newLogger(cfg.LogLevel)
 
@@ -69,13 +70,50 @@ func run() error {
 		return fmt.Errorf("auth bootstrap: %w", err)
 	}
 
-	clk := clock.Real{}
-	bus := events.New(clk.Now)
-	pub := newPublisher(bus, db, clk.Now, log)
+	// Сид на пустую БД (2.8): до часов, чтобы начальное время ускоренных часов было T0.
+	t0 := stand.T0(time.Now(), cfg.Location)
+	if cfg.SeedOnEmpty {
+		loaded, err := stand.Load(ctx, db, t0)
+		if err != nil {
+			return fmt.Errorf("seed on empty: %w", err)
+		}
+		if loaded {
+			log.Info("seed loaded", slog.Time("t0", t0))
+		}
+	}
+
+	var (
+		now  func() time.Time = clock.Real{}.Now
+		accl *clock.Accelerated
+	)
+	if cfg.ClockMode == "simulated" {
+		last, err := db.LastEventTime(ctx)
+		if err != nil {
+			return err
+		}
+		// Нет сохранённого состояния — старт с T0; иначе время не идёт назад (2.4).
+		accl, err = clock.NewAccelerated(ctx, db.ClockStore(), t0, last)
+		if err != nil {
+			return fmt.Errorf("clock: %w", err)
+		}
+		now = accl.Now
+		go accl.Run(ctx, 5*time.Second) // сохранение раз в 5 с (2.4)
+	}
+	gate := &stand.Gate{}
+	bus := events.New(now)
+	pub := newPublisher(bus, db, now, log)
 	pub.prime(ctx)
-	go janitor.New(db, clk.Now, pub.onSweep).Run(ctx) // Kick — в тикете управления часами
+	jan := janitor.New(stand.GatedJanitorStore{Inner: db, Gate: gate}, now, pub.onSweep)
+	go jan.Run(ctx)
+	st := &stand.Stand{DB: db, Clock: accl, Gate: gate, Sweep: jan, Bus: bus, Loc: cfg.Location,
+		AfterChange: pub.recheckStopList}
+	var demo api.Demo
+	if cfg.DemoMode {
+		demo = st
+	}
 	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt}
-	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc,
+	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: now, Auth: authSvc, Clock: clockInfo(st), Demo: demo, DemoToken: cfg.DemoToken,
+		NotSimulated: stand.ErrNotSimulated, Gate: gate,
 		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: pubOrders{db, pub}, Menu: db, Location: cfg.Location, Events: bus,
 		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{
 			WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
@@ -129,4 +167,12 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// clockInfo даёт GET /api/clock данные ускоренных часов; для реальных — nil (speed=1, simulated=false).
+func clockInfo(st *stand.Stand) api.ClockInfo {
+	if st.Clock == nil {
+		return nil
+	}
+	return st
 }

@@ -1,6 +1,9 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+	"time"
+)
 
 // ClockInfo — то, что /api/clock узнаёт о часах стенда сверх текущего времени.
 // nil в Deps.Clock означает реальные часы без симулятора.
@@ -25,7 +28,7 @@ func (rt *Router) clockRoutes() {
 // getClock — GET /api/clock. Для реальных часов speed=1, simulated=false, simulator_running=false.
 func (rt *Router) getClock(w http.ResponseWriter, _ *http.Request) {
 	out := clockOut{
-		Now:      rt.deps.Now().UTC().Format("2006-01-02T15:04:05Z07:00"),
+		Now:      rt.deps.Now().UTC().Format(time.RFC3339Nano),
 		Speed:    1,
 		Timezone: rt.location().String(),
 	}

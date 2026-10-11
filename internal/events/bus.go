@@ -17,6 +17,8 @@ const (
 	BatchExpired     = "batch.expired"
 	StockChanged     = "stock.changed"
 	StoplistChanged  = "stoplist.changed"
+	ClockChanged     = "clock.changed"
+	StandReset       = "stand.reset"
 	Ping             = "ping"
 )
 
