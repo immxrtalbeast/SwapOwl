@@ -44,6 +44,8 @@ curl -X POST http://localhost:8080/api/deliveries \
   }'
 ```
 
+`occurred_at` (RFC 3339, необязательно) — когда поставка пришла фактически, для пакетной загрузки из iiko: `received_at = occurred_at`, срок считается от него. Допустимо `now − LATE_EVENTS_HOURS ≤ occurred_at ≤ now` (по умолчанию 2 ч, времена стенда), иначе `400 validation_error` с подсказкой оформить корректировку остатка; ничего не записано. Поле входит в хэш тела: тот же id с другим или без `occurred_at` — `409 delivery_conflict`.
+
 В позиции не больше одного из `shelf_life_hours` (целое, 1…87600) и `expires_on` (`YYYY-MM-DD`); оба сразу — `400`. `unit` обязателен только для неизвестного продукта.
 
 **Правило срока.** Если нет ни `shelf_life_hours`, ни `expires_on`, берётся срок хранения по умолчанию у продукта (`products.shelf_life_hours`, задаётся через `PUT /api/catalog`): `expires_at = received_at + срок`. Явный срок позиции главнее. Если у продукта срока нет (в том числе у автосозданного из поставки) — `400` с полем `items[i].shelf_life_hours`, ничего не записано. Повтор поставки сверяется по телу «как пришло»: позиция без срока и позиция с явными часами — разные тела.
@@ -123,6 +125,8 @@ curl -X POST http://localhost:8080/api/orders \
   -H 'Content-Type: application/json' \
   -d '{"id": "5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e", "items": [{"dish_id": "salmon-pasta", "portions": 2}]}'
 ```
+
+`occurred_at` (RFC 3339, необязательно) — когда продажа произошла фактически (опрос кассы, CSV). Партии выбираются на этот момент: `received_at ≤ occurred_at < expires_at` и `remaining > 0`, затем FEFO; `orders.at`, `movements.at` и `at` в ответе равны `occurred_at`. Окно и ошибка — как у поставки (`LATE_EVENTS_HOURS`, `400 validation_error`); поле входит в хэш тела. «Дворник» списывает партию не раньше `expires_at + LATE_EVENTS_HOURS` (движение — со временем `expires_at`); остатки и стоп-лист по-прежнему считаются по `now < expires_at`.
 
 `id` — UUID от клиента, обязателен. `source` — `"api"` (по умолчанию) или `"pos"` (продажа из кассы); входит в хэш тела, другое значение — `400`. `portions` — целое 1…10000. Одно блюдо — не более одной строки.
 

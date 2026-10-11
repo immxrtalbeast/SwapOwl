@@ -33,6 +33,7 @@
 |---|---|---|
 | `DEMO_MODE` | `false` | `/api/demo/*` отвечают `404` |
 | `CLOCK_MODE` | `real` | реальные часы |
+| `LATE_EVENTS_HOURS` | `2` | окно `occurred_at` у поставок и продаж (0…168 ч); «дворник» списывает партию не раньше `expires_at` + окно |
 | `SEED_ON_EMPTY` | `false` | демо-данные не загружаются |
 | `AUTH_REQUIRED` | `true` | без входа `401` |
 | `DATABASE_URL` | строка подключения | обязательна |

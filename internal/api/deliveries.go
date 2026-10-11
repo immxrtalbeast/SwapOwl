@@ -45,10 +45,12 @@ type deliveryItemIn struct {
 }
 
 type deliveryIn struct {
-	ID        string           `json:"id"`
-	Number    string           `json:"number"`
-	CreatedAt string           `json:"created_at"`
-	Items     []deliveryItemIn `json:"items"`
+	ID        string `json:"id"`
+	Number    string `json:"number"`
+	CreatedAt string `json:"created_at"`
+	// OccurredAt — когда поставка пришла фактически (RFC 3339, необязательно, 2.4а).
+	OccurredAt string           `json:"occurred_at"`
+	Items      []deliveryItemIn `json:"items"`
 }
 
 func (rt *Router) location() *time.Location {
@@ -90,6 +92,10 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 		validationError(w, "created_at", "created_at must be an RFC 3339 timestamp")
 		return
 	}
+	occurred, ok := parseOccurredAt(w, in.OccurredAt)
+	if !ok {
+		return
+	}
 	ids := make([]string, 0, len(in.Items))
 	for i, it := range in.Items {
 		if !validLabel(it.ProductID) {
@@ -104,7 +110,7 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := store.DeliveryInput{ID: in.ID, Number: in.Number, CreatedAt: created, Items: make([]store.DeliveryItem, 0, len(in.Items))}
+	out := store.DeliveryInput{ID: in.ID, Number: in.Number, CreatedAt: created, OccurredAt: occurred, Items: make([]store.DeliveryItem, 0, len(in.Items))}
 	for i, it := range in.Items {
 		field := func(f string) string { return fmt.Sprintf("items[%d].%s", i, f) }
 		hasHours, hasDate := it.ShelfLifeHours != nil, it.ExpiresOn != ""
@@ -159,6 +165,9 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 	case errors.Is(err, store.ErrDeliveryConflict):
 		WriteError(w, http.StatusConflict, CodeDeliveryConf, "delivery id already used with different content", map[string]any{"delivery_id": in.ID})
+		return
+	case errors.Is(err, store.ErrEventOutsideWindow):
+		eventWindowError(w, err)
 		return
 	case errors.Is(err, store.ErrNoShelfLife):
 		var nsl *store.NoShelfLifeError

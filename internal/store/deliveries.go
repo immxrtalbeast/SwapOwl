@@ -35,6 +35,28 @@ func (e *NoShelfLifeError) Error() string {
 }
 func (e *NoShelfLifeError) Is(target error) bool { return target == ErrNoShelfLife }
 
+// ErrEventOutsideWindow — occurred_at вне окна [now − LateEvents, now]; errors.Is истинно для *EventWindowError.
+var ErrEventOutsideWindow = errors.New("store: occurred_at outside the late-events window")
+
+// EventWindowError несёт границы окна для подсказки в ответе API.
+type EventWindowError struct {
+	OccurredAt, From, To time.Time
+}
+
+func (e *EventWindowError) Error() string {
+	return fmt.Sprintf("store: occurred_at %s outside [%s, %s]", e.OccurredAt.Format(time.RFC3339),
+		e.From.Format(time.RFC3339), e.To.Format(time.RFC3339))
+}
+func (e *EventWindowError) Is(target error) bool { return target == ErrEventOutsideWindow }
+
+// checkOccurredAt проверяет now − late ≤ occurred ≤ now (now прочитан под блокировками).
+func checkOccurredAt(occurred, now time.Time, late time.Duration) error {
+	if occurred.After(now) || occurred.Before(now.Add(-late)) {
+		return &EventWindowError{OccurredAt: occurred, From: now.Add(-late), To: now}
+	}
+	return nil
+}
+
 // Warning кодов предупреждений поставки.
 const WarnExpiredOnArrival = "expired_on_arrival"
 
@@ -54,7 +76,10 @@ type DeliveryInput struct {
 	ID        string
 	Number    string
 	CreatedAt time.Time
-	Items     []DeliveryItem
+	// OccurredAt — когда поставка пришла фактически (необязательно); входит в хэш. Задано —
+	// received_at = OccurredAt и срок считается от него (2.4а).
+	OccurredAt *time.Time
+	Items      []DeliveryItem
 }
 
 // QtyJSON — количество в ответах: {"qty": 1500, "unit": "g"}.
@@ -100,6 +125,10 @@ func (in DeliveryInput) BodyHash() []byte {
 		Q int64  `json:"q"`
 		S string `json:"s"`
 	}
+	occ := ""
+	if in.OccurredAt != nil {
+		occ = in.OccurredAt.UTC().Format(time.RFC3339Nano)
+	}
 	lines := make([]line, len(in.Items))
 	for i, it := range in.Items {
 		s := "d:" + it.ExpiresOn
@@ -126,8 +155,10 @@ func (in DeliveryInput) BodyHash() []byte {
 		ID        string `json:"id"`
 		Number    string `json:"number"`
 		CreatedAt string `json:"created_at"`
-		Lines     []line `json:"lines"`
-	}{in.ID, in.Number, in.CreatedAt.UTC().Format(time.RFC3339Nano), lines})
+		// Пусто для поставок без occurred_at: прежние хэши не меняются.
+		OccurredAt string `json:"occurred_at,omitempty"`
+		Lines      []line `json:"lines"`
+	}{in.ID, in.Number, in.CreatedAt.UTC().Format(time.RFC3339Nano), occ, lines})
 	sum := sha256.Sum256(raw)
 	return sum[:]
 }
@@ -226,6 +257,13 @@ func (d *DB) ReceiveDelivery(ctx context.Context, in DeliveryInput, now func() t
 		}
 
 		received := now().UTC()
+		cur := received
+		if in.OccurredAt != nil {
+			if err := checkOccurredAt(in.OccurredAt.UTC(), cur, d.LateEvents); err != nil {
+				return err
+			}
+			received = in.OccurredAt.UTC()
+		}
 		resp = DeliveryResponse{ID: in.ID, Number: in.Number, CreatedAt: in.CreatedAt, ReceivedAt: received,
 			Batches: []BatchJSON{}, Warnings: []WarningJSON{}}
 		for i, it := range in.Items {
@@ -244,6 +282,9 @@ func (d *DB) ReceiveDelivery(ctx context.Context, in DeliveryInput, now func() t
 			}
 			expired := !expires.After(received)
 			remaining, status := it.Qty, "ok"
+			if !expires.After(cur) {
+				status = "expired" // истёк, но ещё не списан: «дворник» ждёт окно событий задним числом
+			}
 			var writtenOff *time.Time
 			if expired {
 				remaining, status, writtenOff = 0, "expired", &received

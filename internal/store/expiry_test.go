@@ -177,3 +177,33 @@ func TestNextExpiringAt(t *testing.T) {
 		t.Fatalf("next: %v %v want %v", err, next, want)
 	}
 }
+
+func TestSweepWaitsForLateEventsWindow(t *testing.T) {
+	db, clk := stockDB(t)
+	db.LateEvents = 2 * time.Hour
+	ctx := context.Background()
+	if _, err := db.ReceiveDelivery(ctx, delivery("D1"), clk.Now, time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	expires := t0.Add(24 * time.Hour) // партия лосося на 1000 г
+
+	clk.Set(expires.Add(time.Hour)) // истекла, но окно ещё открыто
+	if got, err := db.SweepExpired(ctx, clk.Now); err != nil || len(got) != 0 {
+		t.Fatalf("inside window: %v %+v", err, got)
+	}
+	next, err := db.NextExpiry(ctx, clk.Now())
+	if err != nil || next == nil || !next.Equal(expires.Add(2*time.Hour)) {
+		t.Fatalf("next expiry: %v %v", err, next)
+	}
+
+	clk.Set(expires.Add(2 * time.Hour))
+	got, err := db.SweepExpired(ctx, clk.Now)
+	if err != nil || len(got) != 1 || got[0].Qty != 1000 {
+		t.Fatalf("after window: %v %+v", err, got)
+	}
+	var at time.Time
+	_ = db.Pool.QueryRow(ctx, `SELECT at FROM movements WHERE kind='writeoff' AND batch_id=$1`, got[0].BatchID).Scan(&at)
+	if !at.Equal(expires) {
+		t.Fatalf("writeoff at %v, want expires_at %v", at, expires)
+	}
+}

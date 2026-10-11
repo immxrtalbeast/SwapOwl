@@ -100,6 +100,7 @@ func run() error {
 		now = accl.Now
 		go accl.Run(ctx, 5*time.Second) // сохранение раз в 5 с (2.4)
 	}
+	db.LateEvents = time.Duration(cfg.LateEventsHours) * time.Hour // до «дворника» и роутера (2.4а)
 	gate := &stand.Gate{}
 	bus := events.New(now)
 	pub := newPublisher(bus, db, now, log)

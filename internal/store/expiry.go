@@ -43,8 +43,8 @@ func (d *DB) SweepExpired(ctx context.Context, now func() time.Time) ([]ExpiredB
 // expiringCandidateSQL — партии, которые могли перейти в «истекает» к $1: осталось меньше верхней
 // границы порога max(Share·срок, MinHours) (порог = min этой величины и MaxShare·срок). Точная
 // проверка — domain.Status; этот отбор лишь не даёт блокировать продукты без кандидатов.
-const expiringCandidateSQL = `remaining > 0 AND expires_at > $1 AND expiring_notified_at IS NULL
-	AND expires_at - $1::timestamptz <
+const expiringCandidateSQL = `remaining > 0 AND expires_at > $4 AND expiring_notified_at IS NULL
+	AND expires_at - $4::timestamptz <
 	    GREATEST($2::float8 * EXTRACT(EPOCH FROM expires_at - received_at), $3::float8 * 3600) * interval '1 second'`
 
 // Sweep — проход «дворника»: списывает просроченные партии (см. SweepExpired) и, если задан cfg,
@@ -59,11 +59,13 @@ func (d *DB) Sweep(ctx context.Context, now func() time.Time, cfg *domain.Expiry
 		// Предварительный выбор продуктов — только чтобы знать, что блокировать; без блокировки
 		// он может устареть, поэтому состав партий перечитывается ниже уже под блокировкой.
 		pre := now().UTC()
+		// Списание — не раньше expires_at + LateEvents (2.4а): до этого партию ещё может взять
+		// продажа задним числом. «Истекает» считается на самом pre.
 		q := `SELECT product_id FROM batches WHERE remaining > 0 AND expires_at <= $1`
-		args := []any{pre}
+		args := []any{pre.Add(-d.LateEvents)}
 		if cfg != nil {
 			q += ` UNION SELECT product_id FROM batches WHERE ` + expiringCandidateSQL
-			args = append(args, cfg.Share, cfg.MinHours)
+			args = append(args, cfg.Share, cfg.MinHours, pre)
 		}
 		rows, err := tx.Query(ctx, q, args...)
 		if err != nil {
@@ -98,7 +100,7 @@ func (d *DB) Sweep(ctx context.Context, now func() time.Time, cfg *domain.Expiry
 			)
 			UPDATE batches b SET remaining = b.remaining - old.remaining, written_off_at = b.expires_at
 			FROM old WHERE b.id = old.id
-			RETURNING b.id, b.product_id, old.remaining, b.expires_at`, cur, ids)
+			RETURNING b.id, b.product_id, old.remaining, b.expires_at`, cur.Add(-d.LateEvents), ids)
 		if err != nil {
 			return fmt.Errorf("store: sweep update: %w", err)
 		}
@@ -190,11 +192,14 @@ func (d *DB) NextExpiringAt(ctx context.Context, now time.Time, cfg domain.Expir
 	return t, nil
 }
 
-// NextExpiry возвращает ближайший expires_at среди партий с остатком, ещё не истёкших на now.
+// NextExpiry возвращает ближайший момент списания «дворником» среди партий с остатком: expires_at +
+// LateEvents, строго после now (партия, истёкшая в пределах окна, будит на конец окна).
 func (d *DB) NextExpiry(ctx context.Context, now time.Time) (*time.Time, error) {
 	var t *time.Time
 	err := d.Pool.QueryRow(ctx,
-		`SELECT MIN(expires_at) FROM batches WHERE remaining > 0 AND expires_at > $1`, now.UTC()).Scan(&t)
+		`SELECT MIN(expires_at) + $2::float8 * interval '1 second' FROM batches
+		 WHERE remaining > 0 AND expires_at + $2::float8 * interval '1 second' > $1`,
+		now.UTC(), d.LateEvents.Seconds()).Scan(&t)
 	if err != nil {
 		return nil, fmt.Errorf("store: next expiry: %w", err)
 	}

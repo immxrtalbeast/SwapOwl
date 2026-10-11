@@ -103,6 +103,8 @@ type standOpts struct {
 	// Dishes — справочник теста: блюдо → продукт → норма. Он готовится до рабочего запуска
 	// сервиса: .ai/solution.md (2.3) разрешает реализации читать справочник один раз при старте.
 	Dishes map[string]map[string]int64
+	// Env — дополнительные переменные окружения рабочего запуска (например, LATE_EVENTS_HOURS).
+	Env []string
 }
 
 func newStand(t testing.TB, o standOpts) *stand {
@@ -188,7 +190,7 @@ func newStand(t testing.TB, o standOpts) *stand {
 		t.Fatal("сторожу нужно хотя бы одно блюдо в справочнике: на пустом справочнике сервис загрузил бы сид")
 	}
 	// Запуск 2: рабочий. Справочник непуст, сид повторно не загружается.
-	cmd := spawn("DEMO_MODE=true", "DEMO_TOKEN="+demoToken, "CLOCK_MODE=simulated", "SEED_ON_EMPTY=true")
+	cmd := spawn(append([]string{"DEMO_MODE=true", "DEMO_TOKEN=" + demoToken, "CLOCK_MODE=simulated", "SEED_ON_EMPTY=true"}, o.Env...)...)
 	t.Cleanup(func() {
 		stop(cmd)
 		s.pool.Close()

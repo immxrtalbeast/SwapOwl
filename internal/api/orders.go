@@ -36,7 +36,9 @@ var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[
 type orderIn struct {
 	ID     string `json:"id"`
 	Source string `json:"source"`
-	Items  []struct {
+	// OccurredAt — когда продажа произошла фактически (RFC 3339, необязательно, 2.4а).
+	OccurredAt string `json:"occurred_at"`
+	Items      []struct {
 		DishID   string `json:"dish_id"`
 		Portions *int   `json:"portions"`
 	} `json:"items"`
@@ -72,6 +74,10 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 	case store.SourceAPI, store.SourcePOS:
 	default:
 		validationError(w, "source", `source must be "api" or "pos"`)
+		return
+	}
+	occurred, ok := parseOccurredAt(w, in.OccurredAt)
+	if !ok {
 		return
 	}
 	in.ID = strings.ToLower(in.ID)
@@ -129,11 +135,14 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(needs, func(i, j int) bool { return needs[i].ProductID < needs[j].ProductID })
 
-	resp, err := rt.deps.Orders.PlaceOrder(r.Context(), store.OrderInput{ID: in.ID, Source: in.Source, Items: items, Needs: needs}, rt.deps.Now)
+	resp, err := rt.deps.Orders.PlaceOrder(r.Context(), store.OrderInput{ID: in.ID, Source: in.Source, OccurredAt: occurred, Items: items, Needs: needs}, rt.deps.Now)
 	switch {
 	case err == nil:
 	case errors.Is(err, store.ErrOrderConflict):
 		WriteError(w, http.StatusConflict, CodeOrderConflict, "order id already used with different content", map[string]any{"order_id": in.ID})
+		return
+	case errors.Is(err, store.ErrEventOutsideWindow):
+		eventWindowError(w, err)
 		return
 	default:
 		rt.internalError(w, r, err)
@@ -181,4 +190,28 @@ func (rt *Router) listDishes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, out)
+}
+
+// parseOccurredAt разбирает необязательное occurred_at; пустое — nil. Окно допустимых значений
+// проверяет хранилище под блокировками, по времени стенда (2.4а).
+func parseOccurredAt(w http.ResponseWriter, raw string) (*time.Time, bool) {
+	if raw == "" {
+		return nil, true
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		validationError(w, "occurred_at", "occurred_at must be an RFC 3339 timestamp")
+		return nil, false
+	}
+	return &t, true
+}
+
+// eventWindowError — 400 validation_error: occurred_at вне окна событий задним числом.
+func eventWindowError(w http.ResponseWriter, err error) {
+	var we *store.EventWindowError
+	errors.As(err, &we)
+	WriteError(w, http.StatusBadRequest, CodeValidation,
+		fmt.Sprintf("occurred_at must be within [%s, %s]: events older than the window cannot be loaded; record them as a stock correction",
+			we.From.Format(time.RFC3339), we.To.Format(time.RFC3339)),
+		map[string]any{"field": "occurred_at", "from": we.From, "to": we.To})
 }

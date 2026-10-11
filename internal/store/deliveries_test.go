@@ -232,3 +232,55 @@ func TestConcurrentAutoCreateOppositeOrderNoDeadlock(t *testing.T) {
 		}
 	}
 }
+
+func TestDeliveryOccurredAtSetsReceivedAndExpiry(t *testing.T) {
+	db, clk := stockDB(t)
+	db.LateEvents = 2 * time.Hour
+	ctx := context.Background()
+	in := delivery("D1")
+	occurred := t0.Add(-90 * time.Minute)
+	in.OccurredAt = &occurred
+	resp, err := db.ReceiveDelivery(ctx, in, clk.Now, time.UTC)
+	if err != nil || len(resp.Batches) != 3 {
+		t.Fatalf("receive: %v %+v", err, resp)
+	}
+	if !resp.Batches[0].ReceivedAt.Equal(occurred) || !resp.Batches[0].ExpiresAt.Equal(occurred.Add(72*time.Hour)) {
+		t.Fatalf("batch: %+v", resp.Batches[0])
+	}
+	var recv time.Time
+	_ = db.Pool.QueryRow(ctx, `SELECT at FROM movements WHERE kind='receipt' AND batch_id=$1`, resp.Batches[0].ID).Scan(&recv)
+	if !recv.Equal(occurred) {
+		t.Fatalf("receipt movement at %v", recv)
+	}
+
+	// Повтор с тем же occurred_at — replay; с другим — конфликт; без — тоже конфликт.
+	if r, err := db.ReceiveDelivery(ctx, in, clk.Now, time.UTC); err != nil || !r.Replayed {
+		t.Fatalf("replay: %v %+v", err, r)
+	}
+	other := occurred.Add(time.Minute)
+	in.OccurredAt = &other
+	if _, err := db.ReceiveDelivery(ctx, in, clk.Now, time.UTC); !errors.Is(err, ErrDeliveryConflict) {
+		t.Fatalf("other occurred_at: %v", err)
+	}
+	in.OccurredAt = nil
+	if _, err := db.ReceiveDelivery(ctx, in, clk.Now, time.UTC); !errors.Is(err, ErrDeliveryConflict) {
+		t.Fatalf("no occurred_at: %v", err)
+	}
+}
+
+func TestDeliveryOccurredAtOutsideWindow(t *testing.T) {
+	db, clk := stockDB(t)
+	db.LateEvents = 2 * time.Hour
+	for _, at := range []time.Time{t0.Add(time.Second), t0.Add(-3 * time.Hour)} {
+		in := delivery("D1")
+		in.OccurredAt = &at
+		if _, err := db.ReceiveDelivery(context.Background(), in, clk.Now, time.UTC); !errors.Is(err, ErrEventOutsideWindow) {
+			t.Fatalf("%v: %v", at, err)
+		}
+	}
+	var n int
+	_ = db.Pool.QueryRow(context.Background(), `SELECT count(*) FROM deliveries`).Scan(&n)
+	if n != 0 {
+		t.Fatalf("rejected delivery left %d rows", n)
+	}
+}
