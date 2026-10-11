@@ -162,3 +162,38 @@ export interface SupplySuggestion {
   urgency: "now" | "soon" | "planned";
   explanation: string;
 }
+
+// GET /api/hot-offers (7.4).
+export interface HotReason {
+  product_id: string;
+  product_name: string;
+  batch_id: number;
+  at_risk: Qty;
+  expires_at: string;
+  working_hours_left: number;
+}
+
+export interface HotOffer {
+  dish_id: string;
+  dish_name: string;
+  priority: number;
+  target_portions: number;
+  usual_portions: number;
+  sell_until: string;
+  reasons: HotReason[];
+  explanation: string;
+}
+
+export interface HotExcluded {
+  dish_id: string;
+  product_id: string;
+  why: string;
+}
+
+export type HotAlgo = "a" | "b";
+
+export interface HotOffersResponse {
+  algo: HotAlgo;
+  offers: HotOffer[];
+  excluded: HotExcluded[];
+}

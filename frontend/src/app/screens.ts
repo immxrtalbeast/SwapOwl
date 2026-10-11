@@ -23,6 +23,6 @@ export const SCREENS: Screen[] = [
 ];
 
 export function screenFromHash(hash: string): string {
-  const id = hash.replace(/^#\/?/, "");
+  const id = hash.replace(/^#\/?/, "").split("?")[0];
   return SCREENS.some((s) => s.id === id) ? id : SCREENS[0].id;
 }

@@ -5,6 +5,7 @@ describe("screenFromHash", () => {
   it("находит экран по адресу, неизвестное ведёт на склад", () => {
     expect(screenFromHash("#/orders")).toBe("orders");
     expect(screenFromHash("#hot-offers")).toBe("hot-offers");
+    expect(screenFromHash("#/hot-offers?product_id=milk")).toBe("hot-offers");
     expect(screenFromHash("")).toBe("stock");
     expect(screenFromHash("#/nope")).toBe("stock");
   });
