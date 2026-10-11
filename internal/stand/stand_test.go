@@ -120,6 +120,18 @@ func TestResetRestoresReferenceState(t *testing.T) {
 	for i, d := range ref.Snap.Dishes {
 		_ = placeOrder(s, uuid(i+1), d, 200) // отказы тоже пишут заказ
 	}
+	// Импорт каталога: новое блюдо, новый продукт и лишняя строка рецепта у сидового блюда.
+	extra := ref.Snap.Dishes[0].ID
+	for _, q := range []string{
+		`INSERT INTO products (id, name, unit, auto_created, shelf_life_hours) VALUES ('x_new','X','g',false,5)`,
+		`INSERT INTO dishes (id, name) VALUES ('new_dish','Новое')`,
+		`INSERT INTO recipe_items (dish_id, product_id, quantity) VALUES ('new_dish','x_new',10)`,
+		`INSERT INTO recipe_items (dish_id, product_id, quantity) VALUES ('` + extra + `','x_new',10)`,
+	} {
+		if _, err := s.DB.Pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := s.SetSpeed(ctx, 600); err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +155,9 @@ func TestResetRestoresReferenceState(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Offers, ref.Offers) {
 		t.Fatalf("hot offers differ after reset:\nref %+v\ngot %+v", ref.Offers, got.Offers)
+	}
+	if !reflect.DeepEqual(got.Snap.Dishes, ref.Snap.Dishes) || len(got.Snap.Products) != len(ref.Snap.Products) {
+		t.Fatal("catalog differs from the seed after reset")
 	}
 	var jumps int
 	_ = s.DB.Pool.QueryRow(ctx, `SELECT count(*) FROM clock_jumps`).Scan(&jumps)

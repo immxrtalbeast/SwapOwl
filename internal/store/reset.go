@@ -8,7 +8,7 @@ import (
 )
 
 // resetOrder — порядок удаления при сбросе стенда (7.1): сначала зависимые таблицы.
-// shortfalls (миграция 0002) ссылается на orders, recipe_items автосозданных продуктов — на products.
+// shortfalls (миграция 0002) ссылается на orders; справочники удаляются после зависимых таблиц.
 // Пользователи, сессии и ключи доступа сбросом не затрагиваются.
 var resetOrder = []string{
 	`DELETE FROM movements`,
@@ -18,8 +18,11 @@ var resetOrder = []string{
 	`DELETE FROM batches`,
 	`DELETE FROM deliveries`,
 	`DELETE FROM clock_jumps`,
-	`DELETE FROM recipe_items WHERE product_id IN (SELECT id FROM products WHERE auto_created)`,
-	`DELETE FROM products WHERE auto_created`,
+	// Справочники целиком лежат в сиде, а импорт каталога (PUT /api/catalog) мог добавить или
+	// переписать блюда, рецепты и продукты: чистим всё и даём сиду загрузить эталон заново.
+	`DELETE FROM recipe_items`,
+	`DELETE FROM dishes`,
+	`DELETE FROM products`,
 }
 
 // DeleteStandData удаляет данные стенда в транзакции tx (DELETE, не TRUNCATE: тот берёт

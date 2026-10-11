@@ -7,7 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func TestDeleteStandDataKeepsReferenceAndUsers(t *testing.T) {
+func TestDeleteStandDataClearsCatalogKeepsUsers(t *testing.T) {
 	db, clk := orderDB(t)
 	ctx := context.Background()
 	receive(t, db, clk, "D1", 500, 72)
@@ -26,15 +26,10 @@ func TestDeleteStandDataKeepsReferenceAndUsers(t *testing.T) {
 		t.Fatal(err)
 	}
 	for table, want := range map[string]int{"movements": 0, "shortfalls": 0, "order_items": 0, "orders": 0, "batches": 0,
-		"deliveries": 0, "clock_jumps": 0, "dishes": 2, "recipe_items": 3, "users": 1} {
+		"deliveries": 0, "clock_jumps": 0, "dishes": 0, "recipe_items": 0, "products": 0, "users": 1} {
 		var n int
 		if err := db.Pool.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n); err != nil || n != want {
 			t.Errorf("%s: %d rows (err %v), want %d", table, n, err, want)
 		}
-	}
-	var auto, regular int
-	_ = db.Pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE auto_created), count(*) FILTER (WHERE NOT auto_created) FROM products`).Scan(&auto, &regular)
-	if auto != 0 || regular != 2 {
-		t.Fatalf("products: auto=%d regular=%d", auto, regular)
 	}
 }

@@ -96,7 +96,9 @@ func (s *Stand) SetSpeed(ctx context.Context, speed float64) error {
 	if s.Clock == nil {
 		return ErrNotSimulated
 	}
+	s.Gate.RLock() // не одновременно со сбросом
 	err := s.Clock.SetSpeed(ctx, speed)
+	s.Gate.RUnlock()
 	if errors.Is(err, clock.ErrInvalidSpeed) {
 		return err
 	}
@@ -111,7 +113,11 @@ func (s *Stand) Jump(ctx context.Context, hours float64) (time.Time, error) {
 	if s.Clock == nil {
 		return time.Time{}, ErrNotSimulated
 	}
+	// Прыжок пишет журнал clock_jumps, поэтому не должен идти одновременно со сбросом.
+	// Затвор отпускается до прохода «дворника»: тот берёт его на чтение сам.
+	s.Gate.RLock()
 	to, err := s.Clock.Jump(ctx, hours)
+	s.Gate.RUnlock()
 	if errors.Is(err, clock.ErrInvalidJump) {
 		return to, err
 	}
