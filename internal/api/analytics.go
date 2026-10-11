@@ -12,17 +12,20 @@ import (
 type Analytics interface {
 	WriteoffsReport(ctx context.Context, from, to time.Time, loc *time.Location) (store.WriteoffsReport, error)
 	ShortfallsReport(ctx context.Context, from, to time.Time, loc *time.Location) (store.ShortfallsReport, error)
+	ShortagesReport(ctx context.Context, from, to time.Time) (store.ShortagesReport, error)
 }
 
 // defaultAnalyticsDays — период по умолчанию, если from не задан: последние 7 суток до to.
 const defaultAnalyticsDays = 7
 
 func (rt *Router) analyticsRoutes() {
+	rt.Handle(http.MethodGet, "/api/analytics/bench", rt.getBench)
 	if rt.deps.Analytics == nil {
 		return
 	}
 	rt.Handle(http.MethodGet, "/api/analytics/writeoffs", rt.getWriteoffs)
 	rt.Handle(http.MethodGet, "/api/analytics/shortfalls", rt.getShortfalls)
+	rt.Handle(http.MethodGet, "/api/analytics/shortages", rt.getShortages)
 }
 
 // analyticsPeriod разбирает ?from=&to=. Значение — дата YYYY-MM-DD (сутки по часовому поясу
@@ -92,6 +95,20 @@ func (rt *Router) getShortfalls(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rep, err := rt.deps.Analytics.ShortfallsReport(r.Context(), from, to, rt.deps.Location)
+	if err != nil {
+		rt.internalError(w, r, err)
+		return
+	}
+	WriteJSON(w, http.StatusOK, rep)
+}
+
+// getShortages — GET /api/analytics/shortages?from=&to=: продукты по числу отклонённых заказов и недостающему количеству.
+func (rt *Router) getShortages(w http.ResponseWriter, r *http.Request) {
+	from, to, ok := rt.analyticsPeriod(w, r)
+	if !ok {
+		return
+	}
+	rep, err := rt.deps.Analytics.ShortagesReport(r.Context(), from, to)
 	if err != nil {
 		rt.internalError(w, r, err)
 		return

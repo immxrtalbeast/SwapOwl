@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,11 @@ func (f *fakeAnalytics) WriteoffsReport(_ context.Context, from, to time.Time, _
 func (f *fakeAnalytics) ShortfallsReport(_ context.Context, from, to time.Time, _ *time.Location) (store.ShortfallsReport, error) {
 	f.from, f.to = from, to
 	return store.ShortfallsReport{From: from, To: to, ByProduct: []store.MoneyRow{}, ByDay: []store.MoneyDay{}}, nil
+}
+
+func (f *fakeAnalytics) ShortagesReport(_ context.Context, from, to time.Time) (store.ShortagesReport, error) {
+	f.from, f.to = from, to
+	return store.ShortagesReport{From: from, To: to, ByProduct: []store.ShortageRow{{ProductID: "salmon", Orders: 2}}}, nil
 }
 
 func TestAnalyticsEndpoints(t *testing.T) {
@@ -59,6 +65,9 @@ func TestAnalyticsEndpoints(t *testing.T) {
 	if rec = get("/api/analytics/shortfalls?from=2026-10-05T00:00:00Z&to=2026-10-06T00:00:00Z"); rec.Code != 200 ||
 		!fa.to.Equal(time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("rfc3339: %d %v", rec.Code, fa.to)
+	}
+	if rec = get("/api/analytics/shortages?from=2026-10-05"); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"orders":2`) {
+		t.Fatalf("shortages: %d %s", rec.Code, rec.Body)
 	}
 	for _, bad := range []string{"?from=вчера", "?to=2026-13-40", "?from=2026-10-06&to=2026-10-05"} {
 		if rec = get("/api/analytics/writeoffs" + bad); rec.Code != 400 {

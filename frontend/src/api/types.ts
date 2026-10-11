@@ -217,3 +217,25 @@ export interface HotOffersResponse {
   offers: HotOffer[];
   excluded: HotExcluded[];
 }
+
+// GET /api/analytics/shortages (7.4): продукты, из-за которых отклонялись заказы.
+export interface ShortageRow {
+  product_id: string;
+  product_name: string;
+  orders: number;
+  missing: Qty;
+}
+export interface ShortagesReport {
+  from: string;
+  to: string;
+  by_product: ShortageRow[];
+}
+
+// GET /api/analytics/bench (7.4): без результата — только available: false.
+export interface BenchResult {
+  available: boolean;
+  runs?: number;
+  main_algo?: string;
+  waste_reduction_vs_random_pct?: number;
+  waste_reduction_vs_nearest_pct?: number;
+}
