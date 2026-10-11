@@ -3,6 +3,7 @@ package seed
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"umirhack/internal/domain"
@@ -42,6 +43,8 @@ type hBatch struct {
 	ReceivedAt   time.Time
 	ExpiresAt    time.Time
 	WrittenOffAt *time.Time
+	// Demo — партия, заданная условиями демо-сценария: заказы истории её не трогают.
+	Demo bool
 }
 
 type hOrder struct {
@@ -71,6 +74,24 @@ func buildHistory(t0 time.Time) (*history, error) {
 	events, err := generator.Generate(HistorySeed, t0.Add(-HistoryDays*24*time.Hour), t0)
 	if err != nil {
 		return nil, err
+	}
+	// Лосось и сливки, не истёкшие к t0, — только партии демо-сценария: поставки истории
+	// с такими позициями приходят без них, а заказы истории демо-партии не расходуют.
+	demo := DemoProductIDs()
+	for ei := range events {
+		e := &events[ei]
+		if e.Kind != generator.KindDelivery {
+			continue
+		}
+		d := *e.Delivery
+		d.Items = nil
+		for _, it := range e.Delivery.Items {
+			if demo[it.ProductID] && e.At.Add(time.Duration(it.ShelfLifeHours)*time.Hour).After(t0) {
+				continue
+			}
+			d.Items = append(d.Items, it)
+		}
+		e.Delivery = &d
 	}
 	for _, d := range StartingDeliveries(t0) {
 		d := d
@@ -103,7 +124,7 @@ func buildHistory(t0 time.Time) (*history, error) {
 		sweep(at)
 		switch e.Kind {
 		case generator.KindDelivery:
-			err = h.addDelivery(e.Delivery, at, prods)
+			err = h.addDelivery(e.Delivery, at, prods, strings.HasPrefix(e.Delivery.ID, "D-SEED-"))
 		case generator.KindOrder:
 			err = h.addOrder(e.Order, at, prods, recipes)
 		}
@@ -116,7 +137,7 @@ func buildHistory(t0 time.Time) (*history, error) {
 	return h, nil
 }
 
-func (h *history) addDelivery(d *generator.Delivery, at time.Time, prods map[string]Product) error {
+func (h *history) addDelivery(d *generator.Delivery, at time.Time, prods map[string]Product, seeded bool) error {
 	in := store.DeliveryInput{ID: d.ID, Number: d.Number, CreatedAt: d.CreatedAt.UTC()}
 	resp := store.DeliveryResponse{ID: d.ID, Number: d.Number, CreatedAt: in.CreatedAt, ReceivedAt: at,
 		Batches: []store.BatchJSON{}, Warnings: []store.WarningJSON{}}
@@ -133,7 +154,8 @@ func (h *history) addDelivery(d *generator.Delivery, at time.Time, prods map[str
 			Qty: int64(q), ShelfLifeHours: it.ShelfLifeHours})
 		b := hBatch{ID: int64(len(h.batches) + 1), DeliveryID: d.ID, Line: i + 1, ProductID: it.ProductID,
 			Quantity: int64(q), Remaining: int64(q), ReceivedAt: at,
-			ExpiresAt: at.Add(time.Duration(it.ShelfLifeHours) * time.Hour)}
+			ExpiresAt: at.Add(time.Duration(it.ShelfLifeHours) * time.Hour),
+			Demo:      seeded && DemoProductIDs()[it.ProductID]}
 		h.batches = append(h.batches, b)
 		h.moves = append(h.moves, hMove{b.ID, b.ProductID, "receipt", "", b.Quantity, "", at})
 		resp.Batches = append(resp.Batches, store.BatchJSON{ID: b.ID, LineNo: b.Line, ProductID: b.ProductID,
@@ -161,31 +183,25 @@ func (h *history) addOrder(o *generator.Order, at time.Time, prods map[string]Pr
 	}
 	var avail []domain.Batch
 	for _, b := range h.batches {
-		if b.Remaining > 0 && at.Before(b.ExpiresAt) {
+		if !b.Demo && b.Remaining > 0 && at.Before(b.ExpiresAt) {
 			avail = append(avail, domain.Batch{ID: b.ID, ProductID: b.ProductID, Quantity: domain.Qty(b.Quantity),
 				Remaining: domain.Qty(b.Remaining), ReceivedAt: b.ReceivedAt, ExpiresAt: b.ExpiresAt})
 		}
 	}
 	plan, short := domain.PlanWriteoff(in.Needs, avail)
-	resp := store.OrderResponse{ID: o.ID, At: at, Items: in.Items, Writeoffs: []store.WriteoffJSON{}, Missing: []store.MissingJSON{}}
 	if short != nil {
-		resp.Status = store.OrderRejected
-		for _, s := range short {
-			p := prods[s.ProductID]
-			resp.Missing = append(resp.Missing, store.MissingJSON{ProductID: s.ProductID, ProductName: p.Name,
-				Required:  store.QtyJSON{Qty: int64(s.Required), Unit: p.Unit},
-				Available: store.QtyJSON{Qty: int64(s.Available), Unit: p.Unit},
-				Missing:   store.QtyJSON{Qty: int64(s.Missing), Unit: p.Unit}})
-		}
-	} else {
-		resp.Status = store.OrderAccepted
-		for _, w := range plan {
-			b := &h.batches[w.BatchID-1]
-			b.Remaining -= int64(w.Qty)
-			h.moves = append(h.moves, hMove{b.ID, b.ProductID, "sale", "", int64(w.Qty), o.ID, at})
-			resp.Writeoffs = append(resp.Writeoffs, store.WriteoffJSON{ProductID: w.ProductID, BatchID: b.ID,
-				Qty: store.QtyJSON{Qty: int64(w.Qty), Unit: prods[w.ProductID].Unit}, ExpiresAt: b.ExpiresAt})
-		}
+		// Отклонённые заказы в историю не пишем: без свежих лосося и сливок их было бы много,
+		// а сценарию нужны только принятые продажи.
+		return nil
+	}
+	resp := store.OrderResponse{ID: o.ID, At: at, Items: in.Items, Writeoffs: []store.WriteoffJSON{}, Missing: []store.MissingJSON{}}
+	resp.Status = store.OrderAccepted
+	for _, w := range plan {
+		b := &h.batches[w.BatchID-1]
+		b.Remaining -= int64(w.Qty)
+		h.moves = append(h.moves, hMove{b.ID, b.ProductID, "sale", "", int64(w.Qty), o.ID, at})
+		resp.Writeoffs = append(resp.Writeoffs, store.WriteoffJSON{ProductID: w.ProductID, BatchID: b.ID,
+			Qty: store.QtyJSON{Qty: int64(w.Qty), Unit: prods[w.ProductID].Unit}, ExpiresAt: b.ExpiresAt})
 	}
 	h.orders = append(h.orders, hOrder{ID: o.ID, Status: resp.Status, At: at, Hash: in.BodyHash(), Items: in.Items, Resp: resp})
 	return nil

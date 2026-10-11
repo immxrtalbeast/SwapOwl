@@ -66,3 +66,7 @@ func TestAnalyticsEndpoints(t *testing.T) {
 		}
 	}
 }
+
+func (f *fakeAnalytics) ShortagesReport(_ context.Context, from, to time.Time) (store.ShortagesReport, error) {
+	return store.ShortagesReport{From: from, To: to, RejectedOrders: 3, ByProduct: []store.ShortageRow{}}, nil
+}

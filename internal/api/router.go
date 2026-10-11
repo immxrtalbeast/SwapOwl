@@ -11,6 +11,7 @@ import (
 
 	"umirhack/internal/auth"
 	"umirhack/internal/events"
+	"umirhack/internal/metrics"
 )
 
 // Pinger — то, что /healthz спрашивает у БД.
@@ -76,6 +77,10 @@ type Deps struct {
 	// Gate — затвор процесса (2.8): изменяющие запросы (кроме /api/demo/*) берут его на чтение.
 	// nil — без затвора.
 	Gate Gate
+	// Metrics — реестр для GET /metrics (8.0а) и учёта запросов в общем звене. nil — метрик нет.
+	Metrics *metrics.Registry
+	// MetricsToken — значение METRICS_TOKEN; пустой — /metrics отвечает 404.
+	MetricsToken string
 }
 
 // Router — хаб-файл маршрутов. Следующие тикеты добавляют строки в Routes(),
@@ -109,6 +114,7 @@ func NewRouter(deps Deps) *Router {
 // Routes — единственное место регистрации маршрутов.
 func (rt *Router) Routes() {
 	rt.HandlePublic(http.MethodGet, "/healthz", rt.healthz)
+	rt.metricsRoutes()
 	rt.authRoutes()
 	rt.stockRoutes()
 	rt.receivingRoutes()
@@ -199,7 +205,7 @@ func (rt *Router) dispatch(pattern string, byMethod map[string]http.Handler) htt
 
 // Handler возвращает готовый http.Handler со сквозными слоями.
 func (rt *Router) Handler() http.Handler {
-	return withAuthInfo(wrap(rt.mux, rt.deps.Log, rt.deps.Now))
+	return withAuthInfo(wrap(rt.mux, rt.deps.Log, rt.deps.Now, rt.deps.Metrics))
 }
 
 func (rt *Router) healthz(w http.ResponseWriter, r *http.Request) {
