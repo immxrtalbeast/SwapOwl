@@ -76,7 +76,7 @@ func run() error {
 	go janitor.New(db, clk.Now, pub.onSweep).Run(ctx) // Kick — в тикете управления часами
 	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt}
 	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc,
-		Stock: pubStock{db, pub}, Catalog: db, Orders: pubOrders{db, pub}, Menu: db, Location: cfg.Location, Events: bus,
+		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: pubOrders{db, pub}, Menu: db, Location: cfg.Location, Events: bus,
 		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{
 			WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
 		HotConfig: api.HotOffersConfig{DefaultAlgo: cfg.HotOffersAlgo, Rank: hotoffers.Config{

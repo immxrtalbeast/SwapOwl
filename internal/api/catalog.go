@@ -69,9 +69,10 @@ func (rt *Router) catalogRoutes() {
 	rt.HandleRole(http.MethodPut, "/api/catalog", auth.Operator, rt.putCatalog)
 }
 
-// putCatalog: роль admin или ключ operator; вошедший по паролю operator импортировать не может.
+// putCatalog: роль admin или ключ API (operator и выше, минимум держит роутер). Пользователь-operator
+// по паролю и анонимный operator открытого стенда (AUTH_REQUIRED=false) импортировать не могут.
 func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
-	if p, ok := PrincipalFrom(r.Context()); ok && p.Kind == auth.KindSession && p.Role != auth.Admin {
+	if p, ok := PrincipalFrom(r.Context()); !ok || (p.Role != auth.Admin && p.Kind != auth.KindAPIKey) {
 		WriteError(w, http.StatusForbidden, CodeForbidden, "catalog import needs the admin role or an operator API key", nil)
 		return
 	}

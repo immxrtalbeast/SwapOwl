@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"umirhack/internal/auth"
 	"umirhack/internal/domain"
@@ -40,17 +39,14 @@ func (f *fakeCatalog) ImportCatalog(_ context.Context, in store.CatalogInput, dr
 const catalogBody = `{"products":[{"id":"rice","name":"Рис","unit":"g","price_minor_per_1000":15000,"lead_days":2,"pack_size":1000,"shelf_life_hours":720}],
 "dishes":[{"id":"pilaf","name":"Плов","price_minor":45000,"prior_daily":12.5,"recipe":[{"product_id":"rice","quantity":"0.15","unit":"kg"},{"product_id":"salt","quantity":"5"}]}]}`
 
-func putCatalog(t *testing.T, fc *fakeCatalog, path, body string, deps ...func(*Deps)) *httptest.ResponseRecorder {
+// putCatalog отправляет запрос от admin: без входа импортировать нельзя (см. TestPutCatalogAccess).
+func putCatalog(t *testing.T, fc *fakeCatalog, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	d := Deps{Now: func() time.Time { return standTime }, Catalog: fc}
-	for _, f := range deps {
-		f(&d)
-	}
-	req := httptest.NewRequest(http.MethodPut, path, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	NewRouter(d).Handler().ServeHTTP(rec, req)
-	return rec
+	e := newAuthEnv(t, true)
+	e.rt.deps.Catalog = fc
+	e.rt.catalogRoutes()
+	e.addUser(t, "root", "password1", auth.Admin)
+	return e.do(req{method: http.MethodPut, path: path, body: body, cookie: e.login(t, "root", "password1")})
 }
 
 func TestPutCatalogNormalizesAndPassesDryRun(t *testing.T) {
@@ -149,6 +145,33 @@ func TestPutCatalogAccess(t *testing.T) {
 		{"viewer user", req{cookie: e.login(t, "view", "password3")}, 403},
 		{"viewer key", req{bearer: viewerKey.Key}, 403},
 	}
+	for _, c := range cases {
+		c.r.method, c.r.path, c.r.body = "PUT", "/api/catalog", catalogBody
+		if rec := e.do(c.r); rec.Code != c.want {
+			t.Errorf("%s: got %d want %d: %s", c.name, rec.Code, c.want, rec.Body)
+		}
+	}
+
+	// Стенд без входа (AUTH_REQUIRED=false): анонимный operator импортировать не может, admin и ключ — могут.
+	open := newAuthEnv(t, false)
+	open.rt.deps.Catalog = fc
+	open.rt.catalogRoutes()
+	open.addUser(t, "root", "password1", auth.Admin)
+	oadm := open.login(t, "root", "password1")
+	rec = open.do(req{method: "POST", path: "/api/api-keys", cookie: oadm, body: `{"name":"iiko","role":"operator"}`})
+	_ = json.Unmarshal(rec.Body.Bytes(), &key)
+	fc.calls = 0
+	cases = []struct {
+		name string
+		r    req
+		want int
+	}{
+		{"open stand anonymous", req{}, 403},
+		{"open stand admin", req{cookie: oadm}, 200},
+		{"open stand operator key", req{bearer: key.Key}, 200},
+	}
+	e = open
+
 	for _, c := range cases {
 		c.r.method, c.r.path, c.r.body = "PUT", "/api/catalog", catalogBody
 		if rec := e.do(c.r); rec.Code != c.want {
