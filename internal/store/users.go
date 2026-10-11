@@ -61,6 +61,48 @@ func (d *DB) UserByLogin(ctx context.Context, login string) (auth.User, error) {
 	return u, nil
 }
 
+// UserByID ищет пользователя по id.
+func (d *DB) UserByID(ctx context.Context, id int64) (auth.User, error) {
+	var u auth.User
+	var role string
+	err := d.Pool.QueryRow(ctx,
+		`SELECT id, login, password_hash, role, created_at FROM users WHERE id = $1`, id).
+		Scan(&u.ID, &u.Login, &u.PasswordHash, &role, &u.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return auth.User{}, auth.ErrNotFound
+	}
+	if err != nil {
+		return auth.User{}, fmt.Errorf("store: user by id: %w", err)
+	}
+	u.Role = auth.Role(role)
+	return u, nil
+}
+
+// ChangePassword меняет хэш пароля и в той же транзакции удаляет остальные сессии пользователя.
+func (d *DB) ChangePassword(ctx context.Context, userID int64, passwordHash string, keepTokenHash []byte) error {
+	tx, err := d.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("store: change password: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, userID, passwordHash)
+	if err != nil {
+		return fmt.Errorf("store: change password: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return auth.ErrNotFound
+	}
+	// keepTokenHash == nil: bytea NULL, и `token_hash <> NULL` не истинно — используем IS DISTINCT FROM.
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM sessions WHERE user_id = $1 AND token_hash IS DISTINCT FROM $2`, userID, keepTokenHash); err != nil {
+		return fmt.Errorf("store: change password: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("store: change password: %w", err)
+	}
+	return nil
+}
+
 // ListUsers — все пользователи по возрастанию id.
 func (d *DB) ListUsers(ctx context.Context) ([]auth.User, error) {
 	rows, err := d.Pool.Query(ctx, `SELECT id, login, role, created_at FROM users ORDER BY id`)
