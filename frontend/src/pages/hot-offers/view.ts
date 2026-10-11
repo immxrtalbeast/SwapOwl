@@ -1,4 +1,5 @@
 import type { HotOffer } from "../../api/types";
+import { formatQty } from "../stock/format";
 
 /** «до 18:30 · 12.10» по записи времени ресторана из ответа (пояс из строки, не браузера). */
 export function formatUntil(iso: string): string {
@@ -17,4 +18,12 @@ export function portionsWord(n: number): string {
   if (m10 === 1 && m100 !== 11) return "порция";
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "порции";
   return "порций";
+}
+
+/** Подпись-пометка первой карточки: «−1,4 кг в мусор» — сумма риска по причинам в единице первой причины. */
+export function handNote(offer: HotOffer): string | undefined {
+  const first = offer.reasons[0];
+  if (!first) return undefined;
+  const qty = offer.reasons.filter((r) => r.at_risk.unit === first.at_risk.unit).reduce((s, r) => s + r.at_risk.qty, 0);
+  return qty > 0 ? `−${formatQty({ qty, unit: first.at_risk.unit })} в мусор` : undefined;
 }
