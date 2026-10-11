@@ -123,7 +123,7 @@ func run() error {
 		st.Sim = stand.NewSimulator(ctx, simSink{api.OrderPlacer{Orders: orders, Now: now, Gate: gate}}, now, simSeed, log)
 		sim = st.Sim
 	}
-	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt}
+	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt, Days: cfg.Days}
 	monitor := store.Monitor{DB: db, Params: store.AlertParams{Expiry: expiry, Schedule: schedule, WMin: cfg.HotWMinHours}}
 	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: now, Auth: authSvc, Audit: db, Clock: clockInfo(st), Demo: demo, Sim: sim, DemoToken: cfg.DemoToken,
 		NotSimulated: stand.ErrNotSimulated, Gate: gate,

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // зона ресторана загружается и без tzdata в системе
+	"umirhack/internal/domain"
 )
 
 // Config — конфигурация сервиса.
@@ -19,6 +20,8 @@ type Config struct {
 	Location     *time.Location
 	OpenAt       time.Duration // от начала суток
 	CloseAt      time.Duration
+	// Days — расписание по дням недели из SCHEDULE (2.6а); nil — OpenAt/CloseAt во все дни.
+	Days map[time.Weekday][]domain.Interval
 
 	ExpiringShare    float64
 	ExpiringMinHours float64
@@ -91,6 +94,14 @@ func Load(getenv func(string) string) (Config, error) {
 	c.OpenAt = p.clock("OPEN_AT", "10:00")
 	c.CloseAt = p.clock("CLOSE_AT", "23:00")
 
+	if v := getenv("SCHEDULE"); strings.TrimSpace(v) != "" {
+		days, err := domain.ParseSchedule(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("SCHEDULE: %w", err))
+		}
+		c.Days = days
+	}
+
 	errs = append(errs, c.validate()...)
 	if len(errs) > 0 {
 		return Config{}, errors.Join(errs...)
@@ -110,8 +121,8 @@ func (c *Config) validate() []error {
 		bad("RESTAURANT_TZ %q: %v", c.RestaurantTZ, err)
 	}
 	c.Location = loc
-	if c.OpenAt >= c.CloseAt {
-		bad("OPEN_AT must be earlier than CLOSE_AT (work across midnight is not supported)")
+	if c.Days == nil && c.OpenAt >= c.CloseAt {
+		bad("OPEN_AT must be earlier than CLOSE_AT (for work across midnight use SCHEDULE)")
 	}
 	if c.ExpiringShare <= 0 || c.ExpiringMinHours < 0 || c.ExpiringMaxShare <= 0 || c.ExpiringMaxShare > 1 {
 		bad("EXPIRING_*: share and max share must be in (0, 1], min hours >= 0")
