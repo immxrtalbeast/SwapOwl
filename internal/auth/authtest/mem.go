@@ -23,11 +23,12 @@ type Mem struct {
 	sessions map[string]session
 	keys     map[int64]auth.APIKey
 	keyHash  map[string]int64
+	attempts map[string][]time.Time
 }
 
 // New создаёт пустое хранилище.
 func New() *Mem {
-	return &Mem{users: map[int64]auth.User{}, sessions: map[string]session{}, keys: map[int64]auth.APIKey{}, keyHash: map[string]int64{}}
+	return &Mem{users: map[int64]auth.User{}, sessions: map[string]session{}, keys: map[int64]auth.APIKey{}, keyHash: map[string]int64{}, attempts: map[string][]time.Time{}}
 }
 
 var _ auth.Repo = (*Mem)(nil)
@@ -68,6 +69,56 @@ func (m *Mem) UserByLogin(_ context.Context, login string) (auth.User, error) {
 		}
 	}
 	return auth.User{}, auth.ErrNotFound
+}
+
+func (m *Mem) UserByID(_ context.Context, id int64) (auth.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if u, ok := m.users[id]; ok {
+		return u, nil
+	}
+	return auth.User{}, auth.ErrNotFound
+}
+
+func (m *Mem) ChangePassword(_ context.Context, userID int64, hash string, keep []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.users[userID]
+	if !ok {
+		return auth.ErrNotFound
+	}
+	u.PasswordHash = hash
+	m.users[userID] = u
+	for h, s := range m.sessions {
+		if s.userID == userID && h != string(keep) {
+			delete(m.sessions, h)
+		}
+	}
+	return nil
+}
+
+func (m *Mem) TakeLoginAttempt(_ context.Context, key string, now time.Time, window time.Duration, max int) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var live []time.Time
+	for _, t := range m.attempts[key] {
+		if now.Sub(t) < window {
+			live = append(live, t)
+		}
+	}
+	if len(live) >= max {
+		m.attempts[key] = live
+		return false, nil
+	}
+	m.attempts[key] = append(live, now)
+	return true, nil
+}
+
+func (m *Mem) ClearLoginAttempts(_ context.Context, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.attempts, key)
+	return nil
 }
 
 func (m *Mem) ListUsers(context.Context) ([]auth.User, error) {

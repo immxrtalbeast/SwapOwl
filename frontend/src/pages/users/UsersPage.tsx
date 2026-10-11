@@ -39,6 +39,7 @@ function UsersAdmin() {
   return (
     <section aria-labelledby="users-title">
       <h2 id="users-title">Пользователи и ключи</h2>
+      <p><a href="#/account">Аккаунт: сменить свой пароль</a></p>
       {notice && <p role="alert" data-testid="users-notice">{notice}</p>}
       {state.kind === "loading" && <p role="status">Загрузка…</p>}
       {state.kind === "error" && (
