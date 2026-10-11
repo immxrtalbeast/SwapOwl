@@ -119,6 +119,10 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		di := store.DeliveryItem{ProductID: it.ProductID, Name: strings.TrimSpace(it.Name)}
+		if len(di.Name) > maxLoginLen {
+			validationError(w, field("name"), "name must be at most 128 bytes")
+			return
+		}
 		switch {
 		case hasHours:
 			if *it.ShelfLifeHours < 1 || *it.ShelfLifeHours > maxShelfHours {
@@ -153,7 +157,11 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 		}
 		q, err := units.Parse(it.Quantity, unit, units.Unit(base))
 		if err != nil {
-			validationError(w, field("quantity"), quantityMessage(err))
+			bad := "quantity"
+			if errors.Is(err, units.ErrUnknownUnit) {
+				bad = "unit"
+			}
+			validationError(w, field(bad), quantityMessage(err, bad))
 			return
 		}
 		di.Unit, di.Qty = base, int64(q)
@@ -189,24 +197,25 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, status, resp)
 }
 
-func quantityMessage(err error) string {
+// quantityMessage называет поле и причину отказа: field — имя поля без пути (quantity, qty, counted).
+func quantityMessage(err error, field string) string {
 	switch {
 	case errors.Is(err, units.ErrFormat):
-		return "quantity must be a string like \"1.5\": digits with an optional fractional part"
+		return field + " must be a string like \"1.5\": digits with an optional fractional part"
 	case errors.Is(err, units.ErrUnknownUnit):
-		return "unit must be one of g, kg, ml, l, pcs"
+		return field + ": unit must be one of g, kg, ml, l, pcs"
 	case errors.Is(err, units.ErrDimension):
-		return "unit does not match the product's dimension"
+		return field + ": unit does not match the product's dimension"
 	case errors.Is(err, units.ErrFraction):
-		return "quantity is finer than the base unit"
+		return field + " is finer than the base unit"
 	case errors.Is(err, units.ErrFractionalPcs):
-		return "pieces cannot be fractional"
+		return field + ": pieces cannot be fractional"
 	case errors.Is(err, units.ErrZero):
-		return "quantity must be greater than zero"
+		return field + " must be greater than zero"
 	case errors.Is(err, units.ErrLimit), errors.Is(err, units.ErrOverflow):
-		return "quantity exceeds the limit"
+		return field + " exceeds the limit"
 	}
-	return "invalid quantity"
+	return field + " is not a valid quantity"
 }
 
 func (rt *Router) listDeliveries(w http.ResponseWriter, r *http.Request) {

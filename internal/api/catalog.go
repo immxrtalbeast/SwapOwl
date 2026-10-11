@@ -212,7 +212,7 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 		}
 		y, err := units.Parse(pr.Yield, yu, units.Unit(unit))
 		if err != nil {
-			validationError(w, field("yield"), quantityMessage(err))
+			validationError(w, field("yield"), quantityMessage(err, "yield"))
 			return
 		}
 		preps[pr.ID] = domain.Prep{ID: pr.ID, Yield: int64(y)}
@@ -401,7 +401,7 @@ func parseTechLines(items []catalogRecipeIn, prefix string, rawUnit func(string)
 		}
 		q, err := units.Parse(qty, unit, units.Unit(base))
 		if err != nil {
-			return nil, rf + field, quantityMessage(err)
+			return nil, rf + field, quantityMessage(err, field)
 		}
 		line.Qty = int64(q)
 		lines = append(lines, line)
