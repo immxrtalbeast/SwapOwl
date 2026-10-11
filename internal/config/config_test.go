@@ -90,3 +90,21 @@ func TestCheckAdminBootstrap(t *testing.T) {
 		})
 	}
 }
+
+func TestCleanInstanceConfig(t *testing.T) {
+	c, err := Load(env(map[string]string{"DATABASE_URL": "x", "DEMO_MODE": "false", "CLOCK_MODE": "real",
+		"SEED_ON_EMPTY": "false", "AUTH_REQUIRED": "true"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DemoMode || c.SeedOnEmpty || !c.AuthRequired || c.ClockMode != "real" {
+		t.Fatalf("unexpected: %+v", c)
+	}
+}
+
+func TestSeedOffInDemoMessageIsClear(t *testing.T) {
+	_, err := Load(env(map[string]string{"DATABASE_URL": "x", "SEED_ON_EMPTY": "false", "DEMO_MODE": "true"}))
+	if err == nil || !strings.Contains(err.Error(), "DEMO_MODE=true") {
+		t.Fatalf("got %v", err)
+	}
+}

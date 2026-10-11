@@ -128,7 +128,7 @@ func (c *Config) validate() []error {
 		bad("HOT_*: TOP_N and MAX_ITER must be > 0, hours must be >= 0")
 	}
 	if !c.SeedOnEmpty && c.DemoMode {
-		bad("SEED_ON_EMPTY=false requires DEMO_MODE=false")
+		bad("SEED_ON_EMPTY=false is incompatible with DEMO_MODE=true: the demo stand needs the seed; set DEMO_MODE=false for a restaurant instance")
 	}
 	if (c.AdminLogin == "") != (c.AdminPassword == "") {
 		bad("ADMIN_LOGIN and ADMIN_PASSWORD must be set together")
