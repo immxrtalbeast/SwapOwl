@@ -22,7 +22,7 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("hours: %v %v", c.OpenAt, c.CloseAt)
 	}
 	if c.DemandWindowDays != 14 || c.DemandPriorDays != 3 || c.HotTopN != 3 || c.DBPoolSize != 20 ||
-		c.HotOffersAlgo != "a" || !c.SeedOnEmpty || !c.AuthRequired || c.DemoMode || c.ClockMode != "real" {
+		c.HotOffersAlgo != "b" || !c.SeedOnEmpty || !c.AuthRequired || c.DemoMode || c.ClockMode != "real" {
 		t.Errorf("unexpected defaults: %+v", c)
 	}
 }

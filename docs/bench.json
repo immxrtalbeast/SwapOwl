@@ -1,0 +1,7 @@
+{
+  "available": true,
+  "runs": 200,
+  "main_algo": "b",
+  "waste_reduction_vs_random_pct": 10.1,
+  "waste_reduction_vs_nearest_pct": 13.3
+}
