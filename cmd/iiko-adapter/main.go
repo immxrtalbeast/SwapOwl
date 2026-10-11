@@ -49,9 +49,11 @@ func run(args []string) error {
 	fs := flag.NewFlagSet("iiko-adapter", flag.ContinueOnError)
 	once := fs.Bool("once", false, "один проход и выход")
 	rec := len(args) > 0 && args[0] == "reconcile"
-	asJSON := fs.Bool("json", false, "reconcile: вывод в JSON")
-	all := fs.Bool("all", false, "reconcile: все продукты, не только расхождения")
-	if rec {
+	rep := len(args) > 0 && args[0] == "shadow-report"
+	asJSON := fs.Bool("json", false, "reconcile, shadow-report: вывод в JSON")
+	all := fs.Bool("all", false, "reconcile, shadow-report: все продукты сверки, не только расхождения")
+	day := fs.String("date", "", "shadow-report: день yyyy-MM-dd (по умолчанию сегодня)")
+	if rec || rep {
 		args = args[1:]
 	}
 	if err := fs.Parse(args); err != nil {
@@ -96,6 +98,22 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("ADAPTER_DEFAULT_PRIOR_DAILY: %w", err)
 	}
+	mode := env("ADAPTER_MODE", modeShadow)
+	if mode != modeShadow && mode != modeLive {
+		return fmt.Errorf("ADAPTER_MODE: %q, нужно shadow или live", mode)
+	}
+	outboxEvery, err := time.ParseDuration(env("ADAPTER_OUTBOX_INTERVAL", "10s"))
+	if err != nil || outboxEvery <= 0 {
+		return fmt.Errorf("ADAPTER_OUTBOX_INTERVAL: нужна положительная длительность")
+	}
+	retryBase, err := time.ParseDuration(env("ADAPTER_RETRY_BASE", "10s"))
+	if err != nil || retryBase <= 0 {
+		return fmt.Errorf("ADAPTER_RETRY_BASE: нужна положительная длительность")
+	}
+	retryMax, err := time.ParseDuration(env("ADAPTER_RETRY_MAX", "10m"))
+	if err != nil || retryMax < retryBase {
+		return fmt.Errorf("ADAPTER_RETRY_MAX: длительность не меньше ADAPTER_RETRY_BASE")
+	}
 	hc := &http.Client{Timeout: 60 * time.Second}
 	a := &adapter{
 		iiko:      client.New(os.Getenv("IIKO_URL"), os.Getenv("IIKO_LOGIN"), os.Getenv("IIKO_PASSWORD"), hc),
@@ -106,23 +124,43 @@ func run(args []string) error {
 		start:     start,
 		defaults:  mapping.Defaults{PriceMinorPer1000: price, LeadDays: int(lead), PackSize: pack, PriorDaily: prior},
 		log:       log.New(os.Stderr, "iiko-adapter: ", log.LstdFlags),
+
+		mode:       mode,
+		shadowPath: env("ADAPTER_SHADOW_FILE", "iiko-adapter-shadow.json"),
+		retryBase:  retryBase,
+		retryMax:   retryMax,
+		retryAt:    map[int64]time.Time{},
 	}
+	a.log.Printf("режим: %s", mode)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if rec {
 		return a.runReconcile(ctx, os.Stdout, *asJSON, *all)
 	}
+	if rep {
+		return a.runShadowReport(ctx, os.Stdout, *asJSON, *all, *day)
+	}
 	if *once {
 		return a.runOnce(ctx)
 	}
+	// Полный проход — раз в interval; outbox (стоп-лист) опрашивается чаще. Первый проход
+	// при старте сразу дочитывает недоставленное.
+	var nextSync time.Time
 	for {
-		if err := a.runOnce(ctx); err != nil {
+		var err error
+		if now := a.now(); !now.Before(nextSync) {
+			err = a.runOnce(ctx)
+			nextSync = now.Add(interval)
+		} else {
+			err = a.processOutbox(ctx)
+		}
+		if err != nil {
 			a.log.Printf("проход с ошибками: %v", err)
 		}
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(interval):
+		case <-time.After(outboxEvery):
 		}
 	}
 }
