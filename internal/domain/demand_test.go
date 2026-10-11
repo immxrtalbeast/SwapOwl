@@ -121,3 +121,19 @@ func TestProductDemandAndHourlyRate(t *testing.T) {
 		t.Fatalf("degenerate = %v", got)
 	}
 }
+
+func TestRatePerHourWithSchedule(t *testing.T) {
+	days, err := ParseSchedule("mon 20:00-02:00") // 6 ч в неделю
+	if err != nil {
+		t.Fatal(err)
+	}
+	// OpenAt/CloseAt при Days игнорируются, даже перевёрнутые.
+	sch := Schedule{Location: time.UTC, OpenAt: 23 * time.Hour, CloseAt: 10 * time.Hour, Days: days}
+	if got, want := RatePerHour(60, sch), 60/(6.0/7); got != want {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	all, _ := ParseSchedule("mon-sun 10:00-23:00")
+	if got := RatePerHour(1300, Schedule{Days: all}); got != 100 {
+		t.Fatalf("13 ч каждый день: %v", got)
+	}
+}

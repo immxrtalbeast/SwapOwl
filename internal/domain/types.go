@@ -88,6 +88,9 @@ type Schedule struct {
 	Location *time.Location
 	OpenAt   time.Duration // от начала суток
 	CloseAt  time.Duration // от начала суток, OpenAt < CloseAt
+	// Days — необязательное расписание по дням недели (2.6а). Пусто — работают OpenAt/CloseAt
+	// во все дни. Если задано, OpenAt/CloseAt игнорируются; день без записи — выходной.
+	Days map[time.Weekday][]Interval
 }
 
 // BatchRisk — часть остатка партии, которую не успеют израсходовать.

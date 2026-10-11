@@ -110,3 +110,32 @@ func TestSeedOffInDemoMessageIsClear(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestScheduleConfig(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": "postgres://x"}
+	with := func(s string) map[string]string {
+		m := map[string]string{"SCHEDULE": s}
+		for k, v := range base {
+			m[k] = v
+		}
+		return m
+	}
+	c, err := Load(env(with("mon-thu 10:00-23:00; fri-sat 11:00-02:00; sun 11:00-22:00")))
+	if err != nil || len(c.Days) != 7 {
+		t.Fatalf("days=%d err=%v", len(c.Days), err)
+	}
+	// OPEN_AT/CLOSE_AT остаются значением по умолчанию и проверяются и с SCHEDULE.
+	m := with("mon 20:00-02:00")
+	m["OPEN_AT"], m["CLOSE_AT"] = "23:00", "10:00"
+	if _, err := Load(env(m)); err == nil || !strings.Contains(err.Error(), "OPEN_AT") {
+		t.Fatalf("inverted OPEN_AT/CLOSE_AT with SCHEDULE: err=%v", err)
+	}
+	for _, bad := range []string{"mon 10:00-14:00; mon 13:00-20:00", "mon 10:00-10:00", "funday 10:00-12:00", "mon 10:00"} {
+		if _, err := Load(env(with(bad))); err == nil || !strings.Contains(err.Error(), "SCHEDULE") {
+			t.Errorf("%q: err=%v", bad, err)
+		}
+	}
+	if c, err := Load(env(base)); err != nil || c.Days != nil {
+		t.Fatalf("no SCHEDULE: days=%v err=%v", c.Days, err)
+	}
+}

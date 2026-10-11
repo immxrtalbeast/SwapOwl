@@ -10,35 +10,6 @@ import (
 // (значение HOT_W_MIN_HOURS по умолчанию; сигнатура RiskByBatch порога не принимает).
 const DoomedMinHours = 0.5
 
-// WorkingHours — W(from, to): рабочие часы ресторана в интервале (дробное число).
-// Сутки считаются в часовом поясе расписания; nil-пояс — UTC.
-func WorkingHours(from, to time.Time, sch Schedule) float64 {
-	if !to.After(from) || sch.CloseAt <= sch.OpenAt {
-		return 0
-	}
-	loc := sch.Location
-	if loc == nil {
-		loc = time.UTC
-	}
-	from, to = from.In(loc), to.In(loc)
-	total := 0.0
-	d := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, loc)
-	for ; d.Before(to); d = d.AddDate(0, 0, 1) {
-		a := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, loc).Add(sch.OpenAt)
-		b := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, loc).Add(sch.CloseAt)
-		if a.Before(from) {
-			a = from
-		}
-		if b.After(to) {
-			b = to
-		}
-		if b.After(a) {
-			total += b.Sub(a).Hours()
-		}
-	}
-	return total
-}
-
 // RiskByBatch — проекция FEFO по партиям одного продукта в порядке (ExpiresAt, ID):
 // cap = rate·W(now, e) − used; use = min(remaining, max(cap, 0)); risk = remaining − use.
 // Обречённая партия (W(now, e) < DoomedMinHours) в проекцию не входит: risk = remaining.

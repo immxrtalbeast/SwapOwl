@@ -127,7 +127,7 @@ func run() error {
 		st.Sim = stand.NewSimulator(ctx, simSink{api.OrderPlacer{Orders: orders, Now: now, Gate: gate}}, now, simSeed, log)
 		sim = st.Sim
 	}
-	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt}
+	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt, Days: cfg.Days}
 	monitor := store.Monitor{DB: db, Params: store.AlertParams{Expiry: expiry, Schedule: schedule, WMin: cfg.HotWMinHours}}
 	reg := metrics.New()
 	reg.Gauge("sse_subscribers", "Открытые SSE-подключения.", func() float64 { return float64(bus.Subscribers()) })
