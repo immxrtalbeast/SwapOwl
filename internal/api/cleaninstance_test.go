@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -37,7 +38,7 @@ func TestCleanInstance(t *testing.T) {
 
 	svc := auth.New(authtest.New(), auth.Options{Required: cfg.AuthRequired, SessionTTL: time.Hour,
 		Cost: bcrypt.MinCost, Now: func() time.Time { return standTime }})
-	if _, err := svc.CreateUser(t.Context(), "op", "pw", auth.Role("operator")); err != nil {
+	if _, err := svc.CreateUser(context.Background(), "op", "pw", auth.Role("operator")); err != nil {
 		t.Fatal(err)
 	}
 	fs := &fakeStock{}
