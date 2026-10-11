@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"umirhack/internal/auth"
 	"umirhack/internal/store"
@@ -38,6 +40,19 @@ func StopListPayload(snap store.MenuSnapshot) []DishAvailability {
 		}
 	}
 	return out
+}
+
+// cleanAckError готовит last_error для text: без NUL (Postgres его не принимает) и с обрезкой
+// по границе руны, иначе половина многобайтового символа даёт 22021 и ack падает с 500.
+func cleanAckError(s string) string {
+	s = strings.ReplaceAll(s, "\x00", "")
+	if len(s) > maxAckError {
+		s = s[:maxAckError]
+		for !utf8.ValidString(s) {
+			s = s[:len(s)-1]
+		}
+	}
+	return s
 }
 
 // listOutbox — GET /api/outbox?after=&limit=: недоставленные сообщения по возрастанию id.
@@ -89,10 +104,7 @@ func (rt *Router) ackOutbox(w http.ResponseWriter, r *http.Request) {
 		validationError(w, "ok", "ok is required")
 		return
 	}
-	msg := in.Error
-	if len(msg) > maxAckError {
-		msg = msg[:maxAckError]
-	}
+	msg := cleanAckError(in.Error)
 	err = rt.deps.Outbox.AckOutbox(r.Context(), id, *in.OK, msg, rt.deps.Now().UTC())
 	switch {
 	case errors.Is(err, store.ErrOutboxNotFound):

@@ -75,18 +75,16 @@ func (p *publisher) recheckStopList(ctx context.Context) {
 }
 
 // enqueueStopList кладёт в outbox полный текущий стоп-лист, когда его состав изменился
-// (первый вызов только запоминает состояние, как StopTracker). Вызывается под recheckMu.
-// Сбой записи не теряет изменение: состав не запоминается и следующая сверка повторит попытку.
+// относительно последнего записанного. Первый вызов после старта тоже пишет строку: база
+// сравнения — память процесса, и изменение за время простоя или падения иначе потерялось бы
+// (payload полный, лишняя строка безвредна). Вызывается под recheckMu. Сбой записи не
+// запоминает состав, и следующая сверка повторит попытку.
 func (p *publisher) enqueueStopList(ctx context.Context, snap store.MenuSnapshot, ids []string) {
 	if p.outbox == nil {
 		return
 	}
 	sort.Strings(ids)
 	if p.outboxInit && slices.Equal(p.outboxPrev, ids) {
-		return
-	}
-	if !p.outboxInit {
-		p.outboxPrev, p.outboxInit = ids, true
 		return
 	}
 	body, err := json.Marshal(api.StopListPayload(snap))
@@ -97,7 +95,7 @@ func (p *publisher) enqueueStopList(ctx context.Context, snap store.MenuSnapshot
 		p.log.Warn("outbox: enqueue stop-list", slog.String("error", err.Error()))
 		return
 	}
-	p.outboxPrev = ids
+	p.outboxPrev, p.outboxInit = ids, true
 }
 
 // onExpiring — janitor.OnExpiring: batch.expiring по одному на партию (7.5). Каждая партия

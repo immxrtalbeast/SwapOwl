@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"umirhack/internal/domain"
 	"umirhack/internal/store"
@@ -107,5 +108,15 @@ func TestStopListPayloadOnlyStopped(t *testing.T) {
 	got := StopListPayload(snap)
 	if len(got) != 1 || got[0].ID != "d1" || len(got[0].Missing) != 1 {
 		t.Fatalf("%+v", got)
+	}
+}
+
+func TestCleanAckErrorKeepsValidUTF8(t *testing.T) {
+	got := cleanAckError("a" + strings.Repeat("я", 1500) + "\x00")
+	if !utf8.ValidString(got) || len(got) > maxAckError || strings.ContainsRune(got, 0) {
+		t.Fatalf("len=%d valid=%v", len(got), utf8.ValidString(got))
+	}
+	if cleanAckError("ok\x00") != "ok" {
+		t.Fatal("NUL not stripped")
 	}
 }

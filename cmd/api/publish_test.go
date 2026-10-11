@@ -232,11 +232,12 @@ func TestStopListChangeEnqueuesFullListOnce(t *testing.T) {
 	p.outbox = sink
 	ctx := context.Background()
 
-	p.recheckStopList(ctx) // первый вызов с outbox только запоминает состав
+	p.recheckStopList(ctx) // первый вызов после старта пишет текущий (пустой) список
 	p.recheckStopList(ctx) // без изменений — ничего
-	if len(sink.kinds) != 0 {
-		t.Fatalf("unexpected: %v", sink.kinds)
+	if len(sink.kinds) != 1 || sink.payloads[0] != "[]" {
+		t.Fatalf("startup: %v %v", sink.kinds, sink.payloads)
 	}
+	sink.kinds, sink.payloads = nil, nil
 
 	menu.have = 0 // блюдо в стоп-листе: строка с полным списком
 	p.recheckStopList(ctx)
@@ -259,6 +260,7 @@ func TestOutboxEnqueueFailureRetriedOnNextRecheck(t *testing.T) {
 	p.outbox = sink
 	ctx := context.Background()
 	p.recheckStopList(ctx)
+	sink.kinds = nil
 
 	menu.have = 0
 	sink.fail = true
@@ -267,5 +269,19 @@ func TestOutboxEnqueueFailureRetriedOnNextRecheck(t *testing.T) {
 	p.recheckStopList(ctx) // изменение не потеряно
 	if len(sink.kinds) != 1 {
 		t.Fatalf("retry: %v", sink.kinds)
+	}
+}
+
+func TestOutboxStartupWritesStopListChangedWhileDown(t *testing.T) {
+	menu := &fakeMenu{have: 0} // блюдо уже в стоп-листе на момент старта
+	p, _ := newPub(menu)
+	sink := &fakeOutboxSink{fail: true}
+	p.outbox = sink
+	ctx := context.Background()
+	p.recheckStopList(ctx) // prime при сбое БД не теряет состав
+	sink.fail = false
+	p.recheckStopList(ctx)
+	if len(sink.kinds) != 1 || !strings.Contains(sink.payloads[0], `"id":"d1"`) {
+		t.Fatalf("startup: %v %v", sink.kinds, sink.payloads)
 	}
 }
