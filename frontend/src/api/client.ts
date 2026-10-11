@@ -1,13 +1,13 @@
 import type { Role } from "../auth/roles";
 import { ApiError } from "./types";
-import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, ProductStock } from "./types";
+import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
   onUnauthorized = fn;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestRaw<T>(path: string, init?: RequestInit): Promise<{ body: T; headers: Headers }> {
   const res = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
@@ -20,7 +20,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const e = body?.error;
     throw new ApiError(res.status, e?.code ?? "internal", e?.message ?? `Ошибка ${res.status}`, e?.details ?? {});
   }
-  return body as T;
+  return { body: body as T, headers: res.headers };
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await requestRaw<T>(path, init)).body;
 }
 
 export interface ClockInfo {
@@ -67,7 +71,15 @@ export const api = {
   deleteApiKey: (id: number) => request<null>(`/api/api-keys/${id}`, { method: "DELETE" }),
   dishes: () => request<Dish[]>("/api/dishes"),
   menu: () => request<DishServings[]>("/api/dishes"),
-  orders: (status?: Order["status"]) => request<Order[]>(`/api/orders${status ? `?status=${status}` : ""}`),
+  // Страница истории: total — число заказов с этим статусом целиком (X-Total-Count), before — id последнего заказа страницы.
+  ordersPage: async (status: Order["status"], opts: { limit?: number; before?: string } = {}): Promise<OrdersPage> => {
+    const q = new URLSearchParams({ status });
+    if (opts.limit) q.set("limit", String(opts.limit));
+    if (opts.before) q.set("before", opts.before);
+    const { body, headers } = await requestRaw<Order[]>(`/api/orders?${q}`);
+    const total = Number(headers.get("X-Total-Count"));
+    return { orders: body, total: Number.isFinite(total) && headers.has("X-Total-Count") ? total : body.length };
+  },
   // Заказ, отклонённый по нехватке (409 insufficient_stock), приходит как обычный результат со статусом rejected.
   placeOrder: async (id: string, items: OrderItemInput[]): Promise<Order> => {
     try {

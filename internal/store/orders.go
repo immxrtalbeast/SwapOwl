@@ -51,10 +51,12 @@ func (in OrderInput) isPOS() bool { return in.Source == SourcePOS }
 
 // WriteoffJSON — «партия — количество» принятого заказа.
 type WriteoffJSON struct {
-	ProductID string    `json:"product_id"`
-	BatchID   int64     `json:"batch_id"`
-	Qty       QtyJSON   `json:"qty"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ProductID string `json:"product_id"`
+	// ProductName — название продукта; у заказов, сохранённых до появления поля, подставляет ListOrders.
+	ProductName string    `json:"product_name"`
+	BatchID     int64     `json:"batch_id"`
+	Qty         QtyJSON   `json:"qty"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 // MissingJSON — нехватка продукта в отклонённом заказе.
@@ -303,7 +305,7 @@ func (d *DB) PlaceOrder(ctx context.Context, in OrderInput, now func() time.Time
 					w.BatchID, w.ProductID, int64(w.Qty), in.ID, at); err != nil {
 					return fmt.Errorf("store: insert sale: %w", err)
 				}
-				resp.Writeoffs = append(resp.Writeoffs, WriteoffJSON{ProductID: w.ProductID, BatchID: w.BatchID,
+				resp.Writeoffs = append(resp.Writeoffs, WriteoffJSON{ProductID: w.ProductID, ProductName: names[w.ProductID], BatchID: w.BatchID,
 					Qty: QtyJSON{int64(w.Qty), unitsOf[w.ProductID]}, ExpiresAt: expires[w.BatchID]})
 			}
 		}
@@ -337,12 +339,37 @@ func productInfo(ctx context.Context, tx pgx.Tx, ids []string) (map[string]strin
 	return names, us, rows.Err()
 }
 
+// ErrUnknownCursor — before указывает на несуществующий заказ.
+var ErrUnknownCursor = errors.New("store: unknown order cursor")
+
 // ListOrders — история заказов, новые сверху; status "" | "accepted" | "rejected".
-func (d *DB) ListOrders(ctx context.Context, status string, limit int) ([]OrderResponse, error) {
-	rows, err := d.Pool.Query(ctx,
-		`SELECT response FROM orders WHERE ($1 = '' OR status = $1) ORDER BY at DESC, id LIMIT $2`, status, limit)
+// before — id заказа, после которого продолжить (порядок at DESC, id; пусто — с начала).
+// total — число заказов с этим статусом целиком, а не размер страницы.
+func (d *DB) ListOrders(ctx context.Context, status string, limit int, before string) ([]OrderResponse, int, error) {
+	var total int
+	if err := d.Pool.QueryRow(ctx, `SELECT count(*) FROM orders WHERE ($1 = '' OR status = $1)`, status).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("store: count orders: %w", err)
+	}
+	var rows pgx.Rows
+	var err error
+	if before == "" {
+		rows, err = d.Pool.Query(ctx,
+			`SELECT response FROM orders WHERE ($1 = '' OR status = $1) ORDER BY at DESC, id LIMIT $2`, status, limit)
+	} else {
+		var found bool
+		if err := d.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM orders WHERE id = $1)`, before).Scan(&found); err != nil {
+			return nil, 0, fmt.Errorf("store: list orders: %w", err)
+		}
+		if !found {
+			return nil, 0, ErrUnknownCursor
+		}
+		rows, err = d.Pool.Query(ctx,
+			`SELECT o.response FROM orders o, orders c
+			 WHERE c.id = $3 AND ($1 = '' OR o.status = $1) AND (o.at < c.at OR (o.at = c.at AND o.id > c.id))
+			 ORDER BY o.at DESC, o.id LIMIT $2`, status, limit, before)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("store: list orders: %w", err)
+		return nil, 0, fmt.Errorf("store: list orders: %w", err)
 	}
 	defer rows.Close()
 	out := []OrderResponse{}
@@ -350,12 +377,64 @@ func (d *DB) ListOrders(ctx context.Context, status string, limit int) ([]OrderR
 		var raw []byte
 		var r OrderResponse
 		if err := rows.Scan(&raw); err != nil {
-			return nil, fmt.Errorf("store: list orders: %w", err)
+			return nil, 0, fmt.Errorf("store: list orders: %w", err)
 		}
 		if err := json.Unmarshal(raw, &r); err != nil {
-			return nil, fmt.Errorf("store: list orders: %w", err)
+			return nil, 0, fmt.Errorf("store: list orders: %w", err)
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	rows.Close()
+	return out, total, d.fillProductNames(ctx, out)
+}
+
+// fillProductNames дописывает название продукта в списания заказов, сохранённых без него.
+func (d *DB) fillProductNames(ctx context.Context, orders []OrderResponse) error {
+	need := map[string]bool{}
+	for _, o := range orders {
+		for _, w := range o.Writeoffs {
+			if w.ProductName == "" {
+				need[w.ProductID] = true
+			}
+		}
+	}
+	if len(need) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(need))
+	for id := range need {
+		ids = append(ids, id)
+	}
+	rows, err := d.Pool.Query(ctx, `SELECT id, name FROM products WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return fmt.Errorf("store: product names: %w", err)
+	}
+	defer rows.Close()
+	names := map[string]string{}
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return fmt.Errorf("store: product names: %w", err)
+		}
+		names[id] = name
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range orders {
+		for j := range orders[i].Writeoffs {
+			w := &orders[i].Writeoffs[j]
+			if w.ProductName == "" {
+				if n, ok := names[w.ProductID]; ok {
+					w.ProductName = n
+				} else {
+					w.ProductName = w.ProductID
+				}
+			}
+		}
+	}
+	return nil
 }
