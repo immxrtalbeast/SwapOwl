@@ -22,6 +22,7 @@ import { Notifications } from "@mantine/notifications";
 import { AppShell } from "./app/AppShell";
 import { AuthGate } from "./auth/AuthGate";
 import { AuthProvider } from "./auth/AuthContext";
+import { LandingGate } from "./landing/LandingGate";
 import { theme } from "./theme/theme";
 import { cssVariablesResolver } from "./theme/tokens";
 
@@ -29,11 +30,13 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} forceColorScheme="light">
       <Notifications position="bottom-right" />
-      <AuthProvider>
-        <AuthGate>
-          <AppShell />
-        </AuthGate>
-      </AuthProvider>
+      <LandingGate>
+        <AuthProvider>
+          <AuthGate>
+            <AppShell />
+          </AuthGate>
+        </AuthProvider>
+      </LandingGate>
     </MantineProvider>
   </StrictMode>,
 );
