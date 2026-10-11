@@ -20,6 +20,7 @@ export function AppHeader() {
   const conn = useConnection();
   const { state, logout } = useAuth();
   const { alerts, unconfirmed } = useBadges();
+  const alertsTotal = alerts ? alerts.expiring + alerts.doomed + alerts.expired : 0;
   const t = now && info ? formatClock(now, info.timezone) : null;
   return (
     <header
@@ -37,9 +38,20 @@ export function AppHeader() {
         <Pill title={info.simulated ? "Время стенда симулированное, не реальное" : undefined}>{modeLabel(info)}</Pill>
       )}
       <span style={{ flex: 1 }} />
-      {alerts && alerts.expiring > 0 && <UrgencyCounter def={BATCH_STATES.expiring} n={alerts.expiring} text="истекают" href="#/alerts" />}
-      {alerts && alerts.doomed > 0 && <UrgencyCounter def={BATCH_STATES.doomed} n={alerts.doomed} text="спишутся" href="#/alerts" />}
-      {alerts && alerts.expired > 0 && <UrgencyCounter def={BATCH_STATES.expired} n={alerts.expired} text="просрочены" href="#/alerts" />}
+      {alerts && (
+        // Контракт e2e (10-demo.spec.ts): одна ссылка data-testid="alerts-counter" с aria-label «Предупреждения: N».
+        <a
+          href="#/alerts"
+          data-testid="alerts-counter"
+          aria-label={alertsTotal === 0 ? "Предупреждений нет" : `Предупреждения: ${alertsTotal}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, textDecoration: "none" }}
+        >
+          {alertsTotal === 0 && <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>Предупреждений нет</span>}
+          {alerts.expiring > 0 && <UrgencyCounter def={BATCH_STATES.expiring} n={alerts.expiring} text="истекают" />}
+          {alerts.doomed > 0 && <UrgencyCounter def={BATCH_STATES.doomed} n={alerts.doomed} text="спишутся" />}
+          {alerts.expired > 0 && <UrgencyCounter def={BATCH_STATES.expired} n={alerts.expired} text="просрочены" />}
+        </a>
+      )}
       {unconfirmed != null && unconfirmed > 0 && (
         <UrgencyCounter def={{ ...BATCH_STATES.expiring, label: "Срок не подтверждён" }} n={unconfirmed} text="без подтверждённого срока" href="#/receiving" />
       )}
