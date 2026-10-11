@@ -118,9 +118,19 @@ func ProductDemandPerDay(dishes []Dish, lambda map[string]float64) map[string]fl
 	return out
 }
 
-// RatePerHour — rate_p_час = rate_p_день / W_день, где W_день = CloseAt − OpenAt в часах.
+// RatePerHour — rate_p_час = rate_p_день / W_день, где W_день = CloseAt − OpenAt в часах;
+// при заданном sch.Days W_день — средний рабочий день недели (сумма длин интервалов / 7).
 func RatePerHour(perDay float64, sch Schedule) float64 {
 	h := (sch.CloseAt - sch.OpenAt).Hours()
+	if len(sch.Days) > 0 {
+		var total time.Duration
+		for _, ivs := range sch.Days {
+			for _, iv := range ivs {
+				total += iv.Close - iv.Open
+			}
+		}
+		h = total.Hours() / 7
+	}
 	if h <= 0 {
 		return 0
 	}

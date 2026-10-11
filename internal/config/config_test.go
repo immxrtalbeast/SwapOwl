@@ -124,11 +124,11 @@ func TestScheduleConfig(t *testing.T) {
 	if err != nil || len(c.Days) != 7 {
 		t.Fatalf("days=%d err=%v", len(c.Days), err)
 	}
-	// SCHEDULE заменяет проверку OPEN_AT < CLOSE_AT.
+	// OPEN_AT/CLOSE_AT остаются значением по умолчанию и проверяются и с SCHEDULE.
 	m := with("mon 20:00-02:00")
 	m["OPEN_AT"], m["CLOSE_AT"] = "23:00", "10:00"
-	if _, err := Load(env(m)); err != nil {
-		t.Fatalf("schedule with odd OPEN_AT/CLOSE_AT: %v", err)
+	if _, err := Load(env(m)); err == nil || !strings.Contains(err.Error(), "OPEN_AT") {
+		t.Fatalf("inverted OPEN_AT/CLOSE_AT with SCHEDULE: err=%v", err)
 	}
 	for _, bad := range []string{"mon 10:00-14:00; mon 13:00-20:00", "mon 10:00-10:00", "funday 10:00-12:00", "mon 10:00"} {
 		if _, err := Load(env(with(bad))); err == nil || !strings.Contains(err.Error(), "SCHEDULE") {

@@ -121,7 +121,7 @@ func (c *Config) validate() []error {
 		bad("RESTAURANT_TZ %q: %v", c.RestaurantTZ, err)
 	}
 	c.Location = loc
-	if c.Days == nil && c.OpenAt >= c.CloseAt {
+	if c.OpenAt >= c.CloseAt {
 		bad("OPEN_AT must be earlier than CLOSE_AT (for work across midnight use SCHEDULE)")
 	}
 	if c.ExpiringShare <= 0 || c.ExpiringMinHours < 0 || c.ExpiringMaxShare <= 0 || c.ExpiringMaxShare > 1 {
