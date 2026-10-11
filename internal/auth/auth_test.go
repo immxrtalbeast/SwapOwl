@@ -178,3 +178,56 @@ func TestLoginRateLimitHoldsUnderConcurrency(t *testing.T) {
 		t.Fatalf("checked=%d blocked=%d, want 5 and 45", checked, blocked)
 	}
 }
+
+func TestChangePasswordKeepsCurrentSessionOnly(t *testing.T) {
+	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	svc, repo := newSvc(&now)
+	ctx := context.Background()
+	u, _ := svc.CreateUser(ctx, "ann", "password1", auth.Operator)
+	cur, _, _ := svc.Login(ctx, "ann", "password1")
+	other, _, _ := svc.Login(ctx, "ann", "password1")
+
+	if err := svc.ChangePassword(ctx, u.ID, cur, "wrong", "password2"); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("wrong old: %v", err)
+	}
+	if err := svc.ChangePassword(ctx, u.ID, cur, "password1", "password2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Authenticate(ctx, cur, ""); err != nil {
+		t.Errorf("current session: %v", err)
+	}
+	if _, err := svc.Authenticate(ctx, other, ""); err == nil {
+		t.Error("other session must be gone")
+	}
+	if repo.SessionCount() != 1 {
+		t.Errorf("sessions: %d", repo.SessionCount())
+	}
+	if _, _, err := svc.Login(ctx, "ann", "password1"); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("old password still works: %v", err)
+	}
+	if _, _, err := svc.Login(ctx, "ann", "password2"); err != nil {
+		t.Errorf("new password: %v", err)
+	}
+	h, _ := repo.UserByID(ctx, u.ID)
+	if err := bcrypt.CompareHashAndPassword([]byte(h.PasswordHash), []byte("password2")); err != nil {
+		t.Errorf("hash: %v", err)
+	}
+}
+
+func TestChangePasswordIsRateLimitedSeparatelyFromLogin(t *testing.T) {
+	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	svc, _ := newSvc(&now)
+	ctx := context.Background()
+	u, _ := svc.CreateUser(ctx, "ann", "password1", auth.Operator)
+	for i := 0; i < 5; i++ {
+		if err := svc.ChangePassword(ctx, u.ID, "", "wrong", "password2"); !errors.Is(err, auth.ErrInvalidCredentials) {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+	}
+	if err := svc.ChangePassword(ctx, u.ID, "", "password1", "password2"); !errors.Is(err, auth.ErrTooManyAttempts) {
+		t.Fatalf("6th: %v", err)
+	}
+	if _, _, err := svc.Login(ctx, "ann", "password1"); err != nil {
+		t.Fatalf("login must not be blocked by password attempts: %v", err)
+	}
+}

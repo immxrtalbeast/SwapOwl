@@ -27,6 +27,8 @@ func (rt *Router) authRoutes() {
 	rt.HandlePublic(http.MethodPost, "/api/auth/login", rt.login)
 	rt.HandleRole(http.MethodPost, "/api/auth/logout", auth.Viewer, rt.logout)
 	rt.HandleRole(http.MethodGet, "/api/auth/me", auth.Viewer, rt.me)
+	rt.HandleRole(http.MethodPost, "/api/auth/password", auth.Viewer, rt.changePassword)
+	rt.auditRoutes()
 
 	rt.HandleRole(http.MethodGet, "/api/users", auth.Admin, rt.listUsers)
 	rt.HandleRole(http.MethodPost, "/api/users", auth.Admin, rt.createUser)
@@ -144,4 +146,55 @@ func (rt *Router) me(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"login": login, "role": p.Role, "auth_required": rt.deps.Auth.Required,
 	})
+}
+
+func (rt *Router) changePassword(w http.ResponseWriter, r *http.Request) {
+	p, _ := PrincipalFrom(r.Context())
+	if p.Kind != auth.KindSession {
+		// Анонимный operator стенда и ключ интеграции своего пароля не имеют.
+		WriteError(w, http.StatusForbidden, CodeForbidden, "password can be changed only by a signed-in user", nil)
+		return
+	}
+	var in struct {
+		Old string `json:"old"`
+		New string `json:"new"`
+	}
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	switch {
+	case in.Old == "":
+		validationError(w, "old", "old password is required")
+		return
+	case len(in.New) < minPassBytes || len(in.New) > maxPassBytes:
+		validationError(w, "new", "new password must be 8..72 bytes")
+		return
+	case in.New == in.Old:
+		validationError(w, "new", "new password must differ from the old one")
+		return
+	}
+	var token string
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		token = c.Value
+	}
+	err := rt.deps.Auth.ChangePassword(r.Context(), p.UserID, token, in.Old, in.New)
+	switch {
+	case err == nil:
+	case errors.Is(err, auth.ErrTooManyAttempts):
+		rt.audit(r, "password_change_blocked")
+		WriteError(w, http.StatusTooManyRequests, CodeTooManyTries, "too many failed attempts, try later", nil)
+		return
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		rt.audit(r, "password_change_failed")
+		WriteError(w, http.StatusUnauthorized, CodeUnauthorized, "invalid old password", nil)
+		return
+	case errors.Is(err, auth.ErrNotFound):
+		WriteError(w, http.StatusUnauthorized, CodeUnauthorized, "authentication required", nil)
+		return
+	default:
+		rt.internalError(w, r, err)
+		return
+	}
+	rt.audit(r, "password_changed")
+	w.WriteHeader(http.StatusNoContent)
 }

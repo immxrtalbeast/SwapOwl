@@ -19,6 +19,7 @@ export const SCREENS: Screen[] = [
   { id: "money", title: "Деньги", soon: "потери от списаний и сэкономленные суммы" },
   { id: "demo", title: "Демо", soon: "панель управления временем стенда" },
   { id: "analytics", title: "Аналитика", soon: "сводки по списаниям и продажам" },
+  { id: "account", title: "Аккаунт" },
   { id: "users", title: "Пользователи и ключи", minRole: "admin", soon: "учётные записи и ключи доступа" },
 ];
 
