@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { RoleGate } from "../../auth/AuthContext";
 import { api } from "../../api/client";
+import { useLive } from "../../app/useLive";
 import type { Batch, ProductStock } from "../../api/types";
 import { DeliveryForm } from "./DeliveryForm";
 import { formatQty, formatTimeLeft } from "./format";
@@ -22,12 +23,10 @@ export function StockPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useLive(load, ["stock.changed", "stand.reset"]);
 
   return (
-    <main style={{ maxWidth: 960, margin: "0 auto", padding: 16, fontFamily: "system-ui, sans-serif" }}>
+    <section>
       <h1>Склад</h1>
       {state.kind === "loading" && <p role="status">Загрузка…</p>}
       {state.kind === "error" && (
@@ -44,7 +43,7 @@ export function StockPage() {
       <RoleGate min="operator">
         <DeliveryForm onReceived={load} />
       </RoleGate>
-    </main>
+    </section>
   );
 }
 
