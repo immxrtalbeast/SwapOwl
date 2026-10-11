@@ -300,6 +300,7 @@ func TestOccurredAtOutsideWindow(t *testing.T) {
 	db.LateEvents = 2 * time.Hour
 	ctx := context.Background()
 	receive(t, db, clk, "D1", 500, 24)
+	clk.Set(t0.Add(2 * time.Hour)) // нижняя граница окна = момент прихода партии
 	for name, at := range map[string]time.Time{
 		"future":   clk.Now().Add(time.Second),
 		"too late": clk.Now().Add(-2*time.Hour - time.Second),
