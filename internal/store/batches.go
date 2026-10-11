@@ -30,6 +30,7 @@ type BatchView struct {
 	ExpiresAt         time.Time `json:"expires_at"`
 	TimeLeftSeconds   int64     `json:"time_left_seconds"`
 	Status            string    `json:"status"`
+	ExpirySource      string    `json:"expiry_source"`
 }
 
 // ListProductStock — остатки по продуктам на момент now (время берёт вызывающий из clock).
@@ -62,7 +63,7 @@ func (d *DB) ListProductStock(ctx context.Context, now time.Time) ([]ProductStoc
 func (d *DB) ListBatches(ctx context.Context, now time.Time, productID, status string) ([]BatchView, error) {
 	rows, err := d.Pool.Query(ctx, `
 		SELECT b.id, b.product_id, b.delivery_id, dl.created_at, b.quantity, b.remaining,
-		       b.received_at, b.expires_at, p.unit
+		       b.received_at, b.expires_at, p.unit, b.expiry_source
 		FROM batches b
 		JOIN deliveries dl ON dl.id = b.delivery_id
 		JOIN products p ON p.id = b.product_id
@@ -79,7 +80,7 @@ func (d *DB) ListBatches(ctx context.Context, now time.Time, productID, status s
 		var b BatchView
 		var u string
 		if err := rows.Scan(&b.ID, &b.ProductID, &b.DeliveryID, &b.DeliveryCreatedAt, &b.Quantity.Qty,
-			&b.Remaining.Qty, &b.ReceivedAt, &b.ExpiresAt, &u); err != nil {
+			&b.Remaining.Qty, &b.ReceivedAt, &b.ExpiresAt, &u, &b.ExpirySource); err != nil {
 			return nil, fmt.Errorf("store: list batches: %w", err)
 		}
 		b.Quantity.Unit, b.Remaining.Unit = domain.Unit(u), domain.Unit(u)
