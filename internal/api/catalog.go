@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"strings"
 
 	"umirhack/internal/auth"
 	"umirhack/internal/domain"
@@ -43,10 +44,25 @@ type catalogProductIn struct {
 	ShelfLifeHours    *int   `json:"shelf_life_hours"`
 }
 
+// catalogRecipeIn — строка техкарты: сырьё {product_id, gross | net [+ loss_pct] | quantity}
+// или полуфабрикат {prep_id, quantity}. quantity у сырья — то же, что gross (старый формат).
 type catalogRecipeIn struct {
-	ProductID string `json:"product_id"`
-	Quantity  string `json:"quantity"`
-	Unit      string `json:"unit"`
+	ProductID string   `json:"product_id"`
+	PrepID    string   `json:"prep_id"`
+	Quantity  string   `json:"quantity"`
+	Gross     string   `json:"gross"`
+	Net       string   `json:"net"`
+	LossPct   *float64 `json:"loss_pct"`
+	Unit      string   `json:"unit"`
+}
+
+// catalogPrepIn — полуфабрикат: из recipe получается yield единиц (unit, по умолчанию g).
+type catalogPrepIn struct {
+	ID        string            `json:"id"`
+	Unit      string            `json:"unit"`
+	Yield     string            `json:"yield"`
+	YieldUnit string            `json:"yield_unit"`
+	Recipe    []catalogRecipeIn `json:"recipe"`
 }
 
 type catalogDishIn struct {
@@ -59,6 +75,7 @@ type catalogDishIn struct {
 
 type catalogIn struct {
 	Products []catalogProductIn `json:"products"`
+	Preps    []catalogPrepIn    `json:"preps"`
 	Dishes   []catalogDishIn    `json:"dishes"`
 }
 
@@ -133,18 +150,88 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 
 	// Продукты рецептов, которых нет в теле, берём из БД: нужны их единицы для разбора количества.
 	var external []string
-	for _, d := range in.Dishes {
-		for _, it := range d.Recipe {
-			if _, ok := importUnit[it.ProductID]; !ok {
+	collect := func(items []catalogRecipeIn) {
+		for _, it := range items {
+			if _, ok := importUnit[it.ProductID]; !ok && it.ProductID != "" {
 				external = append(external, it.ProductID)
 			}
 		}
+	}
+	for _, d := range in.Dishes {
+		collect(d.Recipe)
+	}
+	for _, pr := range in.Preps {
+		collect(pr.Recipe)
 	}
 	known := map[string]domain.Unit{}
 	if len(external) > 0 {
 		var err error
 		if known, err = rt.deps.Catalog.ProductUnits(r.Context(), external); err != nil {
 			rt.internalError(w, r, err)
+			return
+		}
+	}
+	rawUnit := func(id string) (domain.Unit, bool) {
+		if u, ok := importUnit[id]; ok {
+			return u, true
+		}
+		u, ok := known[id]
+		return u, ok
+	}
+
+	if len(in.Preps) > maxCatalogRows {
+		validationError(w, "preps", fmt.Sprintf("at most %d preps per import", maxCatalogRows))
+		return
+	}
+	preps, prepUnit := map[string]domain.Prep{}, map[string]domain.Unit{}
+	for i, pr := range in.Preps {
+		field := func(f string) string { return fmt.Sprintf("preps[%d].%s", i, f) }
+		bad, msg := "", ""
+		unit := pr.Unit
+		if unit == "" {
+			unit = "g"
+		}
+		switch {
+		case !validLabel(pr.ID):
+			bad, msg = "id", "id must be 1..128 characters without control characters or edge spaces"
+		case unit != "g" && unit != "ml" && unit != "pcs":
+			bad, msg = "unit", "unit must be "+catalogBaseUnit
+		case len(pr.Recipe) == 0 || len(pr.Recipe) > maxRecipeItems:
+			bad, msg = "recipe", fmt.Sprintf("recipe must contain 1..%d items", maxRecipeItems)
+		}
+		if _, dup := preps[pr.ID]; dup && msg == "" {
+			bad, msg = "id", fmt.Sprintf("duplicate prep id %q", pr.ID)
+		}
+		if msg != "" {
+			validationError(w, field(bad), msg)
+			return
+		}
+		yu := pr.YieldUnit
+		if yu == "" {
+			yu = unit
+		}
+		y, err := units.Parse(pr.Yield, yu, units.Unit(unit))
+		if err != nil {
+			validationError(w, field("yield"), quantityMessage(err))
+			return
+		}
+		preps[pr.ID] = domain.Prep{ID: pr.ID, Yield: int64(y)}
+		prepUnit[pr.ID] = domain.Unit(unit)
+	}
+	for i, pr := range in.Preps {
+		lines, bad, msg := parseTechLines(pr.Recipe, fmt.Sprintf("preps[%d].recipe", i), rawUnit, prepUnit)
+		if msg != "" {
+			rt.techcardError(w, bad, msg, pr.ID)
+			return
+		}
+		p := preps[pr.ID]
+		p.Recipe = lines
+		preps[pr.ID] = p
+	}
+	// Цикл ловим сразу во всех полуфабрикатах, даже если их не использует ни одно блюдо.
+	for i, pr := range in.Preps {
+		if _, err := domain.ExpandTechcard([]domain.TechLine{{PrepID: pr.ID, Qty: preps[pr.ID].Yield}}, preps); err != nil {
+			validationError(w, fmt.Sprintf("preps[%d].recipe", i), techcardMessage(err))
 			return
 		}
 	}
@@ -173,37 +260,22 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 		}
 		seenDish[d.ID] = true
 		dish := store.CatalogDish{ID: d.ID, Name: d.Name, PriceMinor: *d.PriceMinor, PriorDaily: *d.PriorDaily}
-		seenItem := map[string]bool{}
-		for j, it := range d.Recipe {
-			rf := fmt.Sprintf("dishes[%d].recipe[%d].", i, j)
-			if !validLabel(it.ProductID) {
-				validationError(w, rf+"product_id", "product_id must be 1..128 characters without control characters or edge spaces")
+		lines, bad, msg := parseTechLines(d.Recipe, fmt.Sprintf("dishes[%d].recipe", i), rawUnit, prepUnit)
+		if msg != "" {
+			rt.techcardError(w, bad, msg, d.ID)
+			return
+		}
+		norms, err := domain.ExpandTechcard(lines, preps)
+		if err != nil {
+			validationError(w, fmt.Sprintf("dishes[%d].recipe", i), techcardMessage(err))
+			return
+		}
+		for _, n := range norms {
+			if n.Quantity > int64(units.Limit) {
+				validationError(w, fmt.Sprintf("dishes[%d].recipe", i), fmt.Sprintf("expanded norm of %q exceeds the quantity limit", n.ProductID))
 				return
 			}
-			if seenItem[it.ProductID] {
-				validationError(w, rf+"product_id", fmt.Sprintf("product %q is listed twice in the recipe", it.ProductID))
-				return
-			}
-			seenItem[it.ProductID] = true
-			base, ok := importUnit[it.ProductID]
-			if !ok {
-				if base, ok = known[it.ProductID]; !ok {
-					WriteError(w, http.StatusBadRequest, CodeUnknownProduct,
-						fmt.Sprintf("recipe of dish %q uses unknown product %q: add it to products", d.ID, it.ProductID),
-						map[string]any{"field": rf + "product_id"})
-					return
-				}
-			}
-			unit := it.Unit
-			if unit == "" {
-				unit = string(base)
-			}
-			q, err := units.Parse(it.Quantity, unit, units.Unit(base))
-			if err != nil {
-				validationError(w, rf+"quantity", quantityMessage(err))
-				return
-			}
-			dish.Recipe = append(dish.Recipe, store.CatalogRecipeItem{ProductID: it.ProductID, Quantity: int64(q)})
+			dish.Recipe = append(dish.Recipe, store.CatalogRecipeItem{ProductID: n.ProductID, Quantity: n.Quantity})
 		}
 		out.Dishes = append(out.Dishes, dish)
 	}
@@ -229,4 +301,109 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 		rt.audit(r, "catalog.import", slog.Int("products", len(diff.Products)), slog.Int("dishes", len(diff.Dishes)))
 	}
 	WriteJSON(w, http.StatusOK, diff)
+}
+
+// techcardError отвечает на ошибку строки техкарты: неизвестный продукт — отдельным кодом.
+func (rt *Router) techcardError(w http.ResponseWriter, field, msg, owner string) {
+	if strings.HasPrefix(msg, unknownProductPrefix) {
+		WriteError(w, http.StatusBadRequest, CodeUnknownProduct,
+			fmt.Sprintf("recipe of %q uses unknown product %q: add it to products", owner, strings.TrimPrefix(msg, unknownProductPrefix)),
+			map[string]any{"field": field})
+		return
+	}
+	validationError(w, field, msg)
+}
+
+const unknownProductPrefix = "\x00unknown product:"
+
+func techcardMessage(err error) string {
+	switch {
+	case errors.Is(err, domain.ErrTechcardCycle):
+		return "recipe has a cycle of preps: " + err.Error()
+	case errors.Is(err, domain.ErrTechcardUnknown):
+		return "recipe references an unknown prep: " + err.Error()
+	case errors.Is(err, domain.ErrOverflow):
+		return "expanded norm overflows"
+	}
+	return err.Error()
+}
+
+// parseTechLines разбирает строки техкарты в базовые единицы. При ошибке возвращает поле и текст.
+func parseTechLines(items []catalogRecipeIn, prefix string, rawUnit func(string) (domain.Unit, bool), prepUnit map[string]domain.Unit) ([]domain.TechLine, string, string) {
+	if len(items) == 0 || len(items) > maxRecipeItems {
+		return nil, prefix, fmt.Sprintf("recipe must contain 1..%d items", maxRecipeItems)
+	}
+	var lines []domain.TechLine
+	seen := map[string]bool{}
+	for j, it := range items {
+		rf := fmt.Sprintf("%s[%d].", prefix, j)
+		if (it.ProductID == "") == (it.PrepID == "") {
+			return nil, rf + "product_id", "exactly one of product_id and prep_id is required"
+		}
+		id := it.ProductID
+		if it.PrepID != "" {
+			id = "prep:" + it.PrepID
+		}
+		if !validLabel(it.ProductID+it.PrepID) || (it.ProductID != "" && !validLabel(it.ProductID)) || (it.PrepID != "" && !validLabel(it.PrepID)) {
+			return nil, rf + "product_id", "product_id and prep_id must be 1..128 characters without control characters or edge spaces"
+		}
+		if seen[id] {
+			return nil, rf + "product_id", fmt.Sprintf("%q is listed twice in the recipe", it.ProductID+it.PrepID)
+		}
+		seen[id] = true
+
+		var base domain.Unit
+		qty, field := it.Quantity, "quantity"
+		line := domain.TechLine{ProductID: it.ProductID, PrepID: it.PrepID}
+		if it.PrepID != "" {
+			var ok bool
+			if base, ok = prepUnit[it.PrepID]; !ok {
+				return nil, rf + "prep_id", fmt.Sprintf("unknown prep %q: add it to preps", it.PrepID)
+			}
+			if it.Gross != "" || it.Net != "" || it.LossPct != nil {
+				return nil, rf + "quantity", "a prep line takes only quantity"
+			}
+		} else {
+			var ok bool
+			if base, ok = rawUnit(it.ProductID); !ok {
+				return nil, rf + "product_id", unknownProductPrefix + it.ProductID
+			}
+			set := 0
+			for _, v := range []string{it.Quantity, it.Gross, it.Net} {
+				if v != "" {
+					set++
+				}
+			}
+			switch {
+			case set != 1:
+				return nil, rf + "gross", "exactly one of gross, net and quantity is required"
+			case it.Gross != "":
+				qty, field = it.Gross, "gross"
+			case it.Net != "":
+				qty, field = it.Net, "net"
+			}
+			if it.LossPct != nil && it.Net == "" {
+				return nil, rf + "loss_pct", "loss_pct is allowed only together with net"
+			}
+			if it.LossPct != nil {
+				lp := *it.LossPct
+				bp := math.Round(lp * 100)
+				if math.IsNaN(lp) || lp < 0 || lp >= 100 || math.Abs(lp*100-bp) > 1e-6 {
+					return nil, rf + "loss_pct", "loss_pct must be a number in 0..99.99 with at most two decimals"
+				}
+				line.LossBP = int(bp)
+			}
+		}
+		unit := it.Unit
+		if unit == "" {
+			unit = string(base)
+		}
+		q, err := units.Parse(qty, unit, units.Unit(base))
+		if err != nil {
+			return nil, rf + field, quantityMessage(err)
+		}
+		line.Qty = int64(q)
+		lines = append(lines, line)
+	}
+	return lines, "", ""
 }

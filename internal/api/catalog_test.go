@@ -179,3 +179,44 @@ func TestPutCatalogAccess(t *testing.T) {
 		}
 	}
 }
+
+const techcardBody = `{"products":[
+{"id":"tomato","name":"Томат","unit":"g","price_minor_per_1000":1,"lead_days":1,"pack_size":1000},
+{"id":"salt","name":"Соль","unit":"g","price_minor_per_1000":1,"lead_days":1,"pack_size":1000}],
+"preps":[{"id":"sauce","yield":"1","unit":"g","yield_unit":"kg","recipe":[{"product_id":"tomato","net":"480","loss_pct":20},{"product_id":"salt","gross":"100"}]}],
+"dishes":[{"id":"d","name":"Блюдо","price_minor":1,"prior_daily":1,"recipe":[{"prep_id":"sauce","quantity":"250"},{"product_id":"salt","quantity":"5"}]}]}`
+
+func TestPutCatalogExpandsTechcard(t *testing.T) {
+	fc := &fakeCatalog{}
+	rec := putCatalog(t, fc, "/api/catalog", techcardBody)
+	if rec.Code != 200 {
+		t.Fatalf("code %d %s", rec.Code, rec.Body)
+	}
+	// соус 1 кг = 600 г томата (480/0.8) + 100 г соли; 250 г соуса = 150 + 25; плюс 5 г соли.
+	got := fc.in.Dishes[0].Recipe
+	want := []store.CatalogRecipeItem{{ProductID: "salt", Quantity: 30}, {ProductID: "tomato", Quantity: 150}}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("recipe %+v", got)
+	}
+}
+
+func TestPutCatalogTechcardValidation(t *testing.T) {
+	rep := func(old, new string) string { return strings.Replace(techcardBody, old, new, 1) }
+	cases := map[string]struct{ body, code string }{
+		"cycle":        {rep(`"recipe":[{"product_id":"tomato","net"`, `"recipe":[{"prep_id":"sauce","quantity":"1"},{"product_id":"tomato","net"`), CodeValidation},
+		"unknown prep": {rep(`"prep_id":"sauce"`, `"prep_id":"nope"`), CodeValidation},
+		"both":         {rep(`"gross":"100"`, `"gross":"100","net":"1"`), CodeValidation},
+		"loss w/o net": {rep(`"gross":"100"`, `"gross":"100","loss_pct":5`), CodeValidation},
+		"loss 100":     {rep(`"loss_pct":20`, `"loss_pct":100`), CodeValidation},
+		"prep gross":   {rep(`"prep_id":"sauce","quantity":"250"`, `"prep_id":"sauce","gross":"250"`), CodeValidation},
+		"no yield":     {rep(`"yield":"1"`, `"yield":"0"`), CodeValidation},
+		"unknown prod": {rep(`"product_id":"salt","quantity":"5"`, `"product_id":"zzz","quantity":"5"`), CodeUnknownProduct},
+	}
+	for name, c := range cases {
+		fc := &fakeCatalog{}
+		rec := putCatalog(t, fc, "/api/catalog", c.body)
+		if rec.Code != 400 || !strings.Contains(rec.Body.String(), c.code) || fc.calls != 0 {
+			t.Errorf("%s: %d %s calls=%d", name, rec.Code, rec.Body, fc.calls)
+		}
+	}
+}
