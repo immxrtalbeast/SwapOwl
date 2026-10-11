@@ -18,6 +18,13 @@ type fakeOrders struct {
 	resp store.OrderResponse
 	err  error
 	n    int
+	list listCall
+}
+
+type listCall struct {
+	status string
+	limit  int
+	before string
 }
 
 func (f *fakeOrders) DishRecipes(_ context.Context, ids []string) (map[string][]domain.RecipeItem, error) {
@@ -38,8 +45,12 @@ func (f *fakeOrders) PlaceOrder(_ context.Context, in store.OrderInput, _ func()
 	f.in, f.n = in, f.n+1
 	return f.resp, f.err
 }
-func (f *fakeOrders) ListOrders(context.Context, string, int) ([]store.OrderResponse, error) {
-	return []store.OrderResponse{}, nil
+func (f *fakeOrders) ListOrders(_ context.Context, status string, limit int, before string) ([]store.OrderResponse, int, error) {
+	f.list = listCall{status, limit, before}
+	if before == zeroID {
+		return nil, 0, store.ErrUnknownCursor
+	}
+	return []store.OrderResponse{}, 1284, nil
 }
 func (f *fakeOrders) ListDishes(context.Context) ([]store.DishView, error) { return nil, nil }
 
@@ -52,6 +63,8 @@ func postOrder(t *testing.T, fo *fakeOrders, body string) *httptest.ResponseReco
 	rt.Handler().ServeHTTP(rec, req)
 	return rec
 }
+
+const zeroID = "00000000-0000-0000-0000-000000000000"
 
 const oid = "5B0C0C3E-8A51-4D0E-9D0B-1F2A3B4C5D6E"
 
@@ -152,5 +165,32 @@ func TestPostOrderOccurredAt(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "validation_error") ||
 		!strings.Contains(rec.Body.String(), "correction") {
 		t.Fatalf("outside window: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func getOrders(t *testing.T, fo *fakeOrders, query string) *httptest.ResponseRecorder {
+	t.Helper()
+	rt := NewRouter(Deps{Now: func() time.Time { return standTime }, Orders: fo})
+	rec := httptest.NewRecorder()
+	rt.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/orders"+query, nil))
+	return rec
+}
+
+func TestListOrdersTotalHeaderAndPaging(t *testing.T) {
+	fo := &fakeOrders{}
+	rec := getOrders(t, fo, "?status=accepted&limit=20&before="+oid)
+	if rec.Code != http.StatusOK || rec.Header().Get("X-Total-Count") != "1284" {
+		t.Fatalf("%d total=%q %s", rec.Code, rec.Header().Get("X-Total-Count"), rec.Body)
+	}
+	if fo.list != (listCall{"accepted", 20, strings.ToLower(oid)}) {
+		t.Fatalf("call: %+v", fo.list)
+	}
+}
+
+func TestListOrdersRejectsBadCursor(t *testing.T) {
+	for _, q := range []string{"?before=17", "?before=" + zeroID + "x", "?before=" + zeroID} {
+		if rec := getOrders(t, &fakeOrders{}, q); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", q, rec.Code)
+		}
 	}
 }

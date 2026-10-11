@@ -137,7 +137,12 @@ curl -X POST http://localhost:8080/api/orders \
 
 ### `GET /api/orders?status=` (viewer)
 
-История; отклонённые отделены полем `status` (`accepted` / `rejected`).
+История, новые сверху: `[{"id", "source", "status", "at", "replayed", "items", "writeoffs", "missing", "shortfalls"}]`. Отклонённые отделены полем `status` (`accepted` / `rejected`).
+
+- `writeoffs` — из какой партии сколько списано: `[{"product_id", "product_name", "batch_id", "qty": Qty, "expires_at"}]`; `shortfalls` — недостача заказа из кассы (`source: "pos"`), у `api` пуст; `missing` — нехватка отклонённого заказа.
+- `limit` — размер страницы, 1…500 (по умолчанию 100).
+- `before` — id заказа, после которого продолжить: передайте id последнего заказа предыдущей страницы. Порядок `at DESC, id`, ключ точный: заказы с одинаковым `at` не теряются и не повторяются. Неизвестный или не UUID — `400 validation_error`.
+- Заголовок `X-Total-Count` — число заказов с этим статусом целиком (без `status` — всех). Его показывает заголовок «Принятые · 1 284»; размер страницы (`limit`) — не счётчик.
 
 ## Приёмка со сроками (2.1а, миграция `0004`)
 

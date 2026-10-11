@@ -88,8 +88,8 @@ func TestPlaceOrderRejectedLeavesBatchesUntouched(t *testing.T) {
 	if sum, sold := remainingSum(t, db); sum != 150 || sold != 0 {
 		t.Fatalf("sum=%d sold=%d", sum, sold)
 	}
-	list, _ := db.ListOrders(context.Background(), OrderRejected, 10)
-	if len(list) != 1 {
+	list, total, _ := db.ListOrders(context.Background(), OrderRejected, 10, "")
+	if len(list) != 1 || total != 1 {
 		t.Fatalf("history: %+v", list)
 	}
 }
@@ -334,5 +334,38 @@ func TestOccurredAtIsPartOfOrderHash(t *testing.T) {
 	c.OccurredAt = occ(t0.In(time.FixedZone("x", 3*3600)))
 	if string(b.BodyHash()) != string(c.BodyHash()) {
 		t.Fatal("same instant in another zone must hash equal")
+	}
+}
+
+func TestListOrdersTotalPagingAndProductNames(t *testing.T) {
+	db, clk := orderDB(t)
+	ctx := context.Background()
+	receive(t, db, clk, "D1", 500, 72)
+	ids := []string{o1, o2, "00000000-0000-4000-8000-000000000003"}
+	for _, id := range ids {
+		if r, err := db.PlaceOrder(ctx, order(id, 1, 100), clk.Now); err != nil || r.Status != OrderAccepted {
+			t.Fatalf("%v %+v", err, r)
+		}
+		clk.Advance(time.Minute)
+	}
+	if r, err := db.PlaceOrder(ctx, order("00000000-0000-4000-8000-000000000009", 9, 900), clk.Now); err != nil || r.Status != OrderRejected {
+		t.Fatalf("%v %+v", err, r)
+	}
+	page1, total, err := db.ListOrders(ctx, OrderAccepted, 2, "")
+	if err != nil || total != 3 || len(page1) != 2 || page1[0].ID != ids[2] {
+		t.Fatalf("page1: %v total=%d %+v", err, total, page1)
+	}
+	if w := page1[0].Writeoffs; len(w) != 1 || w[0].ProductName != "Лосось" || w[0].BatchID == 0 {
+		t.Fatalf("writeoffs: %+v", w)
+	}
+	page2, total, err := db.ListOrders(ctx, OrderAccepted, 2, page1[1].ID)
+	if err != nil || total != 3 || len(page2) != 1 || page2[0].ID != ids[0] {
+		t.Fatalf("page2: %v total=%d %+v", err, total, page2)
+	}
+	if _, _, err := db.ListOrders(ctx, "", 2, "00000000-0000-4000-8000-0000000000ff"); !errors.Is(err, ErrUnknownCursor) {
+		t.Fatalf("unknown cursor: %v", err)
+	}
+	if _, total, _ := db.ListOrders(ctx, "", 1, ""); total != 4 {
+		t.Fatalf("total without status: %d", total)
 	}
 }

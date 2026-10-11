@@ -20,7 +20,7 @@ import (
 type Orders interface {
 	DishRecipes(ctx context.Context, ids []string) (map[string][]domain.RecipeItem, error)
 	PlaceOrder(ctx context.Context, in store.OrderInput, now func() time.Time) (store.OrderResponse, error)
-	ListOrders(ctx context.Context, status string, limit int) ([]store.OrderResponse, error)
+	ListOrders(ctx context.Context, status string, limit int, before string) ([]store.OrderResponse, int, error)
 	ListDishes(ctx context.Context) ([]store.DishView, error)
 }
 
@@ -175,11 +175,24 @@ func (rt *Router) listOrders(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-	out, err := rt.deps.Orders.ListOrders(r.Context(), status, limit)
+	before := r.URL.Query().Get("before")
+	if before != "" {
+		if !uuidRe.MatchString(before) {
+			validationError(w, "before", "before must be an order id (UUID)")
+			return
+		}
+		before = strings.ToLower(before)
+	}
+	out, total, err := rt.deps.Orders.ListOrders(r.Context(), status, limit, before)
+	if errors.Is(err, store.ErrUnknownCursor) {
+		validationError(w, "before", "before: order not found")
+		return
+	}
 	if err != nil {
 		rt.internalError(w, r, err)
 		return
 	}
+	w.Header().Set("X-Total-Count", strconv.Itoa(total))
 	WriteJSON(w, http.StatusOK, out)
 }
 

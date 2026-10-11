@@ -96,9 +96,22 @@ export interface OrderMissing {
 
 export interface OrderWriteoff {
   product_id: string;
+  product_name?: string;
   batch_id: number;
   qty: Qty;
   expires_at: string;
+}
+
+export interface OrderShortfall {
+  product_id: string;
+  product_name: string;
+  quantity: Qty;
+}
+
+export interface OrdersPage {
+  orders: Order[];
+  /** Число заказов с этим статусом целиком, а не размер страницы. */
+  total: number;
 }
 
 export interface Order {
@@ -107,8 +120,10 @@ export interface Order {
   at: string;
   replayed: boolean;
   items: OrderItemInput[];
+  source?: "api" | "pos";
   writeoffs: OrderWriteoff[];
   missing: OrderMissing[];
+  shortfalls?: OrderShortfall[];
 }
 
 export class ApiError extends Error {

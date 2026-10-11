@@ -3,7 +3,9 @@ import type { FormEvent } from "react";
 import { api } from "../../api/client";
 import { ApiError } from "../../api/types";
 import type { Dish, Order } from "../../api/types";
-import { formatQty } from "../stock/format";
+import { Card } from "../../components";
+import { PrimaryButton, SecondaryButton, TextButton } from "../../components";
+import { OrderResult } from "./OrderResult";
 
 interface Line {
   dish_id: string;
@@ -48,61 +50,58 @@ export function OrderForm({ dishes, onPlaced }: { dishes: Dish[]; onPlaced: () =
   }
 
   return (
-    <form onSubmit={submit} style={{ marginBottom: 24 }}>
-      <h2>Новый заказ</h2>
-      {lines.map((l, i) => (
-        <div key={i} style={{ marginBottom: 8 }}>
-          <label>
-            Блюдо{" "}
-            <select required value={l.dish_id} onChange={(e) => update(i, { dish_id: e.target.value })}>
-              <option value="">— выберите —</option>
-              {dishes.map((d) => (
-                <option key={d.id} value={d.id} disabled={taken.has(d.id) && l.dish_id !== d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </label>{" "}
-          <label>
-            Порций{" "}
-            <input required type="number" min={1} max={10000} step={1} value={l.portions} onChange={(e) => update(i, { portions: e.target.value })} />
-          </label>{" "}
-          {lines.length > 1 && (
-            <button type="button" onClick={() => edit((ls) => ls.filter((_, j) => j !== i))}>
-              Убрать
-            </button>
-          )}
+    <Card title="Новый заказ">
+      <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
+        {lines.map((l, i) => (
+          <div key={i} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
+            <label style={labelStyle}>
+              Блюдо
+              <select required value={l.dish_id} onChange={(e) => update(i, { dish_id: e.target.value })} style={{ ...controlStyle, minWidth: 220 }}>
+                <option value="">— выберите —</option>
+                {dishes.map((d) => (
+                  <option key={d.id} value={d.id} disabled={taken.has(d.id) && l.dish_id !== d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Порций
+              <input required type="number" min={1} max={10000} step={1} value={l.portions} onChange={(e) => update(i, { portions: e.target.value })} style={{ ...controlStyle, width: 96 }} />
+            </label>
+            {lines.length > 1 && (
+              <TextButton type="button" onClick={() => edit((ls) => ls.filter((_, j) => j !== i))}>
+                Убрать
+              </TextButton>
+            )}
+          </div>
+        ))}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          <SecondaryButton type="button" onClick={() => edit((ls) => [...ls, { dish_id: "", portions: "1" }])}>
+            Добавить блюдо
+          </SecondaryButton>
+          <PrimaryButton type="submit" loading={sending}>
+            Оформить заказ
+          </PrimaryButton>
         </div>
-      ))}
-      <button type="button" onClick={() => edit((ls) => [...ls, { dish_id: "", portions: "1" }])}>
-        Добавить блюдо
-      </button>{" "}
-      <button type="submit" disabled={sending}>
-        Оформить заказ
-      </button>
-      {sending && <p role="status">Отправка…</p>}
-      {error && <p role="alert">Ошибка: {error}</p>}
-      {result?.status === "accepted" && (
-        <p role="status">Заказ принят{result.replayed ? " (повтор)" : ""}: списано из партий — {result.writeoffs.length}.</p>
-      )}
-      {result?.status === "rejected" && (
-        <div role="alert">
-          <p>Заказ отклонён: не хватает продуктов.</p>
-          <MissingList order={result} />
-        </div>
-      )}
-    </form>
+        {error && (
+          <p role="alert" style={{ margin: 0, color: "var(--urgency-critical-fg)" }}>
+            Ошибка: {error}
+          </p>
+        )}
+      </form>
+      {result && <OrderResult order={result} />}
+    </Card>
   );
 }
 
-export function MissingList({ order }: { order: Order }) {
-  return (
-    <ul>
-      {order.missing.map((m) => (
-        <li key={m.product_id}>
-          {m.product_name}: нужно {formatQty(m.required)}, доступно {formatQty(m.available)}, не хватает {formatQty(m.missing)}
-        </li>
-      ))}
-    </ul>
-  );
-}
+const labelStyle = { display: "grid", gap: 4, font: "var(--type-label)", color: "var(--text-muted)" } as const;
+const controlStyle = {
+  height: "var(--control-h)",
+  padding: "0 12px",
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-control)",
+  background: "var(--surface)",
+  color: "var(--text)",
+  font: "var(--type-body)",
+} as const;
