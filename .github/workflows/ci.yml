@@ -1,0 +1,109 @@
+# .github/workflows/ci.yml
+#
+# Проверки на каждый PR в main и на каждый push в main (.ai/solution.md, 2.9).
+# AI-ревью (ai-review.yml) запускается только после этого workflow: зелёный — ревью,
+# красный — итог «CI красный» без запуска модели. Поэтому имя workflow («CI») и имя
+# задания («checks») менять только вместе с ai-review.yml и защитой ветки.
+#
+# Тесты с БД без PostgreSQL пропускаются (t.Skip). Здесь база есть всегда, и любой
+# пропуск считается падением: иначе сторожа инвариантов могли бы молча не запуститься.
+#
+# Нужно один раз (люди): Settings → Branches → main → Require status checks: «checks».
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://ci:ci@localhost:5432/ci?sslmode=disable
+      INVARIANTS_DATABASE_URL: postgres://ci:ci@localhost:5432/ci?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$out" ]; then echo "Не отформатировано gofmt:"; echo "$out"; exit 1; fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test -race (с PostgreSQL)
+        # -p 1: пакеты с БД работают с одной базой и не должны идти параллельно.
+        run: |
+          set +e
+          go test -race -p 1 -count=1 -v ./... > "$RUNNER_TEMP/go-test.log" 2>&1
+          status=$?
+          set -e
+          grep -E '^(--- FAIL|FAIL|ok|panic:)' "$RUNNER_TEMP/go-test.log" || true
+          if grep -q -- '--- SKIP' "$RUNNER_TEMP/go-test.log"; then
+            echo "Тесты пропущены, хотя PostgreSQL есть:"; grep -- '--- SKIP' "$RUNNER_TEMP/go-test.log"; exit 1
+          fi
+          exit "$status"
+
+      - name: Хвост лога тестов
+        if: failure()
+        run: grep -E -B2 -A20 -- '--- FAIL|^panic:' "$RUNNER_TEMP/go-test.log" | head -300 || true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Фронтенд — typecheck, тесты, сборка
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Образ API
+        run: docker build -f deploy/Dockerfile.api -t api:ci .
+
+  # Красный main — сигнал людям и планировщику: защита ветки этого не допускает,
+  # значит, что-то прошло в обход или тесты нестабильны.
+  main-alert:
+    needs: checks
+    if: failure() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Telegram
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          [ -n "$TOKEN" ] || { echo "TELEGRAM_BOT_TOKEN не задан"; exit 0; }
+          curl -s "https://api.telegram.org/bot$TOKEN/sendMessage" -d chat_id="$CHAT" \
+            -d text="CI на main красный: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null

@@ -27,14 +27,9 @@ func TestPublishMonotonicIDAndAt(t *testing.T) {
 func TestSlowSubscriberDroppedWithoutBlocking(t *testing.T) {
 	b := New(func() time.Time { return t0 })
 	slow, fast := b.Subscribe(), b.Subscribe()
-	done := make(chan struct{})
-	go func() {
-		for range fast.C {
-		}
-		close(done)
-	}()
 	for i := 0; i < SubscriberBuffer+10; i++ {
 		b.Publish(StockChanged, nil) // не должно зависнуть
+		<-fast.C                     // быстрый успевает за каждым событием, медленный не читает
 	}
 	n := 0
 	for range slow.C { // канал закрыт шиной после переполнения
@@ -47,7 +42,9 @@ func TestSlowSubscriberDroppedWithoutBlocking(t *testing.T) {
 		t.Fatalf("subscribers = %d, want 1", b.Subscribers())
 	}
 	b.Close()
-	<-done
+	if _, ok := <-fast.C; ok {
+		t.Fatal("fast subscription must be closed by Close")
+	}
 }
 
 func TestCloseAndUnsubscribeIdempotent(t *testing.T) {
