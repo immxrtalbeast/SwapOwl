@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HotOffer } from "../../api/types";
-import { filterByProduct, formatUntil, portionsWord } from "./view";
+import { filterByProduct, formatUntil, handNote, portionsWord } from "./view";
 
 const offer = (id: string, products: string[]): HotOffer => ({
   dish_id: id, dish_name: id, priority: 1, target_portions: 0, usual_portions: 0, sell_until: "", explanation: "",
@@ -28,5 +28,17 @@ describe("filterByProduct", () => {
 describe("portionsWord", () => {
   it("склоняет", () => {
     expect([1, 2, 5, 11, 21, 12].map(portionsWord)).toEqual(["порция", "порции", "порций", "порций", "порция", "порций"]);
+  });
+});
+
+describe("handNote", () => {
+  it("суммирует риск по причинам в единице первой", () => {
+    const o = offer("d", ["a", "b"]);
+    o.reasons[0].at_risk = { qty: 1000, unit: "g" };
+    o.reasons[1].at_risk = { qty: 400, unit: "g" };
+    expect(handNote(o)).toBe("−1,4 кг в мусор");
+  });
+  it("без причин пометки нет", () => {
+    expect(handNote(offer("d", []))).toBeUndefined();
   });
 });
