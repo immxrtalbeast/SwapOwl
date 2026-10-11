@@ -90,6 +90,33 @@ func TestDeliveryPublishesOnceNotOnReplay(t *testing.T) {
 	}
 }
 
+type fakeCatalog struct{ api.Catalog }
+
+func (fakeCatalog) ImportCatalog(context.Context, store.CatalogInput, bool) (store.CatalogDiff, error) {
+	return store.CatalogDiff{}, nil
+}
+
+func TestCatalogImportRechecksStopList(t *testing.T) {
+	menu := &fakeMenu{have: 100}
+	p, sub := newPub(menu)
+
+	menu.have = 0 // импорт поднял норму выше остатка: блюдо уходит в стоп-лист
+	c := pubCatalog{fakeCatalog{}, p}
+	if _, err := c.ImportCatalog(context.Background(), store.CatalogInput{}, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := drain(sub); len(got) != 0 {
+		t.Fatalf("dry run published %v", got)
+	}
+	if _, err := c.ImportCatalog(context.Background(), store.CatalogInput{}, false); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(drain(sub), "\n")
+	if !strings.Contains(got, `"added":["d1"]`) || strings.Contains(got, "stock.changed") {
+		t.Fatalf("events:\n%s", got)
+	}
+}
+
 func TestOrderAcceptedAndRejected(t *testing.T) {
 	menu := &fakeMenu{have: 10}
 	p, sub := newPub(menu)

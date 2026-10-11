@@ -21,7 +21,7 @@
 | `validation_error`, `unknown_product`, `unknown_dish` | 400 |
 | `unauthorized` | 401 |
 | `forbidden` | 403 |
-| `delivery_conflict`, `order_conflict`, `insufficient_stock` | 409 |
+| `delivery_conflict`, `order_conflict`, `insufficient_stock`, `unit_conflict` | 409 |
 | `too_many_attempts` | 429 |
 | `internal` | 500 |
 | `overloaded` | 503 |
@@ -44,7 +44,9 @@ curl -X POST http://localhost:8080/api/deliveries \
   }'
 ```
 
-В позиции ровно одно из `shelf_life_hours` (целое, 1…87600) и `expires_on` (`YYYY-MM-DD`). `unit` обязателен только для неизвестного продукта.
+В позиции не больше одного из `shelf_life_hours` (целое, 1…87600) и `expires_on` (`YYYY-MM-DD`); оба сразу — `400`. `unit` обязателен только для неизвестного продукта.
+
+**Правило срока.** Если нет ни `shelf_life_hours`, ни `expires_on`, берётся срок хранения по умолчанию у продукта (`products.shelf_life_hours`, задаётся через `PUT /api/catalog`): `expires_at = received_at + срок`. Явный срок позиции главнее. Если у продукта срока нет (в том числе у автосозданного из поставки) — `400` с полем `items[i].shelf_life_hours`, ничего не записано. Повтор поставки сверяется по телу «как пришло»: позиция без срока и позиция с явными часами — разные тела.
 
 - `201` — принята:
   ```json
@@ -60,6 +62,44 @@ curl -X POST http://localhost:8080/api/deliveries \
 ### `GET /api/deliveries`, `GET /api/deliveries/{id}` (viewer)
 
 История поставок, новые сверху; одна поставка.
+
+## Справочники
+
+### `PUT /api/catalog` (admin или ключ operator)
+
+Импорт справочников из учётной системы (iiko): добавление и обновление, **без удаления** — продукты и блюда, которых нет в теле, остаются. Вошедший по паролю `operator` получает `403`.
+
+```bash
+curl -X PUT 'http://localhost:8080/api/catalog?dry_run=true' \
+  -H 'Authorization: Bearer <key>' -H 'Content-Type: application/json' \
+  -d '{
+    "products": [
+      {"id": "rice", "name": "Рис", "unit": "g", "price_minor_per_1000": 15000,
+       "lead_days": 2, "pack_size": 1000, "shelf_life_hours": 720}
+    ],
+    "dishes": [
+      {"id": "pilaf", "name": "Плов", "price_minor": 45000, "prior_daily": 12.5,
+       "recipe": [{"product_id": "rice", "quantity": "0.15", "unit": "kg"}]}
+    ]
+  }'
+```
+
+- Продукт: `unit` — `g`, `ml` или `pcs`; `price_minor_per_1000` (копейки за 1000 базовых единиц, ≥ 0), `lead_days`, `pack_size` обязательны; `shelf_life_hours` (1…87600) необязателен — срок по умолчанию для поставок (см. «Правило срока» выше). Если поле не передано, прежний срок у существующего продукта сохраняется (очистить его через API нельзя).
+- Блюдо: `price_minor`, `prior_daily` обязательны; `recipe` непуст и **заменяет** прежний рецепт целиком. `quantity` — строка по правилам поставок (`"0.15"`), `unit` необязателен (по умолчанию базовая единица продукта; `kg`, `l` допустимы). Продукт рецепта берётся из тела или из БД, иначе `400 unknown_product`.
+- Продукт, автосозданный из поставки, при импорте становится обычным справочным (`auto_created = false`) и не удаляется сбросом стенда.
+- `?dry_run=true` — вернуть разницу, ничего не записав.
+- Проверки старта (2.2) применяются к результату импорта по всему справочнику: у каждого продукта из рецептов цена > 0, рецепт каждого блюда непуст.
+- Одна транзакция: любая ошибка — ничего не записано.
+
+`200`:
+```json
+{"dry_run": true,
+ "products": [{"id": "rice", "action": "created"}],
+ "dishes": [{"id": "pilaf", "action": "updated", "fields": ["price_minor", "recipe"]}]}
+```
+`action` — `created`, `updated` или `unchanged`; `fields` — что изменилось при `updated`.
+
+Ошибки: `400 validation_error` (в том числе `details.problems` — нарушения проверок старта), `400 unknown_product`, `409 unit_conflict` — у существующего продукта другая `unit` (`details.product_id`, `current_unit`, `import_unit`), `403 forbidden`.
 
 ## Склад и мониторинг (viewer)
 

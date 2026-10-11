@@ -98,6 +98,21 @@ func (s pubStock) ReceiveDelivery(ctx context.Context, in store.DeliveryInput, n
 	return resp, nil
 }
 
+type pubCatalog struct {
+	api.Catalog
+	p *publisher
+}
+
+// ImportCatalog после записи (не dry-run) сверяет стоп-лист: смена техкарт меняет его состав,
+// а остатки не трогает, поэтому stock.changed не нужен (7.5).
+func (c pubCatalog) ImportCatalog(ctx context.Context, in store.CatalogInput, dryRun bool) (store.CatalogDiff, error) {
+	diff, err := c.Catalog.ImportCatalog(ctx, in, dryRun)
+	if err == nil && !dryRun {
+		c.p.recheckStopList(ctx)
+	}
+	return diff, err
+}
+
 type pubOrders struct {
 	api.Orders
 	p *publisher

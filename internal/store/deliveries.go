@@ -21,11 +21,25 @@ var ErrDeliveryConflict = errors.New("store: delivery id reused with different c
 // ErrUnitMismatch — единица продукта в БД не совпала с единицей позиции.
 var ErrUnitMismatch = errors.New("store: product unit mismatch")
 
+// ErrNoShelfLife — у позиции нет срока, а у продукта нет срока по умолчанию.
+var ErrNoShelfLife = errors.New("store: no shelf life for item")
+
+// NoShelfLifeError указывает позицию (с 0); errors.Is(err, ErrNoShelfLife) истинно.
+type NoShelfLifeError struct {
+	Index     int
+	ProductID string
+}
+
+func (e *NoShelfLifeError) Error() string {
+	return fmt.Sprintf("store: item %d: product %s has no default shelf life", e.Index, e.ProductID)
+}
+func (e *NoShelfLifeError) Is(target error) bool { return target == ErrNoShelfLife }
+
 // Warning кодов предупреждений поставки.
 const WarnExpiredOnArrival = "expired_on_arrival"
 
 // DeliveryItem — нормализованная позиция: количество уже в базовых единицах.
-// Ровно одно из ShelfLifeHours (>0) и ExpiresOn (YYYY-MM-DD).
+// Ровно одно из ShelfLifeHours (>0) и ExpiresOn (YYYY-MM-DD); оба пусты — срок продукта по умолчанию.
 type DeliveryItem struct {
 	ProductID      string
 	Name           string
@@ -89,8 +103,12 @@ func (in DeliveryInput) BodyHash() []byte {
 	lines := make([]line, len(in.Items))
 	for i, it := range in.Items {
 		s := "d:" + it.ExpiresOn
-		if it.ExpiresOn == "" {
+		switch {
+		case it.ExpiresOn != "":
+		case it.ShelfLifeHours > 0:
 			s = "h:" + strconv.Itoa(it.ShelfLifeHours)
+		default:
+			s = "p:" // срок продукта по умолчанию — в исходном виде, как пришло
 		}
 		lines[i] = line{it.ProductID, it.Qty, s}
 	}
@@ -189,16 +207,21 @@ func (d *DB) ReceiveDelivery(ctx context.Context, in DeliveryInput, now func() t
 			return err
 		}
 		units := map[string]domain.Unit{}
+		shelf := map[string]*int{}
 		for _, id := range ids {
 			var u string
-			if err := tx.QueryRow(ctx, `SELECT unit FROM products WHERE id = $1`, id).Scan(&u); err != nil {
+			var h *int
+			if err := tx.QueryRow(ctx, `SELECT unit, shelf_life_hours FROM products WHERE id = $1`, id).Scan(&u, &h); err != nil {
 				return fmt.Errorf("store: product unit: %w", err)
 			}
-			units[id] = domain.Unit(u)
+			units[id], shelf[id] = domain.Unit(u), h
 		}
-		for _, it := range in.Items {
+		for i, it := range in.Items {
 			if units[it.ProductID] != it.Unit {
 				return fmt.Errorf("%w: %s is %s", ErrUnitMismatch, it.ProductID, units[it.ProductID])
+			}
+			if it.ExpiresOn == "" && it.ShelfLifeHours == 0 && shelf[it.ProductID] == nil {
+				return &NoShelfLifeError{Index: i, ProductID: it.ProductID}
 			}
 		}
 
@@ -207,7 +230,11 @@ func (d *DB) ReceiveDelivery(ctx context.Context, in DeliveryInput, now func() t
 			Batches: []BatchJSON{}, Warnings: []WarningJSON{}}
 		for i, it := range in.Items {
 			line := i + 1
-			expires := received.Add(time.Duration(it.ShelfLifeHours) * time.Hour)
+			hours := it.ShelfLifeHours
+			if hours == 0 && it.ExpiresOn == "" {
+				hours = *shelf[it.ProductID]
+			}
+			expires := received.Add(time.Duration(hours) * time.Hour)
 			if it.ExpiresOn != "" {
 				day, err := time.ParseInLocation("2006-01-02", it.ExpiresOn, loc)
 				if err != nil {

@@ -30,6 +30,8 @@ type Deps struct {
 
 	// Stock — поставки и остатки (2.1). nil — маршруты склада не регистрируются.
 	Stock Stock
+	// Catalog — импорт справочников (8.3 п. 5). nil — маршрут не регистрируется.
+	Catalog Catalog
 	// Orders — заказы и меню (2.3). nil — маршруты заказов не регистрируются.
 	Orders Orders
 	// Menu — стоп-лист и порции (2.5). nil — маршруты не регистрируются.
@@ -81,6 +83,7 @@ func (rt *Router) Routes() {
 	rt.HandlePublic(http.MethodGet, "/healthz", rt.healthz)
 	rt.authRoutes()
 	rt.stockRoutes()
+	rt.catalogRoutes()
 	rt.orderRoutes()
 	rt.stopListRoutes()
 	rt.hotOffersRoutes()
