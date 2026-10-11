@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { RoleGate } from "../../auth/AuthContext";
 import { api } from "../../api/client";
 import type { Dish, Order } from "../../api/types";
 import { OrderForm, MissingList } from "./OrderForm";
@@ -40,7 +41,9 @@ export function OrdersPage() {
   return (
     <section>
       <h1>Заказы</h1>
-      <OrderForm dishes={state.dishes} onPlaced={load} />
+      <RoleGate min="operator">
+        <OrderForm dishes={state.dishes} onPlaced={load} />
+      </RoleGate>
       <h2>Принятые ({accepted.length})</h2>
       {accepted.length === 0 ? <p>Принятых заказов пока нет.</p> : <OrderList orders={accepted} dishName={dishName} />}
       <h2>Отклонённые ({rejected.length})</h2>
