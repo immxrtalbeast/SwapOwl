@@ -1,0 +1,192 @@
+package seed
+
+import (
+	"fmt"
+	"sort"
+	"time"
+
+	"umirhack/internal/domain"
+	"umirhack/internal/domain/units"
+	"umirhack/internal/generator"
+	"umirhack/internal/store"
+)
+
+// HistorySeed — фиксированный seed генератора для истории стенда.
+const HistorySeed int64 = 20261010
+
+// HistoryDays — глубина истории поставок и заказов.
+const HistoryDays = 14
+
+// history — строки таблиц, посчитанные в памяти и согласованные с журналом движений.
+type history struct {
+	deliveries []hDelivery
+	batches    []hBatch // id партии = индекс + 1
+	orders     []hOrder
+	moves      []hMove
+}
+
+type hDelivery struct {
+	ID, Number         string
+	CreatedAt, Receive time.Time
+	Hash               []byte
+	Resp               store.DeliveryResponse
+}
+
+type hBatch struct {
+	ID           int64
+	DeliveryID   string
+	Line         int
+	ProductID    string
+	Quantity     int64
+	Remaining    int64
+	ReceivedAt   time.Time
+	ExpiresAt    time.Time
+	WrittenOffAt *time.Time
+}
+
+type hOrder struct {
+	ID     string
+	Status string
+	At     time.Time
+	Hash   []byte
+	Items  []store.OrderItem
+	Resp   store.OrderResponse
+}
+
+type hMove struct {
+	BatchID   int64
+	ProductID string
+	Kind      string
+	Reason    string
+	Qty       int64
+	OrderID   string
+	At        time.Time
+}
+
+// buildHistory проигрывает стартовые поставки и HistoryDays суток событий генератора
+// до t0 на пустом складе. Заказы списывают по FEFO через domain.PlanWriteoff,
+// истёкшие партии списываются движением writeoff/expired со временем expires_at.
+func buildHistory(t0 time.Time) (*history, error) {
+	t0 = t0.UTC()
+	events, err := generator.Generate(HistorySeed, t0.Add(-HistoryDays*24*time.Hour), t0)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range StartingDeliveries(t0) {
+		d := d
+		events = append(events, generator.Event{At: d.CreatedAt, Kind: generator.KindDelivery, Delivery: &d})
+	}
+	sort.SliceStable(events, func(i, j int) bool { return events[i].At.Before(events[j].At) })
+
+	prods := map[string]Product{}
+	for _, p := range Products() {
+		prods[p.ID] = p
+	}
+	recipes := map[string][]domain.RecipeItem{}
+	for _, d := range Dishes() {
+		recipes[d.ID] = d.Recipe
+	}
+
+	h := &history{}
+	sweep := func(now time.Time) {
+		for i := range h.batches {
+			b := &h.batches[i]
+			if b.Remaining > 0 && !b.ExpiresAt.After(now) {
+				at := b.ExpiresAt
+				h.moves = append(h.moves, hMove{b.ID, b.ProductID, "writeoff", "expired", b.Remaining, "", at})
+				b.Remaining, b.WrittenOffAt = 0, &at
+			}
+		}
+	}
+	for _, e := range events {
+		at := e.At.UTC()
+		sweep(at)
+		switch e.Kind {
+		case generator.KindDelivery:
+			err = h.addDelivery(e.Delivery, at, prods)
+		case generator.KindOrder:
+			err = h.addOrder(e.Order, at, prods, recipes)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	sweep(t0)
+	sort.SliceStable(h.moves, func(i, j int) bool { return h.moves[i].At.Before(h.moves[j].At) })
+	return h, nil
+}
+
+func (h *history) addDelivery(d *generator.Delivery, at time.Time, prods map[string]Product) error {
+	in := store.DeliveryInput{ID: d.ID, Number: d.Number, CreatedAt: d.CreatedAt.UTC()}
+	resp := store.DeliveryResponse{ID: d.ID, Number: d.Number, CreatedAt: in.CreatedAt, ReceivedAt: at,
+		Batches: []store.BatchJSON{}, Warnings: []store.WarningJSON{}}
+	for i, it := range d.Items {
+		p, ok := prods[it.ProductID]
+		if !ok {
+			return fmt.Errorf("seed: поставка %s: неизвестный продукт %q", d.ID, it.ProductID)
+		}
+		q, err := units.Parse(it.Quantity, it.Unit, units.Unit(p.Unit))
+		if err != nil {
+			return fmt.Errorf("seed: поставка %s: %w", d.ID, err)
+		}
+		in.Items = append(in.Items, store.DeliveryItem{ProductID: it.ProductID, Name: it.Name, Unit: p.Unit,
+			Qty: int64(q), ShelfLifeHours: it.ShelfLifeHours})
+		b := hBatch{ID: int64(len(h.batches) + 1), DeliveryID: d.ID, Line: i + 1, ProductID: it.ProductID,
+			Quantity: int64(q), Remaining: int64(q), ReceivedAt: at,
+			ExpiresAt: at.Add(time.Duration(it.ShelfLifeHours) * time.Hour)}
+		h.batches = append(h.batches, b)
+		h.moves = append(h.moves, hMove{b.ID, b.ProductID, "receipt", "", b.Quantity, "", at})
+		resp.Batches = append(resp.Batches, store.BatchJSON{ID: b.ID, LineNo: b.Line, ProductID: b.ProductID,
+			Quantity: store.QtyJSON{Qty: b.Quantity, Unit: p.Unit}, ReceivedAt: at, ExpiresAt: b.ExpiresAt, Status: "ok"})
+	}
+	h.deliveries = append(h.deliveries, hDelivery{ID: d.ID, Number: d.Number, CreatedAt: in.CreatedAt, Receive: at, Hash: in.BodyHash(), Resp: resp})
+	return nil
+}
+
+func (h *history) addOrder(o *generator.Order, at time.Time, prods map[string]Product, recipes map[string][]domain.RecipeItem) error {
+	in := store.OrderInput{ID: o.ID}
+	for _, it := range o.Items {
+		rec, ok := recipes[it.DishID]
+		if !ok {
+			return fmt.Errorf("seed: заказ %s: неизвестное блюдо %q", o.ID, it.DishID)
+		}
+		in.Items = append(in.Items, store.OrderItem{DishID: it.DishID, Portions: it.Portions})
+		for _, r := range rec {
+			q, err := units.Mul(units.Qty(r.Quantity), int64(it.Portions))
+			if err != nil {
+				return fmt.Errorf("seed: заказ %s: %w", o.ID, err)
+			}
+			in.Needs = append(in.Needs, domain.Need{ProductID: r.ProductID, Qty: domain.Qty(q)})
+		}
+	}
+	var avail []domain.Batch
+	for _, b := range h.batches {
+		if b.Remaining > 0 && at.Before(b.ExpiresAt) {
+			avail = append(avail, domain.Batch{ID: b.ID, ProductID: b.ProductID, Quantity: domain.Qty(b.Quantity),
+				Remaining: domain.Qty(b.Remaining), ReceivedAt: b.ReceivedAt, ExpiresAt: b.ExpiresAt})
+		}
+	}
+	plan, short := domain.PlanWriteoff(in.Needs, avail)
+	resp := store.OrderResponse{ID: o.ID, At: at, Items: in.Items, Writeoffs: []store.WriteoffJSON{}, Missing: []store.MissingJSON{}}
+	if short != nil {
+		resp.Status = store.OrderRejected
+		for _, s := range short {
+			p := prods[s.ProductID]
+			resp.Missing = append(resp.Missing, store.MissingJSON{ProductID: s.ProductID, ProductName: p.Name,
+				Required:  store.QtyJSON{Qty: int64(s.Required), Unit: p.Unit},
+				Available: store.QtyJSON{Qty: int64(s.Available), Unit: p.Unit},
+				Missing:   store.QtyJSON{Qty: int64(s.Missing), Unit: p.Unit}})
+		}
+	} else {
+		resp.Status = store.OrderAccepted
+		for _, w := range plan {
+			b := &h.batches[w.BatchID-1]
+			b.Remaining -= int64(w.Qty)
+			h.moves = append(h.moves, hMove{b.ID, b.ProductID, "sale", "", int64(w.Qty), o.ID, at})
+			resp.Writeoffs = append(resp.Writeoffs, store.WriteoffJSON{ProductID: w.ProductID, BatchID: b.ID,
+				Qty: store.QtyJSON{Qty: int64(w.Qty), Unit: prods[w.ProductID].Unit}, ExpiresAt: b.ExpiresAt})
+		}
+	}
+	h.orders = append(h.orders, hOrder{ID: o.ID, Status: resp.Status, At: at, Hash: in.BodyHash(), Items: in.Items, Resp: resp})
+	return nil
+}

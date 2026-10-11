@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"umirhack/internal/seed"
+	seed "umirhack/internal/seed/catalog"
 )
 
 var (
