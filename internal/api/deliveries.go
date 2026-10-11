@@ -108,18 +108,19 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 	for i, it := range in.Items {
 		field := func(f string) string { return fmt.Sprintf("items[%d].%s", i, f) }
 		hasHours, hasDate := it.ShelfLifeHours != nil, it.ExpiresOn != ""
-		if hasHours == hasDate {
-			validationError(w, field("shelf_life_hours"), "exactly one of shelf_life_hours and expires_on is required")
+		if hasHours && hasDate {
+			validationError(w, field("shelf_life_hours"), "shelf_life_hours and expires_on are mutually exclusive")
 			return
 		}
 		di := store.DeliveryItem{ProductID: it.ProductID, Name: strings.TrimSpace(it.Name)}
-		if hasHours {
+		switch {
+		case hasHours:
 			if *it.ShelfLifeHours < 1 || *it.ShelfLifeHours > maxShelfHours {
 				validationError(w, field("shelf_life_hours"), fmt.Sprintf("shelf_life_hours must be an integer in 1..%d", maxShelfHours))
 				return
 			}
 			di.ShelfLifeHours = *it.ShelfLifeHours
-		} else {
+		case hasDate:
 			if _, err := time.Parse("2006-01-02", it.ExpiresOn); err != nil {
 				validationError(w, field("expires_on"), "expires_on must be a date YYYY-MM-DD")
 				return
@@ -158,6 +159,12 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 	case errors.Is(err, store.ErrDeliveryConflict):
 		WriteError(w, http.StatusConflict, CodeDeliveryConf, "delivery id already used with different content", map[string]any{"delivery_id": in.ID})
+		return
+	case errors.Is(err, store.ErrNoShelfLife):
+		var nsl *store.NoShelfLifeError
+		errors.As(err, &nsl)
+		validationError(w, fmt.Sprintf("items[%d].shelf_life_hours", nsl.Index),
+			fmt.Sprintf("product %q has no default shelf life: pass shelf_life_hours or expires_on", nsl.ProductID))
 		return
 	case errors.Is(err, store.ErrUnitMismatch):
 		validationError(w, "items", "unit does not match the product's base unit")

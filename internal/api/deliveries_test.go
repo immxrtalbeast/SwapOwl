@@ -79,7 +79,6 @@ func TestPostDeliveryValidation(t *testing.T) {
 		"zero":            {item(`{"product_id":"salmon","quantity":"0","shelf_life_hours":1}`), CodeValidation},
 		"dimension":       {item(`{"product_id":"salmon","quantity":"1","unit":"l","shelf_life_hours":1}`), CodeValidation},
 		"both expiries":   {item(`{"product_id":"salmon","quantity":"1","shelf_life_hours":1,"expires_on":"2026-10-12"}`), CodeValidation},
-		"no expiry":       {item(`{"product_id":"salmon","quantity":"1"}`), CodeValidation},
 		"hours range":     {item(`{"product_id":"salmon","quantity":"1","shelf_life_hours":87601}`), CodeValidation},
 		"bad date":        {item(`{"product_id":"salmon","quantity":"1","expires_on":"12.10.2026"}`), CodeValidation},
 		"no items":        {item(``), CodeValidation},
@@ -102,6 +101,20 @@ func TestPostDeliveryStatusMapping(t *testing.T) {
 	}
 	if rec := post(t, &fakeStock{}, ok); rec.Code != 201 {
 		t.Fatalf("ok: %d", rec.Code)
+	}
+}
+
+func TestPostDeliveryNoExpiryUsesProductDefault(t *testing.T) {
+	// Срок не задан: API пропускает позицию, срок продукта подставляет хранилище.
+	fs := &fakeStock{}
+	rec := post(t, fs, item(`{"product_id":"salmon","quantity":"1"}`))
+	if rec.Code != 201 || fs.in.Items[0].ShelfLifeHours != 0 || fs.in.Items[0].ExpiresOn != "" {
+		t.Fatalf("code %d body %s items %+v", rec.Code, rec.Body, fs.in.Items)
+	}
+	// У продукта срока нет — 400, как раньше.
+	rec = post(t, &fakeStock{err: &store.NoShelfLifeError{Index: 0, ProductID: "salmon"}}, item(`{"product_id":"salmon","quantity":"1"}`))
+	if rec.Code != 400 || decodeErr(t, rec).Error.Code != CodeValidation || !strings.Contains(rec.Body.String(), "items[0].shelf_life_hours") {
+		t.Fatalf("no default: %d %s", rec.Code, rec.Body)
 	}
 }
 
