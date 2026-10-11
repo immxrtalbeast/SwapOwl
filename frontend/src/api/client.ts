@@ -1,6 +1,6 @@
 import type { Role } from "../auth/roles";
 import { ApiError } from "./types";
-import type { Batch, DeliveryInput, DeliveryResult, Dish, DishServings, Order, OrderItemInput, ProductStock } from "./types";
+import type { ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, Dish, DishServings, Order, OrderItemInput, ProductStock } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
@@ -23,7 +23,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+export interface ClockInfo {
+  now: string;
+  speed: number;
+  timezone: string;
+  simulated: boolean;
+  simulator_running: boolean;
+}
+
 export const api = {
+  clock: () => request<ClockInfo>("/api/clock"),
   me: () => request<{ login: string | null; role: Role; auth_required: boolean }>("/api/auth/me"),
   login: (login: string, password: string) =>
     request<{ login: string; role: Role }>("/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) }),
@@ -33,6 +42,14 @@ export const api = {
     request<Batch[]>(`/api/batches${productId ? `?product_id=${encodeURIComponent(productId)}` : ""}`),
   receiveDelivery: (d: DeliveryInput) =>
     request<DeliveryResult>("/api/deliveries", { method: "POST", body: JSON.stringify(d) }),
+  users: () => request<{ items: UserAccount[] }>("/api/users").then((r) => r.items),
+  createUser: (u: { login: string; password: string; role: Role }) =>
+    request<UserAccount>("/api/users", { method: "POST", body: JSON.stringify(u) }),
+  deleteUser: (id: number) => request<null>(`/api/users/${id}`, { method: "DELETE" }),
+  apiKeys: () => request<{ items: ApiKeyInfo[] }>("/api/api-keys").then((r) => r.items),
+  createApiKey: (k: { name: string; role: ApiKeyInfo["role"] }) =>
+    request<CreatedApiKey>("/api/api-keys", { method: "POST", body: JSON.stringify(k) }),
+  deleteApiKey: (id: number) => request<null>(`/api/api-keys/${id}`, { method: "DELETE" }),
   dishes: () => request<Dish[]>("/api/dishes"),
   menu: () => request<DishServings[]>("/api/dishes"),
   orders: (status?: Order["status"]) => request<Order[]>(`/api/orders${status ? `?status=${status}` : ""}`),

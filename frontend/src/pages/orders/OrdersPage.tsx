@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { RoleGate } from "../../auth/AuthContext";
 import { api } from "../../api/client";
+import { useLive } from "../../app/useLive";
 import type { Dish, Order } from "../../api/types";
 import { OrderForm, MissingList } from "./OrderForm";
 
@@ -21,9 +22,7 @@ export function OrdersPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useLive(load, ["order.accepted", "order.rejected", "stock.changed", "stand.reset"]);
 
   if (state.kind === "loading") return <p role="status">Загрузка…</p>;
   if (state.kind === "error") {

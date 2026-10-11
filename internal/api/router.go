@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"umirhack/internal/auth"
+	"umirhack/internal/events"
 )
 
 // Pinger — то, что /healthz спрашивает у БД.
@@ -39,6 +40,12 @@ type Deps struct {
 	HotConfig HotOffersConfig
 	// Location — часовой пояс ресторана для expires_on; nil — UTC.
 	Location *time.Location
+	// Events — шина событий для GET /events (7.5). nil — маршрут не регистрируется.
+	Events *events.Bus
+	// PingEvery — период ping в SSE; 0 — 15 с. Нужен тестам.
+	PingEvery time.Duration
+	// Clock — скорость и признаки симуляции для GET /api/clock; nil — реальные часы.
+	Clock ClockInfo
 }
 
 // Router — хаб-файл маршрутов. Следующие тикеты добавляют строки в Routes(),
@@ -77,6 +84,8 @@ func (rt *Router) Routes() {
 	rt.orderRoutes()
 	rt.stopListRoutes()
 	rt.hotOffersRoutes()
+	rt.eventsRoutes()
+	rt.clockRoutes()
 }
 
 // Handle регистрирует хендлер для метода и шаблона пути (синтаксис ServeMux без метода: "/api/x/{id}").
