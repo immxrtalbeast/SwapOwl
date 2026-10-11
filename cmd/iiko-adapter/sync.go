@@ -64,11 +64,12 @@ type adapter struct {
 	log       *log.Logger
 	dishes    map[string]bool // блюда, принятые в последний каталог
 
-	mode       string        // modeShadow | modeLive
-	shadowPath string        // журнал «что было бы отправлено» теневого режима
-	retryBase  time.Duration // первая пауза после ошибки iiko; дальше удваивается
-	retryMax   time.Duration
-	retryAt    map[int64]time.Time // id строки outbox → не повторять раньше этого момента
+	mode         string        // modeShadow | modeLive
+	shadowPath   string        // журнал «что было бы отправлено» теневого режима
+	retryBase    time.Duration // первая пауза после ошибки iiko; дальше удваивается
+	retryMax     time.Duration
+	retryAt      map[int64]time.Time // id строки outbox → не повторять раньше этого момента
+	bootstrapped bool                // в боевом режиме стоп-лист iiko приведён к текущему (раз за запуск)
 }
 
 // skippable — ответ API, который повтором не исправить: 4xx, кроме 401/403/429.

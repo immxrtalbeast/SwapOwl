@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +59,27 @@ func (a *apiClient) do(ctx context.Context, method, path string, body any) ([]by
 		return nil, &apiError{Status: resp.StatusCode, Body: strings.TrimSpace(string(b))}
 	}
 	return b, nil
+}
+
+// stoppedDishes — id блюд из GET /api/stop-list (блюда с available=false). Нужен один раз за
+// запуск в боевом режиме: после теневого очередь пуста, а текущий стоп-лист в iiko записать надо.
+func (a *apiClient) stoppedDishes(ctx context.Context) ([]string, error) {
+	b, err := a.do(ctx, http.MethodGet, "/api/stop-list", nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(b, &rows); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(rows))
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+	}
+	sort.Strings(ids)
+	return ids, nil
 }
 
 // outboxEntry — строка GET /api/outbox.

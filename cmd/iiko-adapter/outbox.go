@@ -66,7 +66,7 @@ func (a *adapter) processOutbox(ctx context.Context) error {
 		stops = append(stops, e)
 	}
 	if len(stops) == 0 {
-		return nil
+		return a.bootstrapStopList(ctx)
 	}
 	last := stops[len(stops)-1]
 	if at, ok := a.retryAt[last.ID]; ok && a.now().Before(at) {
@@ -78,7 +78,9 @@ func (a *adapter) processOutbox(ctx context.Context) error {
 		return a.failOutbox(ctx, last, fmt.Errorf("payload: %w", err))
 	}
 	if a.mode == modeLive {
-		err = a.sendStopList(ctx, ids)
+		if err = a.sendStopList(ctx, ids); err == nil {
+			a.bootstrapped = true // отправлено полное состояние, отдельная выгрузка не нужна
+		}
 	} else {
 		err = a.recordShadow(last, ids, len(stops)-1)
 	}
@@ -125,5 +127,24 @@ func (a *adapter) sendStopList(ctx context.Context, ids []string) error {
 		return err
 	}
 	a.log.Printf("стоп-лист в iiko: %d позиций", len(items))
+	return nil
+}
+
+// bootstrapStopList — один раз за запуск в боевом режиме, если в очереди ничего нет, записывает в
+// iiko текущий стоп-лист из API. Иначе после перехода из тени (там сообщения подтверждены) iiko
+// остался бы без стоп-листа до первого его изменения. Флаг ставится только после успеха;
+// sameStop не даёт лишней записи.
+func (a *adapter) bootstrapStopList(ctx context.Context) error {
+	if a.mode != modeLive || a.bootstrapped {
+		return nil
+	}
+	ids, err := a.api.stoppedDishes(ctx)
+	if err != nil {
+		return fmt.Errorf("текущий стоп-лист: %w", err)
+	}
+	if err := a.sendStopList(ctx, ids); err != nil {
+		return err
+	}
+	a.bootstrapped = true
 	return nil
 }

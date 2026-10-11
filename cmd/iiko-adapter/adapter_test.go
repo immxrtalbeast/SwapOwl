@@ -32,6 +32,7 @@ type stubAPI struct {
 	calls []call
 	seen  map[string]bool
 
+	stop    []string        // GET /api/stop-list
 	outbox  []outboxEntry   // недоставленные
 	acks    map[int64][]ack // id → поступившие ack
 	failAck bool
@@ -49,6 +50,12 @@ func (s *stubAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.calls = append(s.calls, call{r.Method, r.URL.Path, r.Header.Get("Authorization"), b})
 	w.Header().Set("Content-Type", "application/json")
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/api/stop-list":
+		rows := []map[string]any{}
+		for _, id := range s.stop {
+			rows = append(rows, map[string]any{"id": id, "available": false})
+		}
+		_ = json.NewEncoder(w).Encode(rows)
 	case r.Method == http.MethodGet && r.URL.Path == "/api/outbox":
 		if s.outbox == nil {
 			s.outbox = []outboxEntry{}
@@ -484,5 +491,52 @@ func TestShadowReport(t *testing.T) {
 	buf.Reset()
 	if err := a.runShadowReport(context.Background(), &buf, false, false, "2026-01-03"); err != nil || !strings.Contains(buf.String(), "изменений за день не было") {
 		t.Fatalf("пустой день: %v\n%s", err, buf.String())
+	}
+}
+
+// Переход из тени в бой: очередь пуста (в тени всё подтверждено), текущий стоп-лист всё равно уходит.
+func TestShadowToLiveSendsCurrentStopList(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, ic := setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
+	a.mode = modeShadow
+	d := seed.Dishes()
+	stub.stop = []string{d[0].ID}
+	stub.outbox = []outboxEntry{stopMsg(1, d[0].ID)}
+	if err := a.processOutbox(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if items, _ := ic.StopList(context.Background()); len(items) != 0 {
+		t.Fatalf("в тени в iiko записано: %v", items)
+	}
+	a.mode = modeLive // ADAPTER_MODE=live и перезапуск
+	if err := a.runOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if items, err := ic.StopList(context.Background()); err != nil || len(items) != 1 || items[0].ProductID != d[0].ID {
+		t.Fatalf("стоп-лист в iiko после перехода в live: %v %v", items, err)
+	}
+	// Повторно за запуск /api/stop-list не читается.
+	before := stub.count(http.MethodGet, "/api/stop-list")
+	if err := a.processOutbox(context.Background()); err != nil || stub.count(http.MethodGet, "/api/stop-list") != before {
+		t.Fatalf("повторная выгрузка: %v", err)
+	}
+}
+
+// Ошибка iiko при выгрузке текущего стоп-листа не гасит флаг: следующий проход повторит.
+func TestBootstrapRetriesAfterFailure(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, ic := setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
+	good := a.iiko
+	a.iiko = client.New("http://127.0.0.1:1", "u", "p", &http.Client{Timeout: time.Second})
+	stub.stop = []string{seed.Dishes()[0].ID}
+	if err := a.processOutbox(context.Background()); err == nil || a.bootstrapped {
+		t.Fatalf("ждали ошибку без флага: %v", err)
+	}
+	a.iiko = good
+	if err := a.processOutbox(context.Background()); err != nil || !a.bootstrapped {
+		t.Fatal(err)
+	}
+	if items, _ := ic.StopList(context.Background()); len(items) != 1 {
+		t.Fatalf("стоп-лист: %v", items)
 	}
 }
