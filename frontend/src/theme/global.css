@@ -1,0 +1,28 @@
+html, body, #root { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--text);
+  font: var(--type-body);
+  font-variant-numeric: tabular-nums;
+}
+:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+a { color: var(--primary); }
+.so-num { font: var(--type-num); }
+.so-caption { font: var(--type-caption); text-transform: uppercase; letter-spacing: .04em; }
+@keyframes so-row-changed { from { background: var(--row-changed); } to { background: transparent; } }
+.so-row-changed { animation: so-row-changed 1.5s ease-out; }
+@keyframes so-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.so-arrow path { stroke-dasharray: 1; stroke-dashoffset: 0; animation: so-draw 1.1s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .so-arrow path, .so-row-changed { animation: none; }
+}
+/* Меню: на ширине < 992 px — только иконки */
+.so-nav { width: var(--nav-w); }
+.so-nav-label { display: inline; }
+@media (max-width: 991.98px) {
+  .so-nav { width: var(--nav-w-collapsed); }
+  .so-nav-label, .so-nav-brand-word { display: none; }
+}
+.so-main { padding: var(--gutter); max-width: var(--content-max); }
+@media (max-width: 767.98px) { .so-main { padding: var(--gutter-tablet); } }
