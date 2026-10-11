@@ -195,3 +195,15 @@ func TestStopListRecheckNotReordered(t *testing.T) {
 		t.Fatalf("want single added:[d1], got %v", got)
 	}
 }
+
+func TestExpiringPublishesOneEventPerBatch(t *testing.T) {
+	p, sub := newPub(&fakeMenu{})
+	exp := t0.Add(10 * time.Hour)
+	p.onExpiring([]store.ExpiringBatch{{BatchID: 3, ProductID: "p1", ExpiresAt: exp}, {BatchID: 4, ProductID: "p2", ExpiresAt: exp}})
+	got := drain(sub)
+	if len(got) != 2 || !strings.HasPrefix(got[0], "batch.expiring ") ||
+		!strings.Contains(got[0], `"batch_id":3`) || !strings.Contains(got[0], `"product_id":"p1"`) ||
+		!strings.Contains(got[1], `"batch_id":4`) {
+		t.Fatalf("events: %v", got)
+	}
+}

@@ -14,6 +14,7 @@ const (
 	DeliveryAccepted = "delivery.accepted"
 	OrderAccepted    = "order.accepted"
 	OrderRejected    = "order.rejected"
+	BatchExpiring    = "batch.expiring"
 	BatchExpired     = "batch.expired"
 	StockChanged     = "stock.changed"
 	StoplistChanged  = "stoplist.changed"

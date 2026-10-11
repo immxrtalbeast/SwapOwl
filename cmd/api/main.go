@@ -104,6 +104,8 @@ func run() error {
 	pub := newPublisher(bus, db, now, log)
 	pub.prime(ctx)
 	jan := janitor.New(stand.GatedJanitorStore{Inner: db, Gate: gate}, now, pub.onSweep)
+	expiry := domain.ExpiryConfig{Share: cfg.ExpiringShare, MinHours: cfg.ExpiringMinHours, MaxShare: cfg.ExpiringMaxShare}
+	jan.Expiry, jan.OnExpiring = &expiry, pub.onExpiring
 	go jan.Run(ctx)
 	st := &stand.Stand{DB: db, Clock: accl, Gate: gate, Sweep: jan, Bus: bus, Loc: cfg.Location,
 		AfterChange: pub.recheckStopList}
@@ -112,9 +114,10 @@ func run() error {
 		demo = st
 	}
 	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt}
+	monitor := store.Monitor{DB: db, Params: store.AlertParams{Expiry: expiry, Schedule: schedule, WMin: cfg.HotWMinHours}}
 	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: now, Auth: authSvc, Clock: clockInfo(st), Demo: demo, DemoToken: cfg.DemoToken,
 		NotSimulated: stand.ErrNotSimulated, Gate: gate,
-		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: pubOrders{db, pub}, Menu: db, Location: cfg.Location, Events: bus,
+		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: pubOrders{db, pub}, Menu: db, Monitor: monitor, Location: cfg.Location, Events: bus,
 		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{
 			WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
 		HotConfig: api.HotOffersConfig{DefaultAlgo: cfg.HotOffersAlgo, Rank: hotoffers.Config{

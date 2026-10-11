@@ -42,6 +42,8 @@ type Deps struct {
 	HotConfig HotOffersConfig
 	// Location — часовой пояс ресторана для expires_on; nil — UTC.
 	Location *time.Location
+	// Monitor — лента предупреждений и журнал движений (2.6). nil — маршруты не регистрируются.
+	Monitor Monitor
 	// Events — шина событий для GET /events (7.5). nil — маршрут не регистрируется.
 	Events *events.Bus
 	// PingEvery — период ping в SSE; 0 — 15 с. Нужен тестам.
@@ -95,6 +97,7 @@ func (rt *Router) Routes() {
 	rt.catalogRoutes()
 	rt.orderRoutes()
 	rt.stopListRoutes()
+	rt.monitorRoutes()
 	rt.hotOffersRoutes()
 	rt.eventsRoutes()
 	rt.clockRoutes()

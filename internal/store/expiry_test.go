@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"umirhack/internal/domain"
 )
 
 func TestSweepExpiredWritesOffOnceAtExpiresAt(t *testing.T) {
@@ -71,5 +73,107 @@ func TestNextExpiry(t *testing.T) {
 	next, err := db.NextExpiry(ctx, clk.Now())
 	if err != nil || next == nil || !next.Equal(t0.Add(24*time.Hour)) {
 		t.Fatalf("next: %v %v", err, next)
+	}
+}
+
+var testExpiry = domain.ExpiryConfig{Share: 0.2, MinHours: 12, MaxShare: 0.5}
+
+func notifiedCount(t *testing.T, db *DB) int {
+	t.Helper()
+	var n int
+	if err := db.Pool.QueryRow(context.Background(), `SELECT count(*) FROM batches WHERE expiring_notified_at IS NOT NULL`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// Сигнал «истекает» — один раз на партию: повторные проходы и рестарт (новый проход над теми же
+// данными) его не повторяют. Пороги партий из delivery(): вторая лосось — через 12 ч,
+// сливки — 48 ч, первая лосось — 57,6 ч.
+func TestSweepNotifiesExpiringOncePerBatch(t *testing.T) {
+	db, clk := stockDB(t)
+	ctx := context.Background()
+	if _, err := db.ReceiveDelivery(ctx, delivery("D1"), clk.Now, time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	res, err := db.Sweep(ctx, clk.Now, &testExpiry)
+	if err != nil || len(res.Expiring) != 0 || len(res.Expired) != 0 {
+		t.Fatalf("nothing yet: %v %+v", err, res)
+	}
+
+	clk.Advance(13 * time.Hour)
+	res, err = db.Sweep(ctx, clk.Now, &testExpiry)
+	if err != nil || len(res.Expiring) != 1 || res.Expiring[0].ProductID != "salmon" ||
+		!res.Expiring[0].ExpiresAt.Equal(t0.Add(24*time.Hour)) {
+		t.Fatalf("first expiring: %v %+v", err, res)
+	}
+	for i := 0; i < 3; i++ { // повторные проходы и «рестарт»
+		res, err = db.Sweep(ctx, clk.Now, &testExpiry)
+		if err != nil || len(res.Expiring) != 0 {
+			t.Fatalf("repeat %d: %v %+v", i, err, res)
+		}
+	}
+
+	clk.Advance(12 * time.Hour) // 25 ч: вторая лосось просрочена (о ней уже сообщали), новых «истекает» нет
+	res, err = db.Sweep(ctx, clk.Now, &testExpiry)
+	if err != nil || len(res.Expiring) != 0 || len(res.Expired) != 1 {
+		t.Fatalf("second pass: %v %+v", err, res)
+	}
+	clk.Advance(24 * time.Hour) // 49 ч: сливки (срок 60 ч, порог 12 ч) перешли в «истекает»
+	res, err = db.Sweep(ctx, clk.Now, &testExpiry)
+	if err != nil || len(res.Expiring) != 1 || res.Expiring[0].ProductID != "cream" {
+		t.Fatalf("third pass: %v %+v", err, res)
+	}
+	if n := notifiedCount(t, db); n != 2 {
+		t.Fatalf("notified batches: %d", n)
+	}
+}
+
+// Партия, ставшая просроченной минуя «истекает» (прыжок), получает только списание.
+func TestSweepJumpOverExpiringSkipsSignal(t *testing.T) {
+	db, clk := stockDB(t)
+	ctx := context.Background()
+	if _, err := db.ReceiveDelivery(ctx, delivery("D1"), clk.Now, time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(200 * time.Hour)
+	res, err := db.Sweep(ctx, clk.Now, &testExpiry)
+	if err != nil || len(res.Expiring) != 0 || len(res.Expired) != 3 {
+		t.Fatalf("jump: %v %+v", err, res)
+	}
+	if n := notifiedCount(t, db); n != 0 {
+		t.Fatalf("expired-only batches must stay unnotified: %d", n)
+	}
+}
+
+// Без cfg (SweepExpired) метка не ставится.
+func TestSweepExpiredDoesNotMarkExpiring(t *testing.T) {
+	db, clk := stockDB(t)
+	ctx := context.Background()
+	if _, err := db.ReceiveDelivery(ctx, delivery("D1"), clk.Now, time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	clk.Advance(13 * time.Hour)
+	if _, err := db.SweepExpired(ctx, clk.Now); err != nil {
+		t.Fatal(err)
+	}
+	if n := notifiedCount(t, db); n != 0 {
+		t.Fatalf("notified: %d", n)
+	}
+}
+
+func TestNextExpiringAt(t *testing.T) {
+	db, clk := stockDB(t)
+	ctx := context.Background()
+	if next, err := db.NextExpiringAt(ctx, clk.Now(), testExpiry); err != nil || next != nil {
+		t.Fatalf("empty: %v %v", err, next)
+	}
+	if _, err := db.ReceiveDelivery(ctx, delivery("D1"), clk.Now, time.UTC); err != nil {
+		t.Fatal(err)
+	}
+	next, err := db.NextExpiringAt(ctx, clk.Now(), testExpiry)
+	want := t0.Add(12 * time.Hour)
+	if err != nil || next == nil || next.Sub(want) > time.Second || want.Sub(*next) > time.Second {
+		t.Fatalf("next: %v %v want %v", err, next, want)
 	}
 }

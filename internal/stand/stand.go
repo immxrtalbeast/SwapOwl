@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"umirhack/internal/clock"
+	"umirhack/internal/domain"
 	"umirhack/internal/events"
 	"umirhack/internal/seed"
 	"umirhack/internal/store"
@@ -189,16 +190,21 @@ func Load(ctx context.Context, db *store.DB, t0 time.Time) (bool, error) {
 // GatedJanitorStore оборачивает хранилище «дворника»: проход берёт затвор на чтение.
 type GatedJanitorStore struct {
 	Inner interface {
-		SweepExpired(ctx context.Context, now func() time.Time) ([]store.ExpiredBatch, error)
+		Sweep(ctx context.Context, now func() time.Time, cfg *domain.ExpiryConfig) (store.SweepResult, error)
 		NextExpiry(ctx context.Context, now time.Time) (*time.Time, error)
+		NextExpiringAt(ctx context.Context, now time.Time, cfg domain.ExpiryConfig) (*time.Time, error)
 	}
 	Gate *Gate
 }
 
-func (g GatedJanitorStore) SweepExpired(ctx context.Context, now func() time.Time) ([]store.ExpiredBatch, error) {
+func (g GatedJanitorStore) Sweep(ctx context.Context, now func() time.Time, cfg *domain.ExpiryConfig) (store.SweepResult, error) {
 	g.Gate.RLock()
 	defer g.Gate.RUnlock()
-	return g.Inner.SweepExpired(ctx, now)
+	return g.Inner.Sweep(ctx, now, cfg)
+}
+
+func (g GatedJanitorStore) NextExpiringAt(ctx context.Context, now time.Time, cfg domain.ExpiryConfig) (*time.Time, error) {
+	return g.Inner.NextExpiringAt(ctx, now, cfg)
 }
 
 func (g GatedJanitorStore) NextExpiry(ctx context.Context, now time.Time) (*time.Time, error) {
