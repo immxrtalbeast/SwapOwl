@@ -48,6 +48,15 @@ type Deps struct {
 	PingEvery time.Duration
 	// Clock — скорость и признаки симуляции для GET /api/clock; nil — реальные часы.
 	Clock ClockInfo
+	// Demo — управление стендом (2.8). nil — DEMO_MODE=false: /api/demo/* отвечают 404.
+	Demo Demo
+	// DemoToken — значение DEMO_TOKEN; пустой не открывает ничего.
+	DemoToken string
+	// NotSimulated — ошибка Demo «часы не ускоренные»; Router отвечает на неё 409.
+	NotSimulated error
+	// Gate — затвор процесса (2.8): изменяющие запросы (кроме /api/demo/*) берут его на чтение.
+	// nil — без затвора.
+	Gate Gate
 }
 
 // Router — хаб-файл маршрутов. Следующие тикеты добавляют строки в Routes(),
@@ -89,6 +98,7 @@ func (rt *Router) Routes() {
 	rt.hotOffersRoutes()
 	rt.eventsRoutes()
 	rt.clockRoutes()
+	rt.demoRoutes()
 }
 
 // Handle регистрирует хендлер для метода и шаблона пути (синтаксис ServeMux без метода: "/api/x/{id}").
@@ -150,6 +160,12 @@ func (rt *Router) dispatch(pattern string, byMethod map[string]http.Handler) htt
 		r, ok = rt.guard(w, r, rt.access[pattern][r.Method])
 		if !ok {
 			return
+		}
+		// Затвор (2.8): сброс стенда ждёт завершения изменяющих запросов, новые ждут сброса.
+		// /api/demo/* затвор не берут — сброс сам берёт его на запись.
+		if g := rt.deps.Gate; g != nil && isMutating(r.Method) && !strings.HasPrefix(pattern, "/api/demo/") {
+			g.RLock()
+			defer g.RUnlock()
 		}
 		h.ServeHTTP(w, r)
 	})

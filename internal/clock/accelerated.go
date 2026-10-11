@@ -142,3 +142,14 @@ func (c *Accelerated) Run(ctx context.Context, every time.Duration) {
 		}
 	}
 }
+
+// Reset ставит часы на момент t со скоростью 1 (сброс стенда, 2.8). В отличие от Jump,
+// допускает перенос назад: данные стенда в этот момент заменены сидом целиком.
+func (c *Accelerated) Reset(ctx context.Context, t time.Time) error {
+	c.ops.Lock()
+	defer c.ops.Unlock()
+	c.mu.Lock()
+	c.simBase, c.wallBase, c.speed = t.UTC(), time.Now(), 1
+	c.mu.Unlock()
+	return c.store.Save(ctx, State{SimTime: t.UTC(), Speed: 1})
+}
