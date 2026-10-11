@@ -18,8 +18,8 @@ import (
 	"umirhack/internal/clock"
 	"umirhack/internal/config"
 	"umirhack/internal/domain"
-	"umirhack/internal/hotoffers"
 	"umirhack/internal/events"
+	"umirhack/internal/hotoffers"
 	"umirhack/internal/janitor"
 	"umirhack/internal/store"
 )
