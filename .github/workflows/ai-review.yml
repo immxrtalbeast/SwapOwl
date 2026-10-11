@@ -1,54 +1,28 @@
 # .github/workflows/ai-review.yml
 #
-# AI-ревьюер на Claude в GitHub Actions.
-# Все комментарии идут от github-actions[bot], а не через Claude GitHub App,
-# поэтому исполнители с подпиской на PR их видят и просыпаются.
+# Оспаривание итога ревью исполнителем: комментарий «[claude-fix] round N: правок нет, замечания оспорены».
+# Обычное ревью на push идёт в ci.yml (задания review и verdict) параллельно с тестами.
 #
-# Запускается:
-#   - после завершения workflow «CI» (ci.yml) на коммите PR. Зелёный CI — ревью моделью.
-#     Красный — итог «CI красный» с хвостом лога, без запуска модели: исполнитель получает
-#     его как обычный CHANGES_REQUESTED и чинит. Ревью не тратится на код, который не проходит тесты,
-#     и APPROVED никогда не приходит раньше результата CI;
-#   - на комментарий исполнителя «[claude-fix] round N: правок нет, замечания оспорены».
-#     Если оспорен итог «CI красный» (нестабильный тест), CI на том же коммите перезапускается,
-#     а ревью придёт после него.
-# Новый push в PR перезапускает CI; его завершение отменяет идущее ревью этого PR и запускает новое.
-#
-# Нужно один раз:
-#   1. Секрет CLAUDE_CODE_OAUTH_TOKEN: под подпиской, на которой пойдут ревью, выполнить локально
-#      `claude setup-token` и положить результат в Settings → Secrets and variables → Actions.
-#   2. Settings → Actions → General → Workflow permissions: «Read and write permissions».
-#   3. Метки round-1, round-2, round-3, needs-human (создаются автоматически при первом запуске).
-#   4. Опционально: секреты TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID для алерта о сбое ревью.
-#
-# workflow_run берёт этот файл из main: правка вступает в силу только после слияния.
+#   - Оспорен итог «CI красный» (строка «source: ci») — нестабильный тест: весь запуск CI на этом
+#     коммите перезапускается, тесты и ревью проходят заново, итог публикует verdict в ci.yml.
+#   - Оспорен итог модели — код не менялся, тесты на этом head уже зелёные: модель пересматривает
+#     оспоренные замечания, итог публикуется здесь.
+# Все комментарии идут от github-actions[bot], поэтому исполнители с подпиской на PR их видят.
 
 name: AI Review
 
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
   issue_comment:
     types: [created]
 
 jobs:
-  review:
-    # workflow_run — только CI на PR (не push в main и не отменённый запуск);
-    # issue_comment — только на PR и только на оспаривание замечаний исполнителем.
+  dispute:
     if: >-
-      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' &&
-       github.event.workflow_run.conclusion != 'cancelled' &&
-       github.event.workflow_run.pull_requests[0] != null) ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
-       startsWith(github.event.comment.body, '[claude-fix]') &&
-       contains(github.event.comment.body, 'замечания оспорены'))
-    # GitHub применяет concurrency раньше, чем проверяет if. Поэтому любой комментарий в PR
-    # (например, «[claude-fix] правки внесены») попадал в ту же очередь и отменял идущее ревью.
-    # Теперь в общую очередь PR попадают только push и оспаривание; остальные комментарии —
-    # каждый в свою очередь по run_id и никого не отменяют.
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '[claude-fix]') &&
+      contains(github.event.comment.body, 'замечания оспорены')
     concurrency:
-      group: ai-review-${{ github.event.workflow_run.pull_requests[0].number || github.event.issue.number }}-${{ (github.event_name == 'workflow_run' || (startsWith(github.event.comment.body, '[claude-fix]') && contains(github.event.comment.body, 'замечания оспорены'))) && 'review' || github.run_id }}
+      group: ai-review-dispute-${{ github.event.issue.number }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -59,7 +33,7 @@ jobs:
       id-token: write
       actions: write
     env:
-      PR: ${{ github.event.workflow_run.pull_requests[0].number || github.event.issue.number }}
+      PR: ${{ github.event.issue.number }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Состояние PR
@@ -75,83 +49,49 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
             --jq '[.[] | select((.body | startswith("[codex-review]")) or (.body | startswith("[claude-fix]")))]' \
             | jq -s 'add // []' > "$RUNNER_TEMP/history.json"
-          # Уже есть итог на этот head и после него никто ничего не оспорил — второй раз не ревьюим.
           last=$(jq -r 'map(select(.body | startswith("[codex-review]"))) | last | .body // ""' "$RUNNER_TEMP/history.json")
           last_head=$(printf '%s\n' "$last" | sed -n 's/^head: *//p' | head -n1)
-          last_ci=$(printf '%s\n' "$last" | grep -c '^source: ci$' || true)
-          if [ "${{ github.event_name }}" = "workflow_run" ] && [ "$last_head" = "$head" ] && [ "$last_ci" = "0" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"; echo "head $head уже проверен ревьюером — пропуск"; exit 0
-          fi
 
-          # Результат CI на текущем head. Для workflow_run — из события (и только если он про текущий head).
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            if [ "${{ github.event.workflow_run.head_sha }}" != "$head" ]; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"; echo "CI не на текущем head — пропуск, ждём CI нового коммита"; exit 0
-            fi
-            ci_id=${{ github.event.workflow_run.id }}
-            ci=${{ github.event.workflow_run.conclusion }}
-          else
-            read -r ci_id ci_status ci <<<"$(gh run list -R "$GITHUB_REPOSITORY" --workflow CI --commit "$head" \
-              --event pull_request --limit 1 --json databaseId,status,conclusion \
-              --jq '.[0] | "\(.databaseId) \(.status) \(.conclusion)"')"
-            if [ -z "$ci_id" ] || [ "$ci_id" = "null" ] || [ "$ci_status" != "completed" ]; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"; echo "CI на $head ещё идёт — ревью придёт после него"; exit 0
-            fi
-            if [ "$ci" != "success" ] && [ "$last_ci" != "0" ] && [ "$last_head" = "$head" ]; then
-              # Оспорен итог «CI красный»: перезапускаем CI, его завершение снова разбудит этот workflow.
-              gh run rerun "$ci_id" -R "$GITHUB_REPOSITORY"
-              gh pr comment "$PR" --body "CI на $head перезапущен по оспариванию исполнителя; итог придёт после него."
-              echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
-            fi
+          read -r ci_id ci_status ci <<<"$(gh run list -R "$GITHUB_REPOSITORY" --workflow CI --commit "$head" \
+            --event pull_request --limit 1 --json databaseId,status,conclusion \
+            --jq '.[0] | "\(.databaseId) \(.status) \(.conclusion)"')"
+          if [ -z "$ci_id" ] || [ "$ci_id" = "null" ] || [ "$ci_status" != "completed" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"; echo "CI на $head ещё идёт — итог придёт от него"; exit 0
           fi
-          echo "ci=$ci" >> "$GITHUB_OUTPUT"
-          echo "ci_id=$ci_id" >> "$GITHUB_OUTPUT"
+          if [ "$last_head" != "$head" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"; echo "последний итог не про текущий head — оспаривать нечего"; exit 0
+          fi
+          if printf '%s\n' "$last" | grep -q '^source: ci$'; then
+            gh pr comment "$PR" -R "$GITHUB_REPOSITORY" \
+              --body "CI и ревью на $head перезапущены по оспариванию исполнителя; итог придёт после них."
+            gh run rerun "$ci_id" -R "$GITHUB_REPOSITORY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           # Раунд = число прошлых итогов с CHANGES_REQUESTED + 1.
           prev=$(jq '[.[] | select((.body | startswith("[codex-review]")) and (.body | test("verdict: CHANGES_REQUESTED")))] | length' "$RUNNER_TEMP/history.json")
           echo "n=$((prev + 1))" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
-        if: steps.pr.outputs.skip == 'false' && steps.pr.outputs.ci == 'success'
+        if: steps.pr.outputs.skip == 'false'
         with:
           ref: ${{ steps.pr.outputs.head }}
           fetch-depth: 0
 
       - name: История раундов для ревьюера
-        if: steps.pr.outputs.skip == 'false' && steps.pr.outputs.ci == 'success'
+        if: steps.pr.outputs.skip == 'false'
         run: |
           jq -r '.[] | "---- \(.created_at)\n\(.body)\n"' "$RUNNER_TEMP/history.json" > prior-rounds.md
           git fetch origin main --quiet
 
       - name: Go для проверки блокеров тестом
-        if: steps.pr.outputs.skip == 'false' && steps.pr.outputs.ci == 'success' && hashFiles('go.mod') != ''
+        if: steps.pr.outputs.skip == 'false'
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Итог «CI красный»
-        if: steps.pr.outputs.skip == 'false' && steps.pr.outputs.ci != 'success'
-        run: |
-          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/${{ steps.pr.outputs.ci_id }}"
-          echo CHANGES_REQUESTED > review-verdict.txt
-          {
-            echo "🚨 1, ⚠️ 0, 💬 0 — CI красный (${{ steps.pr.outputs.ci }}), ревью моделью не запускалось."
-            echo
-            echo "1. 🚨 **CI красный:** проверка «checks» workflow CI не прошла на этом коммите. Лог: $run_url"
-            echo "   Воспроизведи падение локально и почини (как запускать тесты с БД — .ai/agent-prompt.md, шаг 4)."
-            echo "   Если падение не связано с этим PR (нестабильный тест) — оспорь итог: CI перезапустится на том же коммите."
-            echo
-            echo "Хвост лога упавших шагов:"
-            echo
-            echo '```'
-            gh run view "${{ steps.pr.outputs.ci_id }}" -R "$GITHUB_REPOSITORY" --log-failed 2>/dev/null \
-              | cut -f3- | grep -v '^\s*$' | tail -n 120 || echo "(лог недоступен, см. ссылку)"
-            echo '```'
-          } > review-summary.md
-          echo "source=ci" >> "$GITHUB_ENV"
-
       - name: Ревью
-        if: steps.pr.outputs.skip == 'false' && steps.pr.outputs.ci == 'success'
+        if: steps.pr.outputs.skip == 'false'
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -190,15 +130,13 @@ jobs:
             exit 1
           fi
 
-          # Если за время ревью пришёл новый push — итог устарел; новый запуск уже стоит в очереди.
+          # Если за время ревью пришёл новый push — итог устарел; его заменит verdict нового запуска CI.
           now=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
           if [ "$now" != "$head" ]; then
             echo "head сменился ($head → $now) — итог не публикуем"; exit 0
           fi
 
-          { echo "[codex-review] round: $n verdict: $verdict"; echo "head: $head"
-            [ "${source:-}" = "ci" ] && echo "source: ci"
-            echo; grep -v '^head:' review-summary.md 2>/dev/null || true; } > body.md
+          { echo "[codex-review] round: $n verdict: $verdict"; echo "head: $head"; echo; grep -v '^head:' review-summary.md 2>/dev/null || true; } > body.md
           gh pr comment "$PR" --body-file body.md
 
           for l in round-1 round-2 round-3 needs-human; do gh label create "$l" >/dev/null 2>&1 || true; done
