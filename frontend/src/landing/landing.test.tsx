@@ -16,6 +16,8 @@ describe("лендинг", () => {
   it("корень без хэша — лендинг, хэш-маршрут — приложение", () => {
     expect(isLandingLocation({ pathname: "/", hash: "" })).toBe(true);
     expect(isLandingLocation({ pathname: "/", hash: "#/stock" })).toBe(false);
+    expect(isLandingLocation({ pathname: "/", hash: "#connect" })).toBe(true);
+    expect(isLandingLocation({ pathname: "/", hash: "#/" })).toBe(true);
     expect(isLandingLocation({ pathname: "/x", hash: "" })).toBe(false);
   });
   it("кнопки ведут в демо, «Как подключить» — к шагам; подвал-концепт", () => {
