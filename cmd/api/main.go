@@ -125,7 +125,7 @@ func run() error {
 	monitor := store.Monitor{DB: db, Params: store.AlertParams{Expiry: expiry, Schedule: schedule, WMin: cfg.HotWMinHours}}
 	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: now, Auth: authSvc, Audit: db, Clock: clockInfo(st), Demo: demo, Sim: sim, DemoToken: cfg.DemoToken,
 		NotSimulated: stand.ErrNotSimulated, Gate: gate,
-		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: orders, Menu: db, Monitor: monitor, Analytics: db, Location: cfg.Location, Events: bus,
+		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: orders, Corrections: pubCorrections{db, pub}, Menu: db, Monitor: monitor, Analytics: db, Location: cfg.Location, Events: bus,
 		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{
 			WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
 		Supply: store.SupplyReader{DB: db, CoverDays: cfg.SupplyCoverDays, MinPortions: int64(cfg.SupplyMinPortions),
@@ -208,4 +208,42 @@ func (s simSink) PlaceOrder(ctx context.Context, o generator.Order) error {
 	}
 	_, err := s.p.Place(ctx, o.ID, store.SourceAPI, items)
 	return err
+}
+
+// pubCorrections публикует stock.changed (и stoplist.changed по разности стоп-листа) после
+// новой корректировки остатка; replay событий не даёт.
+type pubCorrections struct {
+	api.Corrections
+	p *publisher
+}
+
+func (c pubCorrections) WriteOffBatch(ctx context.Context, in store.WriteoffInput, now func() time.Time) (store.WriteoffResult, error) {
+	res, err := c.Corrections.WriteOffBatch(ctx, in, now)
+	if err == nil && !res.Replayed {
+		c.p.stockChanged(ctx, []string{res.ProductID})
+	}
+	return res, err
+}
+
+func (c pubCorrections) Inventory(ctx context.Context, in store.InventoryInput, now func() time.Time) (store.InventoryResult, error) {
+	res, err := c.Corrections.Inventory(ctx, in, now)
+	if err == nil && !res.Replayed && (len(res.Shortage) > 0 || res.Surplus != nil) {
+		c.p.stockChanged(ctx, []string{res.ProductID})
+	}
+	return res, err
+}
+
+func (c pubCorrections) CancelOrder(ctx context.Context, in store.CancelInput, now func() time.Time) (store.CancelResult, error) {
+	res, err := c.Corrections.CancelOrder(ctx, in, now)
+	if err != nil || res.Replayed {
+		return res, err
+	}
+	var products []string
+	for _, r := range res.Returned {
+		products = append(products, r.ProductID)
+	}
+	if len(products) > 0 {
+		c.p.stockChanged(ctx, uniqSorted(products))
+	}
+	return res, nil
 }
