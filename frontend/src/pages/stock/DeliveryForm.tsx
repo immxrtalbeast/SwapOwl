@@ -1,7 +1,10 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { NativeSelect, TextInput } from "@mantine/core";
+import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { api } from "../../api/client";
-import type { DeliveryInput } from "../../api/types";
+import type { DeliveryInput, ProductStock } from "../../api/types";
+import { Card, PrimaryButton, SecondaryButton, TextButton } from "../../components";
 
 interface Line {
   product_id: string;
@@ -11,11 +14,15 @@ interface Line {
 }
 
 const emptyLine = (): Line => ({ product_id: "", quantity: "", unit: "", shelf_life_hours: "" });
+const UNITS = ["g", "kg", "ml", "l", "pcs"] as const;
 
-export function DeliveryForm({ onReceived }: { onReceived: () => void | Promise<void> }) {
+type Status = { kind: "idle" | "sending" } | { kind: "ok" | "error"; message: string };
+
+/** Приём поставки — карточка справа от таблицы склада (на узком экране — под ней). */
+export function DeliveryForm({ products, onReceived }: { products: readonly ProductStock[]; onReceived: () => void | Promise<void> }) {
   const [number, setNumber] = useState("");
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
-  const [status, setStatus] = useState<{ kind: "idle" | "sending" } | { kind: "ok" | "error"; message: string }>({ kind: "idle" });
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
   // Идентификатор поставки создаётся один раз на отправку и сохраняется при повторе после ошибки сети:
   // повтор с тем же id безопасен (идемпотентность по внешнему id).
   const [deliveryId, setDeliveryId] = useState(() => crypto.randomUUID());
@@ -33,7 +40,7 @@ export function DeliveryForm({ onReceived }: { onReceived: () => void | Promise<
       items: lines.map((l) => ({
         product_id: l.product_id.trim(),
         quantity: l.quantity.trim(),
-        ...(l.unit ? { unit: l.unit as "g" | "kg" | "ml" | "l" | "pcs" } : {}),
+        ...(l.unit ? { unit: l.unit as (typeof UNITS)[number] } : {}),
         shelf_life_hours: Number(l.shelf_life_hours),
       })),
     };
@@ -49,33 +56,39 @@ export function DeliveryForm({ onReceived }: { onReceived: () => void | Promise<
     }
   }
 
+  const productOptions = [{ value: "", label: "Выберите продукт" }, ...products.map((p) => ({ value: p.id, label: p.name }))];
+
   return (
-    <form onSubmit={submit} style={{ marginTop: 24 }}>
-      <h2>Приём поставки</h2>
-      <label>
-        Номер накладной <input required value={number} onChange={(e) => setNumber(e.target.value)} />
-      </label>
-      {lines.map((l, i) => (
-        <fieldset key={i}>
-          <legend>Позиция {i + 1}</legend>
-          <label>Код продукта <input required value={l.product_id} onChange={(e) => update(i, { product_id: e.target.value })} /></label>{" "}
-          <label>Количество <input required inputMode="decimal" pattern="[0-9]+(\.[0-9]+)?" value={l.quantity} onChange={(e) => update(i, { quantity: e.target.value })} /></label>{" "}
-          <label>
-            Единица{" "}
-            <select value={l.unit} onChange={(e) => update(i, { unit: e.target.value })}>
-              <option value="">как у продукта</option>
-              {["g", "kg", "ml", "l", "pcs"].map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </label>{" "}
-          <label>Срок хранения, ч <input required type="number" min={1} max={87600} step={1} value={l.shelf_life_hours} onChange={(e) => update(i, { shelf_life_hours: e.target.value })} /></label>
-          {lines.length > 1 && <button type="button" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>Убрать</button>}
-        </fieldset>
-      ))}
-      <button type="button" onClick={() => setLines((ls) => [...ls, emptyLine()])}>Добавить позицию</button>{" "}
-      <button type="submit" disabled={status.kind === "sending"}>Принять поставку</button>
-      {status.kind === "sending" && <p role="status">Отправка…</p>}
-      {status.kind === "ok" && <p role="status">{status.message}</p>}
-      {status.kind === "error" && <p role="alert">Ошибка: {status.message}</p>}
-    </form>
+    <Card title="Приём поставки">
+      <form onSubmit={submit} style={{ display: "grid", gap: 16 }}>
+        <TextInput label="Номер накладной" required value={number} onChange={(e) => setNumber(e.currentTarget.value)} />
+        {lines.map((l, i) => (
+          <fieldset key={i} style={{ display: "grid", gap: 8, margin: 0, padding: 12, border: "1px solid var(--border)", borderRadius: 6 }}>
+            <legend style={{ font: "var(--type-label)", padding: "0 4px" }}>Позиция {i + 1}</legend>
+            {products.length > 0 ? (
+              <NativeSelect label="Продукт" required data={productOptions} value={l.product_id} onChange={(e) => update(i, { product_id: e.currentTarget.value })} />
+            ) : (
+              <TextInput label="Код продукта" required value={l.product_id} onChange={(e) => update(i, { product_id: e.currentTarget.value })} />
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <TextInput label="Количество" required inputMode="decimal" pattern="[0-9]+(\.[0-9]+)?" value={l.quantity} onChange={(e) => update(i, { quantity: e.currentTarget.value })} />
+              <NativeSelect label="Единица" data={[{ value: "", label: "как у продукта" }, ...UNITS.map((u) => ({ value: u, label: u }))]} value={l.unit} onChange={(e) => update(i, { unit: e.currentTarget.value })} />
+            </div>
+            <TextInput label="Срок хранения, ч" required type="number" min={1} max={87600} step={1} value={l.shelf_life_hours} onChange={(e) => update(i, { shelf_life_hours: e.currentTarget.value })} />
+            {lines.length > 1 && (
+              <TextButton type="button" leftSection={<IconTrash size={16} aria-hidden="true" />} onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>
+                Убрать позицию
+              </TextButton>
+            )}
+          </fieldset>
+        ))}
+        <SecondaryButton type="button" leftSection={<IconPlus size={16} aria-hidden="true" />} onClick={() => setLines((ls) => [...ls, emptyLine()])}>
+          Добавить позицию
+        </SecondaryButton>
+        <PrimaryButton type="submit" loading={status.kind === "sending"}>Принять поставку</PrimaryButton>
+        {status.kind === "ok" && <p role="status" style={{ margin: 0, color: "var(--urgency-ok-fg)" }}>{status.message}</p>}
+        {status.kind === "error" && <p role="alert" style={{ margin: 0, color: "var(--urgency-critical-fg)" }}>Ошибка: {status.message}</p>}
+      </form>
+    </Card>
   );
 }
