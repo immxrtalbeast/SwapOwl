@@ -1,8 +1,11 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { Alert, PasswordInput, Stack } from "@mantine/core";
+import { IconCircleCheck } from "@tabler/icons-react";
 import { api } from "../../api/client";
 import { useAuth } from "../../auth/AuthContext";
 import { roleLabel } from "../../auth/roles";
+import { Card, EmptyState, LoadingState, PrimaryButton, ScreenTitle } from "../../components";
 import { changePasswordError, validatePasswordChange } from "./validate";
 
 /** Экран «Аккаунт»: смена собственного пароля (POST /api/auth/password). */
@@ -15,12 +18,14 @@ export function AccountPage() {
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  if (state.kind !== "user") return <p role="status">Загрузка…</p>;
+  if (state.kind !== "user") return <LoadingState rows={3} label="Загрузка аккаунта" />;
   if (state.login === null) {
     return (
       <section aria-labelledby="account-title">
-        <h2 id="account-title">Аккаунт</h2>
-        <p>Стенд открыт без входа, личной учётной записи нет — менять нечего.</p>
+        <ScreenTitle>Аккаунт</ScreenTitle>
+        <Card>
+          <EmptyState title="Личной учётной записи нет" text="Стенд открыт без входа, менять нечего." />
+        </Card>
       </section>
     );
   }
@@ -50,35 +55,31 @@ export function AccountPage() {
 
   return (
     <section aria-labelledby="account-title">
-      <h2 id="account-title">Аккаунт</h2>
-      <p>
+      <ScreenTitle>Аккаунт</ScreenTitle>
+      <p style={{ margin: "0 0 16px", font: "var(--type-body)" }}>
         Вы вошли как <strong>{state.login}</strong> ({roleLabel[state.role]}).
       </p>
-      <h3>Смена пароля</h3>
-      <form onSubmit={(e) => void submit(e)} aria-label="Смена пароля">
-        <p>
-          <label>
-            Текущий пароль <br />
-            <input type="password" value={oldPw} onChange={(e) => setOldPw(e.target.value)} autoComplete="current-password" required />
-          </label>
-        </p>
-        <p>
-          <label>
-            Новый пароль <br />
-            <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password" required />
-          </label>
-        </p>
-        <p>
-          <label>
-            Повторите новый пароль <br />
-            <input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} autoComplete="new-password" required />
-          </label>
-        </p>
-        <p>После смены остальные ваши сессии (на других устройствах) закроются.</p>
-        <button type="submit" disabled={busy}>{busy ? "Сохраняем…" : "Сменить пароль"}</button>
-        {error && <p role="alert">{error}</p>}
-        {done && <p role="status" data-testid="password-changed">Пароль изменён.</p>}
-      </form>
+      <Card title="Смена пароля" style={{ maxWidth: 480 }}>
+        <form onSubmit={(e) => void submit(e)} aria-label="Смена пароля">
+          <Stack gap="md">
+            <PasswordInput label="Текущий пароль" value={oldPw} onChange={(e) => setOldPw(e.currentTarget.value)} autoComplete="current-password" required />
+            <PasswordInput label="Новый пароль" description="От 8 до 72 байт" value={newPw} onChange={(e) => setNewPw(e.currentTarget.value)} autoComplete="new-password" required />
+            <PasswordInput label="Повторите новый пароль" value={repeat} onChange={(e) => setRepeat(e.currentTarget.value)} autoComplete="new-password" required />
+            <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>
+              После смены остальные ваши сессии (на других устройствах) закроются.
+            </p>
+            <div>
+              <PrimaryButton type="submit" loading={busy}>Сменить пароль</PrimaryButton>
+            </div>
+            {error && <Alert color="red" role="alert">{error}</Alert>}
+            {done && (
+              <Alert color="green" role="status" data-testid="password-changed" icon={<IconCircleCheck size={18} aria-hidden="true" />}>
+                Пароль изменён.
+              </Alert>
+            )}
+          </Stack>
+        </form>
+      </Card>
     </section>
   );
 }

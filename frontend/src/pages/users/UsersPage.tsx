@@ -1,17 +1,23 @@
 import { useCallback, useState } from "react";
 import type { FormEvent } from "react";
+import { Alert, Group, PasswordInput, Select, Stack, TextInput } from "@mantine/core";
+import { IconAlertTriangle, IconCopy } from "@tabler/icons-react";
 import { api } from "../../api/client";
 import type { ApiKeyInfo, CreatedApiKey, UserAccount } from "../../api/types";
 import { RoleGate } from "../../auth/AuthContext";
 import { roleLabel } from "../../auth/roles";
 import type { Role } from "../../auth/roles";
 import { useLive } from "../../app/useLive";
+import { Card, DataTable, EmptyState, ErrorState, LoadingState, PrimaryButton, ScreenTitle, SecondaryButton, TextButton } from "../../components";
+import type { Column } from "../../components";
 import { createUserError, deleteUserError } from "./errors";
 
 type Data = { users: UserAccount[]; keys: ApiKeyInfo[] };
 type State = { kind: "loading" } | { kind: "error"; message: string } | ({ kind: "ready" } & Data);
 
 const msg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
+const fmtDate = (iso: string) => new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const roleOptions = (roles: Role[]) => roles.map((r) => ({ value: r, label: roleLabel[r] }));
 
 export function UsersPage() {
   return (
@@ -38,21 +44,18 @@ function UsersAdmin() {
 
   return (
     <section aria-labelledby="users-title">
-      <h2 id="users-title">Пользователи и ключи</h2>
-      <p><a href="#/account">Аккаунт: сменить свой пароль</a></p>
-      {notice && <p role="alert" data-testid="users-notice">{notice}</p>}
-      {state.kind === "loading" && <p role="status">Загрузка…</p>}
+      <ScreenTitle>Пользователи и ключи</ScreenTitle>
+      <p style={{ margin: "0 0 16px" }}><a href="#/account" style={{ color: "var(--primary)" }}>Аккаунт: сменить свой пароль</a></p>
+      {notice && <Alert color="red" role="alert" data-testid="users-notice" mb="md">{notice}</Alert>}
+      {state.kind === "loading" && <LoadingState label="Загрузка пользователей и ключей" />}
       {state.kind === "error" && (
-        <div role="alert">
-          <p>Ошибка: {state.message}</p>
-          <button onClick={() => { setState({ kind: "loading" }); void load(); }}>Повторить</button>
-        </div>
+        <ErrorState what="пользователей и ключи" reason={state.message} onRetry={() => { setState({ kind: "loading" }); void load(); }} />
       )}
       {state.kind === "ready" && (
-        <>
+        <div style={{ display: "grid", gap: 24 }}>
           <UsersBlock users={state.users} reload={load} setNotice={setNotice} />
           <KeysBlock keys={state.keys} reload={load} setNotice={setNotice} />
-        </>
+        </div>
       )}
     </section>
   );
@@ -61,6 +64,35 @@ function UsersAdmin() {
 interface BlockProps {
   reload: () => Promise<void>;
   setNotice: (m: string | null) => void;
+}
+
+/** Кнопка удаления с подтверждением в самом интерфейсе (без window.confirm). */
+function ConfirmAction({ label, ariaLabel, question, confirmLabel, onConfirm }: {
+  label: string;
+  ariaLabel: string;
+  question: string;
+  confirmLabel: string;
+  onConfirm: () => Promise<void>;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!asking) {
+    return <TextButton size="compact-sm" aria-label={ariaLabel} onClick={() => setAsking(true)}>{label}</TextButton>;
+  }
+  return (
+    <Group gap={8} wrap="wrap" role="group" aria-label={question}>
+      <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>{question}</span>
+      <PrimaryButton
+        size="compact-sm"
+        loading={busy}
+        styles={{ root: { background: "var(--urgency-critical-solid)" } }}
+        onClick={() => { setBusy(true); void onConfirm().finally(() => { setBusy(false); setAsking(false); }); }}
+      >
+        {confirmLabel}
+      </PrimaryButton>
+      <SecondaryButton size="compact-sm" onClick={() => setAsking(false)}>Отмена</SecondaryButton>
+    </Group>
+  );
 }
 
 function UsersBlock({ users, reload, setNotice }: BlockProps & { users: UserAccount[] }) {
@@ -88,7 +120,6 @@ function UsersBlock({ users, reload, setNotice }: BlockProps & { users: UserAcco
   }
 
   async function remove(u: UserAccount) {
-    if (!window.confirm(`Удалить пользователя «${u.login}»?`)) return;
     setNotice(null);
     try {
       await api.deleteUser(u.id);
@@ -98,41 +129,46 @@ function UsersBlock({ users, reload, setNotice }: BlockProps & { users: UserAcco
     }
   }
 
+  const columns: Column<UserAccount>[] = [
+    { key: "login", header: "Логин", cell: (u) => u.login },
+    { key: "role", header: "Роль", cell: (u) => roleLabel[u.role] },
+    { key: "created", header: "Создан", cell: (u) => fmtDate(u.created_at) },
+    {
+      key: "actions",
+      header: <span className="sr-only">Действия</span>,
+      cell: (u) => (
+        <ConfirmAction
+          label="Удалить"
+          ariaLabel={`Удалить пользователя ${u.login}`}
+          question={`Удалить «${u.login}»?`}
+          confirmLabel="Да, удалить"
+          onConfirm={() => remove(u)}
+        />
+      ),
+    },
+  ];
+
   return (
-    <div>
-      <h3>Пользователи</h3>
+    <Card title="Пользователи" flush>
       {users.length === 0 ? (
-        <p>Пользователей нет.</p>
+        <EmptyState title="Пользователей нет" text="Создайте первого пользователя в форме ниже." />
       ) : (
-        <table>
-          <thead>
-            <tr><th scope="col">Логин</th><th scope="col">Роль</th><th scope="col">Создан</th><th scope="col"><span className="sr-only">Действия</span></th></tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} data-testid={`user-${u.id}`}>
-                <td>{u.login}</td>
-                <td>{roleLabel[u.role]}</td>
-                <td>{new Date(u.created_at).toLocaleString("ru-RU")}</td>
-                <td><button onClick={() => void remove(u)} aria-label={`Удалить пользователя ${u.login}`}>Удалить</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div>
+          <DataTable caption="Пользователи" columns={columns} rows={users} rowKey={(u) => String(u.id)} />
+        </div>
       )}
-      <form onSubmit={(e) => void submit(e)} aria-label="Новый пользователь" style={{ marginTop: 12 }}>
-        <label>Логин <input value={login} onChange={(e) => setLogin(e.target.value)} required maxLength={128} /></label>{" "}
-        <label>Пароль <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} maxLength={72} autoComplete="new-password" /></label>{" "}
-        <label>
-          Роль{" "}
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {(["viewer", "operator", "admin"] as Role[]).map((r) => <option key={r} value={r}>{roleLabel[r]}</option>)}
-          </select>
-        </label>{" "}
-        <button type="submit" disabled={busy}>Создать пользователя</button>
-        {formError && <p role="alert">{formError}</p>}
+      <form onSubmit={(e) => void submit(e)} aria-label="Новый пользователь" style={{ padding: "var(--card-pad)" }}>
+        <Stack gap="md">
+          <Group align="flex-start" gap="md" grow>
+            <TextInput label="Логин" value={login} onChange={(e) => setLogin(e.currentTarget.value)} required maxLength={128} />
+            <PasswordInput label="Пароль" description="От 8 до 72 байт" value={password} onChange={(e) => setPassword(e.currentTarget.value)} required minLength={8} maxLength={72} autoComplete="new-password" />
+            <Select label="Роль" value={role} onChange={(v) => v && setRole(v as Role)} data={roleOptions(["viewer", "operator", "admin"])} allowDeselect={false} />
+          </Group>
+          <div><PrimaryButton type="submit" loading={busy}>Создать пользователя</PrimaryButton></div>
+          {formError && <Alert color="red" role="alert">{formError}</Alert>}
+        </Stack>
       </form>
-    </div>
+    </Card>
   );
 }
 
@@ -173,7 +209,6 @@ function KeysBlock({ keys, reload, setNotice }: BlockProps & { keys: ApiKeyInfo[
   }
 
   async function revoke(k: ApiKeyInfo) {
-    if (!window.confirm(`Отозвать ключ «${k.name}»? Адаптер с этим ключом перестанет работать.`)) return;
     setNotice(null);
     try {
       await api.deleteApiKey(k.id);
@@ -184,53 +219,68 @@ function KeysBlock({ keys, reload, setNotice }: BlockProps & { keys: ApiKeyInfo[
     }
   }
 
+  const columns: Column<ApiKeyInfo>[] = [
+    { key: "name", header: "Название", cell: (k) => k.name },
+    { key: "role", header: "Роль", cell: (k) => roleLabel[k.role] },
+    { key: "created", header: "Создан", cell: (k) => fmtDate(k.created_at) },
+    {
+      key: "actions",
+      header: <span className="sr-only">Действия</span>,
+      cell: (k) => (
+        <ConfirmAction
+          label="Отозвать"
+          ariaLabel={`Отозвать ключ ${k.name}`}
+          question="Адаптер с этим ключом перестанет работать. Отозвать?"
+          confirmLabel="Да, отозвать"
+          onConfirm={() => revoke(k)}
+        />
+      ),
+    },
+  ];
+
   return (
-    <div style={{ marginTop: 24 }}>
-      <h3>Ключи интеграции</h3>
-      <p>Ключ для адаптера: заголовок <code>Authorization: Bearer &lt;ключ&gt;</code>. Роль — просмотр или оператор.</p>
+    <Card title="Ключи интеграции" flush>
+      <p style={{ margin: 0, padding: "12px var(--card-pad) var(--card-pad)", font: "var(--type-body)", color: "var(--text-muted)" }}>
+        Ключ нужен адаптеру: укажите его в настройках подключения. Роль — просмотр или оператор.
+      </p>
       {created && (
-        <div role="status" data-testid="created-key" style={{ border: "1px solid currentColor", padding: 12, marginBottom: 12 }}>
-          <strong>Ключ «{created.name}» создан. Скопируйте его сейчас — позже он не будет показан.</strong>
-          <div>
-            <code data-testid="key-value" style={{ wordBreak: "break-all" }}>{created.key}</code>
-          </div>
-          <button onClick={() => void copy()}>Скопировать</button>{" "}
-          <button onClick={() => setCreated(null)}>Я сохранил ключ</button>
-          {copied === "ok" && <span> Скопировано.</span>}
-          {copied === "fail" && <span> Не удалось скопировать — выделите ключ вручную.</span>}
+        <div
+          role="status"
+          data-testid="created-key"
+          style={{ margin: "0 var(--card-pad) var(--card-pad)", padding: 16, borderRadius: 10, background: "var(--brand-tint)", border: "1px solid var(--brand)" }}
+        >
+          <Group gap={8} mb={8} wrap="nowrap" align="flex-start">
+            <IconAlertTriangle size={20} color="var(--brand-ink)" aria-hidden="true" style={{ flex: "none" }} />
+            <strong style={{ color: "var(--brand-ink)" }}>
+              Ключ «{created.name}» создан. Он показывается один раз — скопируйте его сейчас, позже его не увидеть.
+            </strong>
+          </Group>
+          <code data-testid="key-value" style={{ display: "block", padding: 12, borderRadius: 6, background: "var(--surface)", font: "var(--type-num)", wordBreak: "break-all" }}>
+            {created.key}
+          </code>
+          <Group gap={8} mt={12}>
+            <PrimaryButton leftSection={<IconCopy size={16} aria-hidden="true" />} onClick={() => void copy()}>Скопировать</PrimaryButton>
+            <SecondaryButton onClick={() => setCreated(null)}>Я сохранил ключ</SecondaryButton>
+            {copied === "ok" && <span role="status" style={{ color: "var(--brand-ink)" }}>Скопировано.</span>}
+            {copied === "fail" && <span role="alert" style={{ color: "var(--urgency-critical-fg)" }}>Не удалось скопировать — выделите ключ вручную.</span>}
+          </Group>
         </div>
       )}
       {keys.length === 0 ? (
-        <p>Ключей нет.</p>
+        <EmptyState title="Ключей нет" text="Создайте ключ, чтобы подключить адаптер." />
       ) : (
-        <table>
-          <thead>
-            <tr><th scope="col">Название</th><th scope="col">Роль</th><th scope="col">Создан</th><th scope="col"><span className="sr-only">Действия</span></th></tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => (
-              <tr key={k.id} data-testid={`key-${k.id}`}>
-                <td>{k.name}</td>
-                <td>{roleLabel[k.role]}</td>
-                <td>{new Date(k.created_at).toLocaleString("ru-RU")}</td>
-                <td><button onClick={() => void revoke(k)} aria-label={`Отозвать ключ ${k.name}`}>Отозвать</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataTable caption="Ключи интеграции" columns={columns} rows={keys} rowKey={(k) => String(k.id)} />
       )}
-      <form onSubmit={(e) => void submit(e)} aria-label="Новый ключ" style={{ marginTop: 12 }}>
-        <label>Название <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={128} placeholder="iiko-адаптер" /></label>{" "}
-        <label>
-          Роль{" "}
-          <select value={role} onChange={(e) => setRole(e.target.value as ApiKeyInfo["role"])}>
-            <option value="viewer">{roleLabel.viewer}</option>
-            <option value="operator">{roleLabel.operator}</option>
-          </select>
-        </label>{" "}
-        <button type="submit" disabled={busy}>Создать ключ</button>
-        {formError && <p role="alert">{formError}</p>}
+      <form onSubmit={(e) => void submit(e)} aria-label="Новый ключ" style={{ padding: "var(--card-pad)" }}>
+        <Stack gap="md">
+          <Group align="flex-start" gap="md" grow>
+            <TextInput label="Название" value={name} onChange={(e) => setName(e.currentTarget.value)} required maxLength={128} placeholder="iiko-адаптер" />
+            <Select label="Роль" value={role} onChange={(v) => v && setRole(v as ApiKeyInfo["role"])} data={roleOptions(["viewer", "operator"])} allowDeselect={false} />
+          </Group>
+          <div><PrimaryButton type="submit" loading={busy}>Создать ключ</PrimaryButton></div>
+          {formError && <Alert color="red" role="alert">{formError}</Alert>}
+        </Stack>
       </form>
-    </div>
+    </Card>
   );
 }
