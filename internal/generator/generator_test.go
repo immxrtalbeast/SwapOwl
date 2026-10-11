@@ -151,7 +151,8 @@ func TestQuantitiesParse(t *testing.T) {
 					t.Fatalf("неизвестный продукт %s", it.ProductID)
 				}
 				v, ok := parseQty(it.Quantity, it.Unit, p)
-				if !ok || v%int64(p.PackSize) != 0 {
+				// Партии демо-сценария (D-SEED-*) заданы условиями сценария и не кратны упаковке.
+				if !ok || (v%int64(p.PackSize) != 0 && !strings.HasPrefix(d.ID, "D-SEED-")) {
 					t.Fatalf("%s: %q %s не разбирается или не кратно упаковке (%d)", it.ProductID, it.Quantity, it.Unit, v)
 				}
 				if it.ShelfLifeHours < 1 || it.ShelfLifeHours > 87600 {

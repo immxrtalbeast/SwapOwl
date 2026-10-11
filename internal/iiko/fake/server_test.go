@@ -70,16 +70,16 @@ func TestProductsAndCharts(t *testing.T) {
 	ts, tok := newTS(t)
 	_, b := get(t, ts.URL+iiko.PathProducts+"?key="+tok)
 	var ps []iiko.Product
-	if err := json.Unmarshal(b, &ps); err != nil || len(ps) != 18 {
+	if err := json.Unmarshal(b, &ps); err != nil || len(ps) != 20 {
 		t.Fatalf("products: %v n=%d", err, len(ps))
 	}
 	_, b = get(t, ts.URL+iiko.PathAssemblyCharts+"?key="+tok)
 	var cr iiko.AssemblyChartsResponse
-	if err := json.Unmarshal(b, &cr); err != nil || len(cr.RawAssemblyCharts) != 6 {
+	if err := json.Unmarshal(b, &cr); err != nil || len(cr.RawAssemblyCharts) != 8 {
 		t.Fatalf("charts: %v", err)
 	}
-	// паста с лососем: 120 г лосося = 0.12 кг
-	if got := cr.RawAssemblyCharts[0].Items[0].AmountIn; got != 0.12 {
+	// паста с лососем: 150 г лосося = 0.15 кг
+	if got := cr.RawAssemblyCharts[0].Items[0].AmountIn; got != 0.15 {
 		t.Fatalf("amountIn = %v", got)
 	}
 }

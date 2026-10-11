@@ -81,3 +81,50 @@ func TestHistoryConsistentWithJournal(t *testing.T) {
 		t.Fatal("в истории нет ни одной списанной по сроку партии")
 	}
 }
+
+// Состояние на t0 соответствует условиям демо-сценария (.ai/demo.md).
+func TestHistoryDemoConditionsAtT0(t *testing.T) {
+	h, err := buildHistory(testT0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var salmon, cream []hBatch
+	avail := map[string]int64{}
+	for _, b := range h.batches {
+		if b.Remaining > 0 && b.ExpiresAt.After(testT0) {
+			avail[b.ProductID] += b.Remaining
+			switch b.ProductID {
+			case "salmon":
+				salmon = append(salmon, b)
+			case "cream":
+				cream = append(cream, b)
+			}
+		}
+	}
+	if len(salmon) != 2 || len(cream) != 1 {
+		t.Fatalf("доступных партий лосося %d, сливок %d; нужно 2 и 1", len(salmon), len(cream))
+	}
+	hour := time.Hour
+	for _, c := range []struct {
+		b       hBatch
+		rem     int64
+		expires time.Duration
+	}{{salmon[0], 2000, 5 * hour}, {salmon[1], 4000, 72 * hour}, {cream[0], 600, 26 * hour}} {
+		if c.b.Remaining != c.rem || c.b.ExpiresAt.Sub(testT0) != c.expires {
+			t.Fatalf("партия %+v: ждали остаток %d, срок через %v", c.b, c.rem, c.expires)
+		}
+	}
+	if got := testT0.Sub(salmon[0].ReceivedAt); got != 72*hour {
+		t.Fatalf("Л-1 принята %v назад, нужно 72ч", got)
+	}
+	for _, d := range Dishes() {
+		for _, it := range d.Recipe {
+			if DemoProductIDs()[it.ProductID] {
+				continue
+			}
+			if avail[it.ProductID] < 40*int64(it.Quantity) {
+				t.Fatalf("%s: %s на складе %d, нужно на 40 порций (%d)", d.ID, it.ProductID, avail[it.ProductID], 40*int64(it.Quantity))
+			}
+		}
+	}
+}

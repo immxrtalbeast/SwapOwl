@@ -89,3 +89,60 @@ func TestStandSimulatorRunningFlag(t *testing.T) {
 		t.Fatal("running expected")
 	}
 }
+
+// Демо-профиль не заказывает блюда со сливками, остальные позиции заказа сохраняются.
+func TestDemoProfileDropsCreamDishes(t *testing.T) {
+	skip := creamDishes()
+	if !skip["salmon-pasta"] || !skip["cream-soup"] || skip["salmon-steak"] || skip["caesar"] {
+		t.Fatalf("блюда со сливками: %v", skip)
+	}
+	o, ok := demoProfile(generator.Order{ID: "x", Items: []generator.OrderItem{{DishID: "salmon-pasta", Portions: 1}, {DishID: "caesar", Portions: 2}}}, skip)
+	if !ok || len(o.Items) != 1 || o.Items[0].DishID != "caesar" {
+		t.Fatalf("заказ после профиля: %+v ok=%v", o, ok)
+	}
+	if _, ok := demoProfile(generator.Order{Items: []generator.OrderItem{{DishID: "cream-soup", Portions: 1}}}, skip); ok {
+		t.Fatal("заказ только со сливками должен отбрасываться")
+	}
+}
+
+// Симулятор за сутки времени стенда не отправляет в приёмник ни одного блюда со сливками.
+func TestSimulatorNeverOrdersCreamDishes(t *testing.T) {
+	base := time.Date(2026, 10, 10, 8, 0, 0, 0, time.UTC)
+	var off atomic.Int64
+	now := func() time.Time { return base.Add(time.Duration(off.Load())) }
+	sink := &dishSink{}
+	s := newSim(sink, now)
+	s.SetRunning(true)
+	defer s.Stop()
+	for i := 0; i < 48; i++ {
+		off.Add(int64(30 * time.Minute))
+		time.Sleep(8 * time.Millisecond)
+	}
+	waitFor(t, func() bool { return sink.count() > 0 })
+	s.Stop()
+	for _, d := range sink.dishes() {
+		if d == "salmon-pasta" || d == "cream-soup" {
+			t.Fatalf("симулятор заказал блюдо со сливками: %s", d)
+		}
+	}
+}
+
+type dishSink struct {
+	mu sync.Mutex
+	ds []string
+}
+
+func (r *dishSink) PlaceOrder(_ context.Context, o generator.Order) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, it := range o.Items {
+		r.ds = append(r.ds, it.DishID)
+	}
+	return nil
+}
+func (r *dishSink) count() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.ds) }
+func (r *dishSink) dishes() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.ds...)
+}
