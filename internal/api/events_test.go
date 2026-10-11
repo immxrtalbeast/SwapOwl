@@ -102,7 +102,7 @@ func TestEventsSlowSubscriberClosed(t *testing.T) {
 	waitFor(t, func() bool { return bus.Subscribers() == 1 })
 	// Клиент не читает, а событий больше буфера: шина не блокируется, соединение закрывается.
 	for i := 0; i < events.SubscriberBuffer*200; i++ {
-		bus.Publish(events.StockChanged, map[string]any{"pad": strings.Repeat("x", 1024)})
+		bus.Publish(events.OrderAccepted, map[string]any{"pad": strings.Repeat("x", 1024)})
 	}
 	waitFor(t, func() bool { return bus.Subscribers() == 0 })
 }
