@@ -114,7 +114,7 @@ func (rt *Router) postWriteoff(w http.ResponseWriter, r *http.Request) {
 	}
 	qty, err := parseQty(in.Qty, in.Unit, base, false)
 	if err != nil {
-		validationError(w, "qty", quantityMessage(err))
+		validationError(w, "qty", quantityMessage(err, "qty"))
 		return
 	}
 	res, err := rt.deps.Corrections.WriteOffBatch(r.Context(), store.WriteoffInput{ID: in.ID, BatchID: *in.BatchID, Qty: qty, Reason: in.Reason}, rt.deps.Now)
@@ -152,12 +152,12 @@ func (rt *Router) postInventory(w http.ResponseWriter, r *http.Request) {
 	}
 	base, ok := known[in.ProductID]
 	if !ok {
-		WriteError(w, http.StatusBadRequest, CodeUnknownProduct, "unknown product", map[string]any{"field": "product_id"})
+		WriteError(w, http.StatusBadRequest, CodeUnknownProduct, "product_id: unknown product", map[string]any{"field": "product_id"})
 		return
 	}
 	counted, err := parseQty(in.Counted, in.Unit, base, true)
 	if err != nil {
-		validationError(w, "counted", quantityMessage(err))
+		validationError(w, "counted", quantityMessage(err, "counted"))
 		return
 	}
 	res, err := rt.deps.Corrections.Inventory(r.Context(), store.InventoryInput{ID: in.ID, ProductID: in.ProductID, Counted: counted}, rt.deps.Now)

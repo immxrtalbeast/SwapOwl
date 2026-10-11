@@ -91,7 +91,7 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if seen[it.DishID] {
-			validationError(w, field("dish_id"), "a dish may appear in at most one line")
+			validationError(w, field("dish_id"), "dish_id: a dish may appear in at most one line")
 			return
 		}
 		seen[it.DishID] = true
@@ -111,7 +111,7 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 	for i, it := range items {
 		recipe, ok := recipes[it.DishID]
 		if !ok {
-			WriteError(w, http.StatusBadRequest, CodeUnknownDish, fmt.Sprintf("unknown dish %q", it.DishID),
+			WriteError(w, http.StatusBadRequest, CodeUnknownDish, fmt.Sprintf("unknown dish %q: dish_id not found", it.DishID),
 				map[string]any{"field": fmt.Sprintf("items[%d].dish_id", i)})
 			return
 		}

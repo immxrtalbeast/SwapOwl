@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -81,8 +80,11 @@ func (rt *Router) demoSpeed(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Speed *float64 `json:"speed"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&in); err != nil || in.Speed == nil {
-		WriteError(w, http.StatusBadRequest, CodeValidation, "body must be {\"speed\": number}", nil)
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	if in.Speed == nil {
+		validationError(w, "speed", "speed is required")
 		return
 	}
 	if !(*in.Speed >= 0 && *in.Speed <= MaxDemoSpeed) {
@@ -101,8 +103,11 @@ func (rt *Router) demoJump(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Hours *float64 `json:"hours"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&in); err != nil || in.Hours == nil {
-		WriteError(w, http.StatusBadRequest, CodeValidation, "body must be {\"hours\": number}", nil)
+	if !decodeBody(w, r, &in) {
+		return
+	}
+	if in.Hours == nil {
+		validationError(w, "hours", "hours is required")
 		return
 	}
 	if _, err := rt.deps.Demo.Jump(r.Context(), *in.Hours); err != nil {
