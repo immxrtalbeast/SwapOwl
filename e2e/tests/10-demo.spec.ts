@@ -13,9 +13,10 @@ let loads = 0;
 const ids = { salmon: "", cream: "", pasta: "", steak: "", soup: "" };
 let l1: Batch, l2: Batch, c1: Batch;
 
-// Прыжок шага 6. В сценарии +6 ч; при окне опоздания (LATE_EVENTS_HOURS, .ai/solution.md 2.4а)
-// «дворник» списывает Л-1 только после expires_at + окно, поэтому окно стенда передаётся сюда.
-const lateHours = Number(process.env.E2E_LATE_EVENTS_HOURS ?? "0");
+// Прыжок шага 6 — +8 ч (.ai/demo.md): «дворник» списывает Л-1 только после expires_at + окно
+// опоздания (LATE_EVENTS_HOURS, .ai/solution.md 2.4а). Если окно стенда шире 2 ч, прыжок
+// удлиняется, иначе списания не будет.
+const lateHours = Number(process.env.E2E_LATE_EVENTS_HOURS ?? "2");
 
 test.beforeAll(async ({ playwright, browser }, info) => {
   const baseURL = info.project.use.baseURL!;
@@ -136,7 +137,7 @@ test("5. Залп из 10 заказов на крем-суп: ровно S пр
 
 test("6. Прыжок времени: остаток Л-1 списан с причиной «истёк срок» в момент expires_at", async () => {
   const before = await stand.clock();
-  const hours = Math.max(6, Math.ceil(hoursBetween(before.now, l1.expires_at) + lateHours + 0.5));
+  const hours = Math.max(8, Math.ceil(hoursBetween(before.now, l1.expires_at) + lateHours + 0.5));
   await stand.jump(hours);
   const after = await stand.clock();
   expect(hoursBetween(before.now, after.now), `время стенда + ${hours} ч`).toBeCloseTo(hours, 2);
