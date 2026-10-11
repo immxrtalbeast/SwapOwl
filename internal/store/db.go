@@ -18,6 +18,10 @@ var ErrPoolTimeout = fmt.Errorf("store: no free database connection within %s", 
 // DB — пул соединений PostgreSQL.
 type DB struct {
 	Pool *pgxpool.Pool
+	// LateEvents — окно событий задним числом (LATE_EVENTS_HOURS): occurred_at допустим в
+	// [now − LateEvents, now], «дворник» списывает партию не раньше expires_at + LateEvents.
+	// Ноль — окна нет (как до 2.4а).
+	LateEvents time.Duration
 }
 
 // Open подключается к PostgreSQL и проверяет соединение.

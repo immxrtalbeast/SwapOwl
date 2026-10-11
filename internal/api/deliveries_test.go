@@ -135,3 +135,26 @@ func TestStockReadsUseStandClock(t *testing.T) {
 		t.Fatalf("bad status: %d", rec.Code)
 	}
 }
+
+func TestPostDeliveryOccurredAt(t *testing.T) {
+	fs := &fakeStock{}
+	line := `"items":[{"product_id":"salmon","quantity":"1","unit":"kg","shelf_life_hours":72}]`
+	body := func(occ string) string {
+		return `{"id":"D1","number":"1","created_at":"2026-10-09T08:00:00+03:00","occurred_at":"` + occ + `",` + line + `}`
+	}
+	if rec := post(t, fs, body("2026-10-10T09:00:00Z")); rec.Code != 201 || fs.in.OccurredAt == nil ||
+		!fs.in.OccurredAt.Equal(time.Date(2026, 10, 10, 9, 0, 0, 0, time.UTC)) {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	if rec := post(t, &fakeStock{}, body("10.10.2026")); rec.Code != 400 {
+		t.Fatalf("bad format: %d %s", rec.Code, rec.Body)
+	}
+	fs = &fakeStock{err: &store.EventWindowError{OccurredAt: standTime.Add(time.Hour), From: standTime.Add(-2 * time.Hour), To: standTime}}
+	rec := post(t, fs, body("2026-10-10T20:00:00Z"))
+	if rec.Code != 400 || !strings.Contains(rec.Body.String(), "validation_error") || !strings.Contains(rec.Body.String(), "correction") {
+		t.Fatalf("outside window: %d %s", rec.Code, rec.Body)
+	}
+	if rec := post(t, &fakeStock{}, item(`{"product_id":"salmon","quantity":"1","unit":"kg","shelf_life_hours":72}`)); rec.Code != 201 {
+		t.Fatalf("without occurred_at: %d", rec.Code)
+	}
+}

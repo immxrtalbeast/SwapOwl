@@ -22,7 +22,7 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("hours: %v %v", c.OpenAt, c.CloseAt)
 	}
 	if c.DemandWindowDays != 14 || c.DemandPriorDays != 3 || c.HotTopN != 3 || c.DBPoolSize != 20 ||
-		c.HotOffersAlgo != "b" || !c.SeedOnEmpty || !c.AuthRequired || c.DemoMode || c.ClockMode != "real" {
+		c.HotOffersAlgo != "b" || !c.SeedOnEmpty || !c.AuthRequired || c.DemoMode || c.ClockMode != "real" || c.LateEventsHours != 2 {
 		t.Errorf("unexpected defaults: %+v", c)
 	}
 }
@@ -44,6 +44,8 @@ func TestLoadValidation(t *testing.T) {
 		{"admin login only", map[string]string{"ADMIN_LOGIN": "root"}, "ADMIN_LOGIN"},
 		{"admin password only", map[string]string{"ADMIN_PASSWORD": "secret"}, "ADMIN_LOGIN"},
 		{"bad algo", map[string]string{"HOTOFFERS_ALGO": "c"}, "HOTOFFERS_ALGO"},
+		{"negative late events", map[string]string{"LATE_EVENTS_HOURS": "-1"}, "LATE_EVENTS_HOURS"},
+		{"huge late events", map[string]string{"LATE_EVENTS_HOURS": "169"}, "LATE_EVENTS_HOURS"},
 		{"bad clock mode", map[string]string{"CLOCK_MODE": "fast"}, "CLOCK_MODE"},
 		{"not a number", map[string]string{"DB_POOL_SIZE": "many"}, "DB_POOL_SIZE"},
 	}

@@ -236,3 +236,102 @@ func TestPlaceOrderPOSWithoutStockIsAcceptedWithShortfallOnly(t *testing.T) {
 		t.Fatalf("%+v %v", resp, err)
 	}
 }
+
+func occ(t time.Time) *time.Time { return &t }
+
+func TestLateSaleUsesExpiredButUnsweptBatch(t *testing.T) {
+	db, clk := orderDB(t)
+	db.LateEvents = 2 * time.Hour
+	ctx := context.Background()
+	receive(t, db, clk, "D1", 500, 24)
+	expires := t0.Add(24 * time.Hour)
+	clk.Set(expires.Add(time.Hour)) // партия истекла час назад, окно ещё открыто
+
+	// occurred_at < expires_at — партию берёт; orders.at и movements.at = occurred_at.
+	in := order(o1, 1, 100)
+	in.OccurredAt = occ(expires.Add(-30 * time.Minute))
+	resp, err := db.PlaceOrder(ctx, in, clk.Now)
+	if err != nil || resp.Status != OrderAccepted || len(resp.Writeoffs) != 1 || !resp.At.Equal(*in.OccurredAt) {
+		t.Fatalf("late sale: %v %+v", err, resp)
+	}
+	var at time.Time
+	_ = db.Pool.QueryRow(ctx, `SELECT at FROM movements WHERE kind='sale' AND order_id=$1`, o1).Scan(&at)
+	if !at.Equal(*in.OccurredAt) {
+		t.Fatalf("movement at %v", at)
+	}
+
+	// occurred_at ≥ expires_at — не берёт; api-заказ отклонён.
+	in2 := order(o2, 1, 100)
+	in2.OccurredAt = occ(expires)
+	resp, err = db.PlaceOrder(ctx, in2, clk.Now)
+	if err != nil || resp.Status != OrderRejected {
+		t.Fatalf("at expires_at: %v %+v", err, resp)
+	}
+
+	// Продажа без occurred_at по-прежнему не видит истёкшую партию.
+	in3 := order("00000000-0000-4000-8000-000000000003", 1, 100)
+	if resp, err = db.PlaceOrder(ctx, in3, clk.Now); err != nil || resp.Status != OrderRejected {
+		t.Fatalf("now sale: %v %+v", err, resp)
+	}
+}
+
+func TestLateSaleIgnoresBatchNotYetReceived(t *testing.T) {
+	db, clk := orderDB(t)
+	db.LateEvents = 2 * time.Hour
+	ctx := context.Background()
+	clk.Set(t0.Add(time.Hour))
+	receive(t, db, clk, "D1", 500, 24) // received_at = t0+1h
+	in := order(o1, 1, 100)
+	in.OccurredAt = occ(t0.Add(30 * time.Minute)) // продажа до прихода партии
+	resp, err := db.PlaceOrder(ctx, in, clk.Now)
+	if err != nil || resp.Status != OrderRejected {
+		t.Fatalf("sale before receipt: %v %+v", err, resp)
+	}
+	in = order(o2, 1, 100)
+	in.Source, in.OccurredAt = SourcePOS, occ(t0.Add(30*time.Minute))
+	resp, err = db.PlaceOrder(ctx, in, clk.Now)
+	if err != nil || resp.Status != OrderAccepted || len(resp.Writeoffs) != 0 || len(resp.Shortfalls) != 1 {
+		t.Fatalf("pos before receipt: %v %+v", err, resp)
+	}
+}
+
+func TestOccurredAtOutsideWindow(t *testing.T) {
+	db, clk := orderDB(t)
+	db.LateEvents = 2 * time.Hour
+	ctx := context.Background()
+	receive(t, db, clk, "D1", 500, 24)
+	for name, at := range map[string]time.Time{
+		"future":   clk.Now().Add(time.Second),
+		"too late": clk.Now().Add(-2*time.Hour - time.Second),
+	} {
+		in := order(o1, 1, 100)
+		in.OccurredAt = occ(at)
+		if _, err := db.PlaceOrder(ctx, in, clk.Now); !errors.Is(err, ErrEventOutsideWindow) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	// Границы окна включены; отказ ничего не записал, тот же id принимается.
+	in0 := order(o1, 1, 100)
+	in0.OccurredAt = occ(clk.Now())
+	if resp, err := db.PlaceOrder(ctx, in0, clk.Now); err != nil || resp.Status != OrderAccepted {
+		t.Fatalf("upper boundary: %v %+v", err, resp)
+	}
+	in := order(o2, 1, 100)
+	in.OccurredAt = occ(clk.Now().Add(-2 * time.Hour))
+	if resp, err := db.PlaceOrder(ctx, in, clk.Now); err != nil || resp.Status != OrderAccepted {
+		t.Fatalf("lower boundary: %v %+v", err, resp)
+	}
+}
+
+func TestOccurredAtIsPartOfOrderHash(t *testing.T) {
+	a, b := order(o1, 1, 100), order(o1, 1, 100)
+	b.OccurredAt = occ(t0)
+	if string(a.BodyHash()) == string(b.BodyHash()) {
+		t.Fatal("occurred_at must change the hash")
+	}
+	c := order(o1, 1, 100)
+	c.OccurredAt = occ(t0.In(time.FixedZone("x", 3*3600)))
+	if string(b.BodyHash()) != string(c.BodyHash()) {
+		t.Fatal("same instant in another zone must hash equal")
+	}
+}

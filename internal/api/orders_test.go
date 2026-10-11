@@ -132,3 +132,25 @@ func TestPostOrderValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestPostOrderOccurredAt(t *testing.T) {
+	fo := &fakeOrders{resp: store.OrderResponse{ID: oid, Status: store.OrderAccepted}}
+	body := func(occ string) string {
+		return `{"id":"` + oid + `","occurred_at":"` + occ + `","items":[{"dish_id":"soup","portions":1}]}`
+	}
+	if rec := postOrder(t, fo, body("2026-10-10T11:30:00+03:00")); rec.Code != http.StatusCreated ||
+		fo.in.OccurredAt == nil || !fo.in.OccurredAt.Equal(time.Date(2026, 10, 10, 8, 30, 0, 0, time.UTC)) {
+		t.Fatalf("%d %s %+v", rec.Code, rec.Body, fo.in.OccurredAt)
+	}
+	fo.n = 0
+	if rec := postOrder(t, fo, body("вчера")); rec.Code != http.StatusBadRequest || fo.n != 0 ||
+		!strings.Contains(rec.Body.String(), "validation_error") {
+		t.Fatalf("bad format: %d %s", rec.Code, rec.Body)
+	}
+	fo.err = &store.EventWindowError{OccurredAt: standTime.Add(-5 * time.Hour), From: standTime.Add(-2 * time.Hour), To: standTime}
+	rec := postOrder(t, fo, body("2026-10-10T07:00:00Z"))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "validation_error") ||
+		!strings.Contains(rec.Body.String(), "correction") {
+		t.Fatalf("outside window: %d %s", rec.Code, rec.Body)
+	}
+}

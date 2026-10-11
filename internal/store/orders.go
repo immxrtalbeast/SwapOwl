@@ -40,8 +40,11 @@ type OrderItem struct {
 type OrderInput struct {
 	ID     string
 	Source string // SourceAPI (по умолчанию, "") | SourcePOS
-	Items  []OrderItem
-	Needs  []domain.Need
+	// OccurredAt — когда продажа произошла фактически (необязательно); входит в хэш. Задано —
+	// партии выбираются на этот момент, orders.at и movements.at = OccurredAt (2.4а).
+	OccurredAt *time.Time
+	Items      []OrderItem
+	Needs      []domain.Need
 }
 
 func (in OrderInput) isPOS() bool { return in.Source == SourcePOS }
@@ -88,6 +91,10 @@ type OrderResponse struct {
 func (in OrderInput) BodyHash() []byte {
 	items := append([]OrderItem(nil), in.Items...)
 	sort.Slice(items, func(i, j int) bool { return items[i].DishID < items[j].DishID })
+	occ := ""
+	if in.OccurredAt != nil {
+		occ = in.OccurredAt.UTC().Format(time.RFC3339Nano)
+	}
 	src := ""
 	if in.isPOS() {
 		src = SourcePOS
@@ -95,8 +102,9 @@ func (in OrderInput) BodyHash() []byte {
 	raw, _ := json.Marshal(struct {
 		ID     string      `json:"id"`
 		Source string      `json:"source,omitempty"`
+		Occ    string      `json:"occurred_at,omitempty"`
 		Items  []OrderItem `json:"items"`
-	}{in.ID, src, items})
+	}{in.ID, src, occ, items})
 	sum := sha256.Sum256(raw)
 	return sum[:]
 }
@@ -216,11 +224,20 @@ func (d *DB) PlaceOrder(ctx context.Context, in OrderInput, now func() time.Time
 			return err
 		}
 		at := now().UTC()
+		// Событие задним числом: партия подходит, если уже была на складе и ещё не истекла на occurred_at.
+		// Без occurred_at условие по received_at не добавляется — поведение прежнее.
+		sinceReceived := false
+		if in.OccurredAt != nil {
+			if err := checkOccurredAt(in.OccurredAt.UTC(), at, d.LateEvents); err != nil {
+				return err
+			}
+			at, sinceReceived = in.OccurredAt.UTC(), true
+		}
 
 		rows, err := tx.Query(ctx,
 			`SELECT id, product_id, quantity, remaining, received_at, expires_at FROM batches
-			 WHERE product_id = ANY($1) AND remaining > 0 AND expires_at > $2
-			 ORDER BY product_id, expires_at, id`, ids, at)
+			 WHERE product_id = ANY($1) AND remaining > 0 AND expires_at > $2 AND (NOT $3 OR received_at <= $2)
+			 ORDER BY product_id, expires_at, id`, ids, at, sinceReceived)
 		if err != nil {
 			return fmt.Errorf("store: read batches: %w", err)
 		}

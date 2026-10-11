@@ -49,6 +49,9 @@ type Config struct {
 	LogLevel        string
 	DBPoolSize      int
 	ClockMode       string
+	// LateEventsHours — окно событий задним числом (2.4а): occurred_at ∈ [now − окно, now],
+	// «дворник» списывает партию не раньше expires_at + окно.
+	LateEventsHours int
 }
 
 // Load читает окружение через getenv (os.Getenv в проде), подставляет значения
@@ -83,6 +86,7 @@ func Load(getenv func(string) string) (Config, error) {
 		LogLevel:          p.str("LOG_LEVEL", "info"),
 		DBPoolSize:        p.int("DB_POOL_SIZE", 20),
 		ClockMode:         p.str("CLOCK_MODE", "real"),
+		LateEventsHours:   p.int("LATE_EVENTS_HOURS", 2),
 	}
 	c.OpenAt = p.clock("OPEN_AT", "10:00")
 	c.CloseAt = p.clock("CLOSE_AT", "23:00")
@@ -138,6 +142,9 @@ func (c *Config) validate() []error {
 	}
 	if c.DBPoolSize <= 0 {
 		bad("DB_POOL_SIZE must be > 0")
+	}
+	if c.LateEventsHours < 0 || c.LateEventsHours > 168 {
+		bad("LATE_EVENTS_HOURS must be in 0..168")
 	}
 	if c.ClockMode != "real" && c.ClockMode != "simulated" {
 		bad("CLOCK_MODE must be real or simulated, got %q", c.ClockMode)
