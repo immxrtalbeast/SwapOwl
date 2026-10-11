@@ -12,6 +12,7 @@ import (
 type Analytics interface {
 	WriteoffsReport(ctx context.Context, from, to time.Time, loc *time.Location) (store.WriteoffsReport, error)
 	ShortfallsReport(ctx context.Context, from, to time.Time, loc *time.Location) (store.ShortfallsReport, error)
+	ShortagesReport(ctx context.Context, from, to time.Time) (store.ShortagesReport, error)
 }
 
 // defaultAnalyticsDays — период по умолчанию, если from не задан: последние 7 суток до to.
@@ -23,6 +24,8 @@ func (rt *Router) analyticsRoutes() {
 	}
 	rt.Handle(http.MethodGet, "/api/analytics/writeoffs", rt.getWriteoffs)
 	rt.Handle(http.MethodGet, "/api/analytics/shortfalls", rt.getShortfalls)
+	rt.Handle(http.MethodGet, "/api/analytics/shortages", rt.getShortages)
+	rt.Handle(http.MethodGet, "/api/analytics/bench", rt.getBench)
 }
 
 // analyticsPeriod разбирает ?from=&to=. Значение — дата YYYY-MM-DD (сутки по часовому поясу
