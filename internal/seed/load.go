@@ -27,7 +27,8 @@ func IsEmpty(ctx context.Context, q Querier) (bool, error) {
 
 // Load пишет сид в переданную транзакцию: продукты, блюда, рецепты, стартовые поставки и
 // HistoryDays суток истории до t0. Времена пишутся в таблицы напрямую (единственное
-// исключение из received_at = clock.Now(), .ai/solution.md, 2.8). Ожидает пустые таблицы.
+// исключение из received_at = clock.Now(), .ai/solution.md, 2.8). Справочники идемпотентны (после сброса по 7.1 сидовые products, dishes и
+// recipe_items остаются), поставки, партии, заказы и движения ожидаются пустыми.
 func Load(ctx context.Context, tx pgx.Tx, t0 time.Time) error {
 	h, err := buildHistory(t0)
 	if err != nil {
@@ -35,13 +36,20 @@ func Load(ctx context.Context, tx pgx.Tx, t0 time.Time) error {
 	}
 	b := &pgx.Batch{}
 	for _, p := range Products() {
-		b.Queue(`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size) VALUES ($1,$2,$3,$4,$5,$6)`,
+		b.Queue(`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size) VALUES ($1,$2,$3,$4,$5,$6)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, unit = EXCLUDED.unit,
+				price_minor_per_1000 = EXCLUDED.price_minor_per_1000, lead_days = EXCLUDED.lead_days,
+				pack_size = EXCLUDED.pack_size, auto_created = false`,
 			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, int64(p.PackSize))
 	}
 	for _, d := range Dishes() {
-		b.Queue(`INSERT INTO dishes (id, name, price_minor, prior_daily) VALUES ($1,$2,$3,$4)`, d.ID, d.Name, d.PriceMinor, d.PriorDaily)
+		b.Queue(`INSERT INTO dishes (id, name, price_minor, prior_daily) VALUES ($1,$2,$3,$4)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, price_minor = EXCLUDED.price_minor, prior_daily = EXCLUDED.prior_daily`,
+			d.ID, d.Name, d.PriceMinor, d.PriorDaily)
 		for _, r := range d.Recipe {
-			b.Queue(`INSERT INTO recipe_items (dish_id, product_id, quantity) VALUES ($1,$2,$3)`, d.ID, r.ProductID, int64(r.Quantity))
+			b.Queue(`INSERT INTO recipe_items (dish_id, product_id, quantity) VALUES ($1,$2,$3)
+				ON CONFLICT (dish_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity`,
+				d.ID, r.ProductID, int64(r.Quantity))
 		}
 	}
 	for _, d := range h.deliveries {

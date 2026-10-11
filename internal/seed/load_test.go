@@ -134,3 +134,24 @@ func TestLoadStopListNotEverything(t *testing.T) {
 		t.Fatalf("в стоп-листе все блюда: %d из %d", len(stopped), len(dishes))
 	}
 }
+
+// Сброс по .ai/solution.md, 7.1 оставляет сидовые справочники; повторная загрузка должна пройти.
+func TestLoadAfterReset(t *testing.T) {
+	db := freshDB(t)
+	loadSeed(t, db)
+	first := snapshot(t, db)
+	ctx := context.Background()
+	for _, q := range []string{
+		`DELETE FROM movements`, `DELETE FROM order_items`, `DELETE FROM orders`, `DELETE FROM batches`,
+		`DELETE FROM deliveries`, `DELETE FROM clock_jumps`, `DELETE FROM products WHERE auto_created`,
+		`ALTER SEQUENCE batches_id_seq RESTART`, `ALTER SEQUENCE movements_id_seq RESTART`,
+	} {
+		if _, err := db.Pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loadSeed(t, db)
+	if second := snapshot(t, db); first != second {
+		t.Fatal("снимок после сброса и повторной загрузки отличается от первого")
+	}
+}
