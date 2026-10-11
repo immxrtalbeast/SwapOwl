@@ -48,7 +48,7 @@ export function AlertsPage() {
                       <td style={cell}><UrgencyBadge def={def} /></td>
                       <td style={cell}>
                         {a.status === "expiring" && (
-                          <a href={hotOffersUrl(a.product_id)} style={{ font: "var(--type-button)", color: "var(--primary)", textDecoration: "none" }}>Блюда, которые спасают</a>
+                          <a href={hotOffersUrl(a.product_id)} style={{ font: "var(--type-button)", color: "var(--brand-ink)", textDecoration: "none" }}>Блюда, которые спасают</a>
                         )}
                       </td>
                     </tr>

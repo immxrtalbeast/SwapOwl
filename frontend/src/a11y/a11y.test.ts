@@ -97,6 +97,12 @@ describe("узкие экраны", () => {
       .map((f) => f.p);
     expect(bad).toEqual([]);
   });
+  it("ссылки на странице не красятся в --primary (на --paper 4,2 : 1)", () => {
+    const bad = files.filter(({ s }) => /<a\b[^>]*color:\s*"var\(--primary\)"/.test(s)).map((f) => f.p);
+    expect(bad).toEqual([]);
+    const css = readFileSync(join(srcRoot, "theme/global.css"), "utf8");
+    expect(css).toMatch(/^a \{ color: var\(--brand-ink\); \}/m);
+  });
   it("в каркасе есть ссылка «К содержимому» и цель main#so-main", () => {
     const shell = files.find((f) => f.p === "app/AppShell.tsx")!.s;
     expect(shell).toContain('href="#so-main"');
