@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"umirhack/internal/domain"
-	"umirhack/internal/seed"
+	seed "umirhack/internal/seed/catalog"
 )
 
 // Delivery — поставка (см. seed.Delivery).
