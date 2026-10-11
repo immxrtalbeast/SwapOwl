@@ -1,6 +1,6 @@
 import type { Role } from "../auth/roles";
 import { ApiError } from "./types";
-import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, ProductStock } from "./types";
+import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, ProductStock } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
@@ -49,6 +49,12 @@ export const api = {
   products: () => request<ProductStock[]>("/api/products"),
   batches: (productId?: string) =>
     request<Batch[]>(`/api/batches${productId ? `?product_id=${encodeURIComponent(productId)}` : ""}`),
+  receiving: () => request<ReceivingBatch[]>("/api/receiving"),
+  confirmExpiry: (batchId: number, patch: ExpiryPatch) =>
+    request<{ batch_id: number; expires_at: string; expiry_source: "confirmed" }>(`/api/batches/${batchId}/expiry`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
   receiveDelivery: (d: DeliveryInput) =>
     request<DeliveryResult>("/api/deliveries", { method: "POST", body: JSON.stringify(d) }),
   users: () => request<{ items: UserAccount[] }>("/api/users").then((r) => r.items),

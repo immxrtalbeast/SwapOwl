@@ -106,7 +106,7 @@ curl -X PUT 'http://localhost:8080/api/catalog?dry_run=true' \
 ## Склад и мониторинг (viewer)
 
 - `GET /api/products` → `[{"id", "name", "unit", "available": Qty, "expiring": Qty, "batches_count", "nearest_expires_at"}]`
-- `GET /api/batches?product_id=&status=` → `[{"id", "product_id", "delivery_id", "delivery_created_at", "quantity", "remaining", "received_at", "expires_at", "time_left_seconds", "status"}]`. По умолчанию без списанных в ноль, порядок `(expires_at, id)`. `status` ∈ `ok | expiring | expired`.
+- `GET /api/batches?product_id=&status=` → `[{"id", "product_id", "delivery_id", "delivery_created_at", "quantity", "remaining", "received_at", "expires_at", "time_left_seconds", "status", "expiry_source"}]`. `expiry_source` ∈ `delivery | product_default | confirmed`. По умолчанию без списанных в ноль, порядок `(expires_at, id)`. `status` ∈ `ok | expiring | expired`.
 - `GET /api/alerts` → `[{"batch_id", "product_id", "product_name", "remaining", "expires_at", "time_left_seconds", "status", "doomed": bool}]` — истекающие партии и просроченные за последние 24 ч стенда.
 - `GET /api/movements?product_id=&kind=&limit=` → журнал движений (`receipt`, `sale`, `writeoff`; для `writeoff` `reason` = `expired`).
 - `GET /api/supply-suggestions` → `[{"product_id", "product_name", "quantity": Qty, "usable_stock": Qty, "rate_per_day": Qty, "stockout_at" (null), "blocks_dishes": int, "urgency": "now"|"soon"|"planned", "explanation": "…"}]`. Порядок: `blocks_dishes > 0` первыми, затем по `stockout_at`, затем по id.
@@ -138,6 +138,13 @@ curl -X POST http://localhost:8080/api/orders \
 ### `GET /api/orders?status=` (viewer)
 
 История; отклонённые отделены полем `status` (`accepted` / `rejected`).
+
+## Приёмка со сроками (2.1а, миграция `0004`)
+
+Если в позиции поставки нет срока, берётся срок хранения продукта и партия получает `expiry_source = product_default`.
+
+- `GET /api/receiving` (viewer) → `[{"id", "product_id", "product_name", "delivery_id", "delivery_number", "quantity", "remaining", "received_at", "expires_at", "time_left_seconds", "expiry_source"}]` — действующие партии с `product_default`, принятые за последние 48 ч стенда, новые сверху.
+- `PATCH /api/batches/{id}/expiry` (operator) — `{"expires_on": "YYYY-MM-DD"}` (конец дня по поясу ресторана) или `{"shelf_life_hours": N}` (от `received_at`), ровно одно поле. `200` — `{"batch_id", "product_id", "expires_at", "expiry_source": "confirmed", "received_at", "time_left_seconds"}`. Идёт под блокировкой продукта, движение не пишется, в журнал аудита (`batch_expiry_confirmed`) уходят старый и новый срок; SSE `stock.changed`. Ошибки: `400 validation_error`, `404 unknown_batch`, `409 batch_closed` (партия просрочена или списана в ноль), `409 expiry_not_future` (новый срок не позже времени стенда).
 
 ## Корректировки остатка (operator)
 

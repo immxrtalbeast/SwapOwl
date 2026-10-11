@@ -27,7 +27,28 @@ export interface Batch {
   expires_at: string;
   time_left_seconds: number;
   status: "ok" | "expired";
+  expiry_source: ExpirySource;
 }
+
+export type ExpirySource = "delivery" | "product_default" | "confirmed";
+
+/** Строка GET /api/receiving: партия со сроком из продукта, ещё не подтверждённым кладовщиком. */
+export interface ReceivingBatch {
+  id: number;
+  product_id: string;
+  product_name: string;
+  delivery_id: string;
+  delivery_number: string;
+  quantity: Qty;
+  remaining: Qty;
+  received_at: string;
+  expires_at: string;
+  time_left_seconds: number;
+  expiry_source: ExpirySource;
+}
+
+/** Тело PATCH /api/batches/{id}/expiry: ровно одно поле. */
+export type ExpiryPatch = { expires_on: string } | { shelf_life_hours: number };
 
 export interface DeliveryItemInput {
   product_id: string;

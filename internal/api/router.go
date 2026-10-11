@@ -35,6 +35,9 @@ type Deps struct {
 
 	// Stock — поставки и остатки (2.1). nil — маршруты склада не регистрируются.
 	Stock Stock
+	// Receiving — приёмка: подтверждение срока партии и список неподтверждённых (2.1а).
+	// nil — маршруты не регистрируются.
+	Receiving Receiving
 	// Catalog — импорт справочников (8.3 п. 5). nil — маршрут не регистрируется.
 	Catalog Catalog
 	// Orders — заказы и меню (2.3). nil — маршруты заказов не регистрируются.
@@ -114,6 +117,7 @@ func (rt *Router) Routes() {
 	rt.metricsRoutes()
 	rt.authRoutes()
 	rt.stockRoutes()
+	rt.receivingRoutes()
 	rt.catalogRoutes()
 	rt.orderRoutes()
 	rt.correctionRoutes()

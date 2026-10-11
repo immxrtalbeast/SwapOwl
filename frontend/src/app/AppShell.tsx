@@ -11,6 +11,8 @@ import { DemoPage } from "../pages/demo";
 import { AnalyticsPage } from "../pages/analytics";
 import { UsersPage } from "../pages/users";
 import { AccountPage } from "../pages/account";
+import { ReceivingPage } from "../pages/receiving";
+import { ReceivingCounter } from "../pages/receiving/ReceivingCounter";
 import { AppHeader } from "./AppHeader";
 import { ClockProvider } from "./ClockContext";
 import { ConnectionProvider } from "./ConnectionContext";
@@ -21,6 +23,7 @@ import { SCREENS, screenFromHash } from "./screens";
 function ScreenView({ id }: { id: string }) {
   switch (id) {
     case "stock": return <StockPage />;
+    case "receiving": return <ReceivingPage />;
     case "menu": return <StopListPage />;
     case "orders": return <OrdersPage />;
     case "alerts": return <AlertsPage />;
@@ -50,7 +53,7 @@ export function AppShell() {
   return (
     <ConnectionProvider>
       <ClockProvider>
-        <AppHeader alerts={<AlertsCounter />} />
+        <AppHeader alerts={<><ReceivingCounter /><AlertsCounter /></>} />
         <div style={{ display: "flex", flexWrap: "wrap", fontFamily: "system-ui, sans-serif" }}>
           <nav aria-label="Экраны" style={{ minWidth: 200, padding: 16 }}>
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>

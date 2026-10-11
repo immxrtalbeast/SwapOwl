@@ -12,6 +12,10 @@ describe("screenFromHash", () => {
 });
 
 describe("SCREENS", () => {
+  it("есть экран приёмки", () => {
+    expect(SCREENS.find((s) => s.id === "receiving")?.title).toBe("Приёмка");
+    expect(screenFromHash("#/receiving")).toBe("receiving");
+  });
   it("есть экран аккаунта, доступный любой роли", () => {
     const a = SCREENS.find((s) => s.id === "account");
     expect(a).toBeDefined();

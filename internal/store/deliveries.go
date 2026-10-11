@@ -268,9 +268,9 @@ func (d *DB) ReceiveDelivery(ctx context.Context, in DeliveryInput, now func() t
 			Batches: []BatchJSON{}, Warnings: []WarningJSON{}}
 		for i, it := range in.Items {
 			line := i + 1
-			hours := it.ShelfLifeHours
+			hours, source := it.ShelfLifeHours, ExpirySourceDelivery
 			if hours == 0 && it.ExpiresOn == "" {
-				hours = *shelf[it.ProductID]
+				hours, source = *shelf[it.ProductID], ExpirySourceProductDefault
 			}
 			expires := received.Add(time.Duration(hours) * time.Hour)
 			if it.ExpiresOn != "" {
@@ -291,9 +291,9 @@ func (d *DB) ReceiveDelivery(ctx context.Context, in DeliveryInput, now func() t
 			}
 			var bid int64
 			if err := tx.QueryRow(ctx,
-				`INSERT INTO batches (delivery_id, line_no, product_id, quantity, remaining, received_at, expires_at, written_off_at)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-				in.ID, line, it.ProductID, it.Qty, remaining, received, expires, writtenOff).Scan(&bid); err != nil {
+				`INSERT INTO batches (delivery_id, line_no, product_id, quantity, remaining, received_at, expires_at, written_off_at, expiry_source)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+				in.ID, line, it.ProductID, it.Qty, remaining, received, expires, writtenOff, source).Scan(&bid); err != nil {
 				return fmt.Errorf("store: insert batch: %w", err)
 			}
 			if _, err := tx.Exec(ctx,

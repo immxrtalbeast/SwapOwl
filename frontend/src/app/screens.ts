@@ -11,6 +11,7 @@ export interface Screen {
 
 export const SCREENS: Screen[] = [
   { id: "stock", title: "Склад" },
+  { id: "receiving", title: "Приёмка" },
   { id: "menu", title: "Меню и стоп-лист" },
   { id: "orders", title: "Заказы" },
   { id: "alerts", title: "Предупреждения", soon: "лента истекающих и списанных партий" },

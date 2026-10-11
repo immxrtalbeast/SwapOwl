@@ -140,7 +140,7 @@ func run() error {
 	})
 	router := api.NewRouter(api.Deps{Metrics: reg, MetricsToken: os.Getenv("METRICS_TOKEN"), Log: log, DB: db, Now: now, Auth: authSvc, Audit: db, Clock: clockInfo(st), Demo: demo, Sim: sim, DemoToken: cfg.DemoToken,
 		NotSimulated: stand.ErrNotSimulated, Gate: gate,
-		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: orders, Corrections: pubCorrections{db, pub}, Menu: db, Outbox: db, Monitor: monitor, Analytics: db, Location: cfg.Location, Events: bus,
+		Stock: pubStock{db, pub}, Receiving: pubReceiving{db, pub}, Catalog: pubCatalog{db, pub}, Orders: orders, Corrections: pubCorrections{db, pub}, Menu: db, Outbox: db, Monitor: monitor, Analytics: db, Location: cfg.Location, Events: bus,
 		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{
 			WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
 		Supply: store.SupplyReader{DB: db, CoverDays: cfg.SupplyCoverDays, MinPortions: int64(cfg.SupplyMinPortions),
@@ -261,6 +261,21 @@ func (c pubCorrections) CancelOrder(ctx context.Context, in store.CancelInput, n
 		c.p.stockChanged(ctx, uniqSorted(products))
 	}
 	return res, nil
+}
+
+// pubReceiving публикует stock.changed после подтверждения срока: от срока зависят доступность
+// партии и порог «истекает».
+type pubReceiving struct {
+	api.Receiving
+	p *publisher
+}
+
+func (r pubReceiving) ConfirmExpiry(ctx context.Context, in store.ExpiryInput, now func() time.Time, loc *time.Location) (store.ExpiryResult, error) {
+	res, err := r.Receiving.ConfirmExpiry(ctx, in, now, loc)
+	if err == nil {
+		r.p.stockChanged(ctx, []string{res.ProductID})
+	}
+	return res, err
 }
 
 // sweepStamp запоминает время последнего успешного прохода «дворника» для метрики отставания.
