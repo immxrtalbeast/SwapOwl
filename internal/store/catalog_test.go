@@ -40,6 +40,10 @@ func TestImportCatalogCreatesUpdatesAndIsIdempotent(t *testing.T) {
 	if diff, err = db.ImportCatalog(ctx, in, false); err != nil || diff.Products[0].Action != CatalogUnchanged || diff.Dishes[0].Action != CatalogUnchanged {
 		t.Fatalf("repeat: %v %+v", err, diff)
 	}
+	// Дифф показывает записанные (развёрнутые) нормы.
+	if got := diff.Dishes[0].Recipe; len(got) != len(in.Dishes[0].Recipe) {
+		t.Fatalf("diff recipe: %+v", got)
+	}
 
 	// Обновление: цена, срок убран из тела (остаётся прежний), рецепт заменён целиком.
 	r := rice()

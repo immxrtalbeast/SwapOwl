@@ -238,3 +238,60 @@ func TestCatalogFailKeepsCursors(t *testing.T) {
 		t.Fatalf("курсоры сдвинуты без каталога: %+v", st)
 	}
 }
+
+func TestReconcile(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	now := time.Date(2026, 1, 4, 12, 0, 0, 0, loc)
+	a, _, ic := setup(t, now)
+	bal, err := ic.Balance(context.Background(), now)
+	if err != nil || len(bal) == 0 {
+		t.Fatalf("остатки iiko: %v %v", bal, err)
+	}
+	products, _ := ic.Products(context.Background())
+	factor := map[string]int64{}
+	for _, p := range products {
+		u, _ := mapping.UnitOf(p.MainUnit)
+		factor[p.ID] = u.Factor
+	}
+	// У нас всё как в iiko, кроме одного продукта: недостача 300 базовых единиц.
+	var rows []map[string]any
+	var skewed string
+	for _, b := range bal {
+		qty := int64(b.Amount*float64(factor[b.Product]) + 0.5)
+		if skewed == "" && qty >= 300 {
+			skewed, qty = b.Product, qty-300
+		}
+		rows = append(rows, map[string]any{"id": b.Product, "name": b.Product, "available": map[string]any{"qty": qty, "unit": "g"}})
+	}
+	if skewed == "" {
+		t.Fatal("в фейке нет продукта с остатком")
+	}
+	ats := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("reconcile должен только читать: %s %s", r.Method, r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(rows)
+	}))
+	defer ats.Close()
+	a.api.base = ats.URL
+
+	var buf bytes.Buffer
+	if err := a.runReconcile(context.Background(), &buf, true, false); err != nil {
+		t.Fatal(err)
+	}
+	var got []struct {
+		ProductID string `json:"product_id"`
+		Diff      int64  `json:"diff"`
+		DiffMinor int64  `json:"diff_minor"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ProductID != skewed || got[0].Diff != -300 || got[0].DiffMinor >= 0 {
+		t.Fatalf("ждали одно расхождение по %s (−300): %s", skewed, buf.String())
+	}
+	buf.Reset()
+	if err := a.runReconcile(context.Background(), &buf, false, false); err != nil || !bytes.Contains(buf.Bytes(), []byte(skewed)) {
+		t.Fatalf("таблица: %v\n%s", err, buf.String())
+	}
+}
