@@ -10,6 +10,7 @@ import { MoneyPage } from "../pages/money";
 import { DemoPage } from "../pages/demo";
 import { AnalyticsPage } from "../pages/analytics";
 import { UsersPage } from "../pages/users";
+import { AccountPage } from "../pages/account";
 import { AppHeader } from "./AppHeader";
 import { ClockProvider } from "./ClockContext";
 import { ConnectionProvider } from "./ConnectionContext";
@@ -28,6 +29,7 @@ function ScreenView({ id }: { id: string }) {
     case "money": return <MoneyPage />;
     case "demo": return <DemoPage />;
     case "analytics": return <AnalyticsPage />;
+    case "account": return <AccountPage />;
     default: return <UsersPage />;
   }
 }

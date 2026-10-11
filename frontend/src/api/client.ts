@@ -37,6 +37,8 @@ export const api = {
   login: (login: string, password: string) =>
     request<{ login: string; role: Role }>("/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) }),
   logout: () => request<null>("/api/auth/logout", { method: "POST" }),
+  changePassword: (old: string, next: string) =>
+    request<null>("/api/auth/password", { method: "POST", body: JSON.stringify({ old, new: next }) }),
   alerts: () => request<Alert[]>("/api/alerts"),
   hotOffers: (algo?: HotAlgo) => request<HotOffersResponse>(`/api/hot-offers${algo ? `?algo=${algo}` : ""}`),
   supplySuggestions: () => request<SupplySuggestion[]>("/api/supply-suggestions"),

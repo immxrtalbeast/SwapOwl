@@ -12,6 +12,12 @@ describe("screenFromHash", () => {
 });
 
 describe("SCREENS", () => {
+  it("есть экран аккаунта, доступный любой роли", () => {
+    const a = SCREENS.find((s) => s.id === "account");
+    expect(a).toBeDefined();
+    expect(a?.minRole).toBeUndefined();
+    expect(screenFromHash("#/account")).toBe("account");
+  });
   it("экран пользователей и ключей только для администратора", () => {
     expect(SCREENS.find((s) => s.id === "users")?.minRole).toBe("admin");
   });
