@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { api } from "../../api/client";
+import { useLive } from "../../app/useLive";
 import type { DishServings } from "../../api/types";
 import { reasonText, servingsLabel } from "./reason";
 
@@ -19,9 +20,7 @@ export function StopListPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useLive(load, ["stoplist.changed", "stock.changed", "stand.reset"]);
 
   return (
     <section aria-labelledby="stop-list-title">

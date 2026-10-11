@@ -23,7 +23,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+export interface ClockInfo {
+  now: string;
+  speed: number;
+  timezone: string;
+  simulated: boolean;
+  simulator_running: boolean;
+}
+
 export const api = {
+  clock: () => request<ClockInfo>("/api/clock"),
   me: () => request<{ login: string | null; role: Role; auth_required: boolean }>("/api/auth/me"),
   login: (login: string, password: string) =>
     request<{ login: string; role: Role }>("/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) }),
