@@ -15,28 +15,31 @@ func WriteJSON(w io.Writer, rep Report) error {
 
 func rub(kop int64) string { return fmt.Sprintf("%.2f", float64(kop)/100) }
 
-// WriteText выводит отчёт в виде таблиц по seed и итога.
+// WriteText выводит таблицу основной точки по сценариям, проверку знака и вердикт.
 func WriteText(w io.Writer, rep Report) {
-	for _, pt := range rep.Points {
-		kind := "дополнительная точка"
-		if pt.Main {
+	fmt.Fprintf(w, "seed: %d на клетку, дней: %d. Списания по просрочке, ₽ (доля от поступившего)\n", rep.Seeds, rep.Days)
+	for _, c := range rep.Cells {
+		kind := "знак"
+		if c.Main {
 			kind = "основная точка"
 		}
-		fmt.Fprintf(w, "u = %.2f (%s), модель M2, дней: %d\n", pt.U, kind, rep.Days)
-		fmt.Fprintf(w, "списания по просрочке, ₽ (доля от поступившего, %%):\n")
-		fmt.Fprintf(w, "%-6s %-18s %-18s %-18s %s\n", "seed", "C0", "R", "Bg", "Bg−R")
-		for _, r := range pt.Rows {
-			fmt.Fprintf(w, "%-6d %-18s %-18s %-18s %s\n", r.Seed, cell(r.C0), cell(r.R), cell(r.Bg), rub(r.DiffBgR))
+		fmt.Fprintf(w, "\n%s · %s · u = %.2f (%s)\n", c.Title, c.Model, c.U, kind)
+		for _, a := range Algos {
+			g := c.Algos[a]
+			fmt.Fprintf(w, "  %-4s %12s (%.1f%%), отказов %d из %d\n", a, rub(g.Waste), g.WasteShare()*100, g.Rejected, g.Orders)
 		}
-		fmt.Fprintf(w, "итого: C0 %s, R %s, Bg %s\n", rub(pt.TotalC0), rub(pt.TotalR), rub(pt.TotalBg))
-		fmt.Fprintf(w, "отказов в заказах (из %d): C0 %d, R %d, Bg %d\n", pt.OrdersC0, pt.RejectsC0, pt.RejectsR, pt.RejectsBg)
-		fmt.Fprintf(w, "снижение списаний к C0: R %.1f%%, Bg %.1f%%\n", pt.ReductionR*100, pt.ReductionB*100)
-		fmt.Fprintf(w, "Bg−R: среднее %s ₽, 95%% интервал [%s; %s], знак: %s\n\n",
-			rub(int64(pt.DiffBgR.Mean)), rub(int64(pt.DiffBgR.Lo)), rub(int64(pt.DiffBgR.Hi)), pt.SignBgVsR)
+		fmt.Fprintf(w, "  Bg−R: среднее %s ₽, 95%% интервал [%s; %s], знак: %s\n",
+			rub(int64(c.DiffBgR.Mean)), rub(int64(c.DiffBgR.Lo)), rub(int64(c.DiffBgR.Hi)), c.SignBgVsR)
 	}
-	fmt.Fprintln(w, "Основной алгоритм здесь не выбирается (отдельный тикет этапа 3).")
-}
-
-func cell(r Result) string {
-	return fmt.Sprintf("%s (%.1f%%)", rub(r.WriteoffCost), r.WriteoffShare()*100)
+	v := rep.Verdict
+	fmt.Fprintf(w, "\nПобедитель: %s (%s)\n", v.Main, v.Reason)
+	for _, s := range v.Scenarios {
+		fmt.Fprintf(w, "  %-18s %-4s %s\n", s.Scenario, s.Outcome, s.Why)
+	}
+	if v.Claims {
+		fmt.Fprintf(w, "Снижение списаний основного алгоритма: к случайным %.1f%%, к ближайшему сроку %.1f%%\n",
+			v.Analytics.WasteReductionVsRandomPct, v.Analytics.WasteReductionVsNearestPct)
+	} else {
+		fmt.Fprintln(w, "Утверждений о сравнении нет.")
+	}
 }
