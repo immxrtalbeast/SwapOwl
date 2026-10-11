@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -205,5 +207,81 @@ func TestExpiringPublishesOneEventPerBatch(t *testing.T) {
 		!strings.Contains(got[0], `"batch_id":3`) || !strings.Contains(got[0], `"product_id":"p1"`) ||
 		!strings.Contains(got[1], `"batch_id":4`) {
 		t.Fatalf("events: %v", got)
+	}
+}
+
+type fakeOutboxSink struct {
+	kinds    []string
+	payloads []string
+	fail     bool
+}
+
+func (f *fakeOutboxSink) EnqueueOutbox(_ context.Context, kind string, payload json.RawMessage, _ time.Time) (int64, error) {
+	if f.fail {
+		return 0, errors.New("db down")
+	}
+	f.kinds = append(f.kinds, kind)
+	f.payloads = append(f.payloads, string(payload))
+	return int64(len(f.kinds)), nil
+}
+
+func TestStopListChangeEnqueuesFullListOnce(t *testing.T) {
+	menu := &fakeMenu{have: 100}
+	p, _ := newPub(menu)
+	sink := &fakeOutboxSink{}
+	p.outbox = sink
+	ctx := context.Background()
+
+	p.recheckStopList(ctx) // первый вызов после старта пишет текущий (пустой) список
+	p.recheckStopList(ctx) // без изменений — ничего
+	if len(sink.kinds) != 1 || sink.payloads[0] != "[]" {
+		t.Fatalf("startup: %v %v", sink.kinds, sink.payloads)
+	}
+	sink.kinds, sink.payloads = nil, nil
+
+	menu.have = 0 // блюдо в стоп-листе: строка с полным списком
+	p.recheckStopList(ctx)
+	p.recheckStopList(ctx)
+	if len(sink.kinds) != 1 || sink.kinds[0] != "stoplist" || !strings.Contains(sink.payloads[0], `"id":"d1"`) {
+		t.Fatalf("after stop: %v %v", sink.kinds, sink.payloads)
+	}
+
+	menu.have = 100 // блюдо вернулось: полный (пустой) список
+	p.recheckStopList(ctx)
+	if len(sink.kinds) != 2 || sink.payloads[1] != "[]" {
+		t.Fatalf("after return: %v %v", sink.kinds, sink.payloads)
+	}
+}
+
+func TestOutboxEnqueueFailureRetriedOnNextRecheck(t *testing.T) {
+	menu := &fakeMenu{have: 100}
+	p, _ := newPub(menu)
+	sink := &fakeOutboxSink{}
+	p.outbox = sink
+	ctx := context.Background()
+	p.recheckStopList(ctx)
+	sink.kinds = nil
+
+	menu.have = 0
+	sink.fail = true
+	p.recheckStopList(ctx)
+	sink.fail = false
+	p.recheckStopList(ctx) // изменение не потеряно
+	if len(sink.kinds) != 1 {
+		t.Fatalf("retry: %v", sink.kinds)
+	}
+}
+
+func TestOutboxStartupWritesStopListChangedWhileDown(t *testing.T) {
+	menu := &fakeMenu{have: 0} // блюдо уже в стоп-листе на момент старта
+	p, _ := newPub(menu)
+	sink := &fakeOutboxSink{fail: true}
+	p.outbox = sink
+	ctx := context.Background()
+	p.recheckStopList(ctx) // prime при сбое БД не теряет состав
+	sink.fail = false
+	p.recheckStopList(ctx)
+	if len(sink.kinds) != 1 || !strings.Contains(sink.payloads[0], `"id":"d1"`) {
+		t.Fatalf("startup: %v %v", sink.kinds, sink.payloads)
 	}
 }

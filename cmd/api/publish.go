@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -25,9 +27,19 @@ type publisher struct {
 	now  func() time.Time
 	log  *slog.Logger
 
+	// outbox — очередь для адаптера; nil — сообщения не копятся.
+	outbox outboxSink
+
 	// recheckMu держит снимок меню и Update вместе: иначе устаревший снимок мог бы
 	// примениться после свежего и записать в трекер неверный стоп-лист.
-	recheckMu sync.Mutex
+	recheckMu  sync.Mutex
+	outboxPrev []string // состав стоп-листа, уже учтённый в outbox
+	outboxInit bool
+}
+
+// outboxSink — куда publisher кладёт сообщения для адаптера.
+type outboxSink interface {
+	EnqueueOutbox(ctx context.Context, kind string, payload json.RawMessage, now time.Time) (int64, error)
 }
 
 func newPublisher(bus *events.Bus, menu api.MenuSource, now func() time.Time, log *slog.Logger) *publisher {
@@ -59,6 +71,31 @@ func (p *publisher) recheckStopList(ctx context.Context) {
 		ids = append(ids, s.Dish.ID)
 	}
 	p.stop.Update(ids)
+	p.enqueueStopList(ctx, snap, ids)
+}
+
+// enqueueStopList кладёт в outbox полный текущий стоп-лист, когда его состав изменился
+// относительно последнего записанного. Первый вызов после старта тоже пишет строку: база
+// сравнения — память процесса, и изменение за время простоя или падения иначе потерялось бы
+// (payload полный, лишняя строка безвредна). Вызывается под recheckMu. Сбой записи не
+// запоминает состав, и следующая сверка повторит попытку.
+func (p *publisher) enqueueStopList(ctx context.Context, snap store.MenuSnapshot, ids []string) {
+	if p.outbox == nil {
+		return
+	}
+	sort.Strings(ids)
+	if p.outboxInit && slices.Equal(p.outboxPrev, ids) {
+		return
+	}
+	body, err := json.Marshal(api.StopListPayload(snap))
+	if err == nil {
+		_, err = p.outbox.EnqueueOutbox(ctx, store.OutboxStoplist, body, p.now().UTC())
+	}
+	if err != nil {
+		p.log.Warn("outbox: enqueue stop-list", slog.String("error", err.Error()))
+		return
+	}
+	p.outboxPrev, p.outboxInit = ids, true
 }
 
 // onExpiring — janitor.OnExpiring: batch.expiring по одному на партию (7.5). Каждая партия
