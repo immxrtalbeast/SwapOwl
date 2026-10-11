@@ -183,6 +183,29 @@ export interface MoneyReport {
   by_day: MoneyDay[];
 }
 
+// GET /api/analytics/shortages (7.4): продукты, которых не хватило отклонённым заказам.
+export interface ShortageRow {
+  product_id: string;
+  product_name: string;
+  rejected_orders: number;
+  missing: Qty;
+}
+export interface ShortagesReport {
+  from: string;
+  to: string;
+  rejected_orders: number;
+  by_product: ShortageRow[];
+}
+
+// GET /api/analytics/bench (7.4): цифры есть только при available: true.
+export interface BenchResult {
+  available: boolean;
+  runs?: number;
+  main_algo?: string;
+  waste_reduction_vs_random_pct?: number;
+  waste_reduction_vs_nearest_pct?: number;
+}
+
 // GET /api/hot-offers (7.4).
 export interface HotReason {
   product_id: string;
