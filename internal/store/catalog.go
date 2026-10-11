@@ -50,8 +50,8 @@ type CatalogProduct struct {
 
 // CatalogRecipeItem — норма в базовой единице продукта.
 type CatalogRecipeItem struct {
-	ProductID string
-	Quantity  int64
+	ProductID string `json:"product_id"`
+	Quantity  int64  `json:"quantity"`
 }
 
 // CatalogDish — блюдо импорта; рецепт заменяет прежний целиком.
@@ -81,6 +81,8 @@ type CatalogChange struct {
 	ID     string   `json:"id"`
 	Action string   `json:"action"`
 	Fields []string `json:"fields,omitempty"`
+	// Recipe — у блюд: развёрнутые нормы сырья в базовых единицах, как они записаны (или были бы при dry_run).
+	Recipe []CatalogRecipeItem `json:"recipe,omitempty"`
 }
 
 // CatalogDiff — разница импорта; при dry_run ровно то, что было бы записано.
@@ -241,6 +243,12 @@ func readDish(ctx context.Context, tx pgx.Tx, id string) (dishRow, bool, error) 
 }
 
 func upsertDish(ctx context.Context, tx pgx.Tx, ds CatalogDish) (CatalogChange, error) {
+	ch, err := upsertDishRow(ctx, tx, ds)
+	ch.Recipe = ds.Recipe
+	return ch, err
+}
+
+func upsertDishRow(ctx context.Context, tx pgx.Tx, ds CatalogDish) (CatalogChange, error) {
 	cur, ok, err := readDish(ctx, tx, ds.ID)
 	if err != nil {
 		return CatalogChange{}, fmt.Errorf("store: catalog dish %s: %w", ds.ID, err)
