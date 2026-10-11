@@ -8,16 +8,6 @@ import (
 	"umirhack/internal/domain"
 )
 
-// ProductStock — строка GET /api/products. Доступно = remaining > 0 AND now < expires_at.
-type ProductStock struct {
-	ID               string      `json:"id"`
-	Name             string      `json:"name"`
-	Unit             domain.Unit `json:"unit"`
-	Available        QtyJSON     `json:"available"`
-	BatchesCount     int         `json:"batches_count"`
-	NearestExpiresAt *time.Time  `json:"nearest_expires_at"`
-}
-
 // BatchView — строка GET /api/batches.
 type BatchView struct {
 	ID                int64     `json:"id"`
@@ -31,31 +21,6 @@ type BatchView struct {
 	TimeLeftSeconds   int64     `json:"time_left_seconds"`
 	Status            string    `json:"status"`
 	ExpirySource      string    `json:"expiry_source"`
-}
-
-// ListProductStock — остатки по продуктам на момент now (время берёт вызывающий из clock).
-func (d *DB) ListProductStock(ctx context.Context, now time.Time) ([]ProductStock, error) {
-	rows, err := d.Pool.Query(ctx, `
-		SELECT p.id, p.name, p.unit,
-		       COALESCE(SUM(b.remaining), 0)::bigint, count(b.id)::int, MIN(b.expires_at)
-		FROM products p
-		LEFT JOIN batches b ON b.product_id = p.id AND b.remaining > 0 AND b.expires_at > $1
-		GROUP BY p.id ORDER BY p.name, p.id`, now)
-	if err != nil {
-		return nil, fmt.Errorf("store: list products: %w", err)
-	}
-	defer rows.Close()
-	out := []ProductStock{}
-	for rows.Next() {
-		var s ProductStock
-		var u string
-		if err := rows.Scan(&s.ID, &s.Name, &u, &s.Available.Qty, &s.BatchesCount, &s.NearestExpiresAt); err != nil {
-			return nil, fmt.Errorf("store: list products: %w", err)
-		}
-		s.Unit, s.Available.Unit = domain.Unit(u), domain.Unit(u)
-		out = append(out, s)
-	}
-	return out, rows.Err()
 }
 
 // ListBatches — партии без списанных в ноль, порядок (expires_at, id).
