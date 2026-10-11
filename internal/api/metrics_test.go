@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -56,5 +57,27 @@ func TestMetricsCountsRoutePattern(t *testing.T) {
 	}
 	if strings.Contains(body, "/api/thing/42") || strings.Contains(body, "/nope/123") {
 		t.Errorf("сырой URL в метриках:\n%s", body)
+	}
+}
+
+func TestMetricsMethodCardinality(t *testing.T) {
+	reg := metrics.New()
+	srv := httptest.NewServer(NewRouter(Deps{Metrics: reg, MetricsToken: "t"}).Handler())
+	defer srv.Close()
+	for i := 0; i < 50; i++ {
+		req, _ := http.NewRequest(fmt.Sprintf("X%d", i), srv.URL+"/healthz", nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	var sb strings.Builder
+	_ = reg.Write(&sb)
+	if n := strings.Count(sb.String(), "http_requests_total{"); n > 10 {
+		t.Fatalf("неограниченные метки method: %d рядов", n)
+	}
+	if !strings.Contains(sb.String(), `method="OTHER"`) {
+		t.Errorf("нет method=OTHER:\n%s", sb.String())
 	}
 }

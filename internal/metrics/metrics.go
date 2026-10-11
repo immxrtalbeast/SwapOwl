@@ -52,6 +52,11 @@ func (r *Registry) Gauge(name, help string, fn func() float64) {
 // ObserveRequest учитывает запрос; route — шаблон пути, не сырой URL.
 func (r *Registry) ObserveRequest(method, route string, status int, d time.Duration) {
 	sec := d.Seconds()
+	switch method {
+	case "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS":
+	default:
+		method = "OTHER" // метод приходит от анонимного клиента: без свода число рядов не ограничено
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.requests[reqKey{method, route, strconv.Itoa(status)}]++
