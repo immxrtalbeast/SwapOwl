@@ -2,8 +2,10 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestExpandTechcard(t *testing.T) {
@@ -62,5 +64,27 @@ func TestExpandTechcardInvalid(t *testing.T) {
 		if _, err := ExpandTechcard([]TechLine{l}, nil); !errors.Is(err, ErrValidation) {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+// Ацикличный граф с общими вершинами (число путей ~ fib(n)) разворачивается быстро и точно.
+func TestExpandTechcardSharedPrepsAreLinear(t *testing.T) {
+	const n = 60
+	preps := map[string]Prep{}
+	for i := 0; i < n; i++ {
+		r := []TechLine{{ProductID: "x", Qty: 1}}
+		if i < n-2 {
+			r = []TechLine{{PrepID: fmt.Sprintf("p%d", i+1), Qty: 1}, {PrepID: fmt.Sprintf("p%d", i+2), Qty: 1}}
+		}
+		preps[fmt.Sprintf("p%d", i)] = Prep{ID: fmt.Sprintf("p%d", i), Yield: 1, Recipe: r}
+	}
+	start := time.Now()
+	got, err := ExpandTechcard([]TechLine{{PrepID: "p0", Qty: 1}}, preps)
+	if err != nil || time.Since(start) > time.Second {
+		t.Fatalf("err %v after %v", err, time.Since(start))
+	}
+	// fib: p58, p59 дают по 1; p_i = p_{i+1} + p_{i+2} → x = fib(60) = 1548008755920.
+	if len(got) != 1 || got[0].Quantity != 1548008755920 {
+		t.Fatalf("got %v", got)
 	}
 }

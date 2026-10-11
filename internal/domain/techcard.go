@@ -39,13 +39,32 @@ type Norm struct {
 	Quantity  int64
 }
 
-// ExpandTechcard раскрывает техкарту до сырья: суммирует по продукту, считает брутто из нетто и
+// TechcardExpander разворачивает техкарты над фиксированным набором полуфабрикатов и запоминает
+// развёртку каждого полуфабриката на единицу выхода: общие вершины графа считаются один раз, а не
+// по числу путей. Не потокобезопасен.
+type TechcardExpander struct {
+	preps map[string]Prep
+	memo  map[string]map[string]*big.Rat
+	path  map[string]bool
+}
+
+// NewTechcardExpander создаёт разворачиватель над preps.
+func NewTechcardExpander(preps map[string]Prep) *TechcardExpander {
+	return &TechcardExpander{preps: preps, memo: map[string]map[string]*big.Rat{}, path: map[string]bool{}}
+}
+
+// ExpandTechcard — разовое развёртывание; см. TechcardExpander.Expand.
+func ExpandTechcard(lines []TechLine, preps map[string]Prep) ([]Norm, error) {
+	return NewTechcardExpander(preps).Expand(lines)
+}
+
+// Expand раскрывает техкарту до сырья: суммирует по продукту, считает брутто из нетто и
 // потерь, пересчитывает полуфабрикаты пропорционально выходу. Арифметика точная (рациональные
 // числа), округление вверх одно — на итоговой норме продукта. Цикл между полуфабрикатами —
 // ErrTechcardCycle. Результат отсортирован по продукту.
-func ExpandTechcard(lines []TechLine, preps map[string]Prep) ([]Norm, error) {
+func (e *TechcardExpander) Expand(lines []TechLine) ([]Norm, error) {
 	acc := map[string]*big.Rat{}
-	if err := expandLines(lines, big.NewRat(1, 1), preps, map[string]bool{}, acc); err != nil {
+	if err := e.add(lines, big.NewRat(1, 1), acc); err != nil {
 		return nil, err
 	}
 	out := make([]Norm, 0, len(acc))
@@ -60,7 +79,35 @@ func ExpandTechcard(lines []TechLine, preps map[string]Prep) ([]Norm, error) {
 	return out, nil
 }
 
-func expandLines(lines []TechLine, k *big.Rat, preps map[string]Prep, path map[string]bool, acc map[string]*big.Rat) error {
+// perUnit — сырьё на одну единицу выхода полуфабриката (с проверкой цикла).
+func (e *TechcardExpander) perUnit(id string, p Prep) (map[string]*big.Rat, error) {
+	if m, ok := e.memo[id]; ok {
+		return m, nil
+	}
+	if e.path[id] {
+		return nil, fmt.Errorf("%w: %q", ErrTechcardCycle, id)
+	}
+	if p.Yield <= 0 {
+		return nil, fmt.Errorf("%w: prep %q has no yield", ErrTechcardInvalid, id)
+	}
+	e.path[id] = true
+	defer delete(e.path, id)
+	m := map[string]*big.Rat{}
+	if err := e.add(p.Recipe, big.NewRat(1, p.Yield), m); err != nil {
+		return nil, err
+	}
+	e.memo[id] = m
+	return m, nil
+}
+
+func (e *TechcardExpander) add(lines []TechLine, k *big.Rat, acc map[string]*big.Rat) error {
+	put := func(id string, q *big.Rat) {
+		if cur, ok := acc[id]; ok {
+			cur.Add(cur, q)
+		} else {
+			acc[id] = q
+		}
+	}
 	for _, l := range lines {
 		if l.Qty <= 0 || l.LossBP < 0 || l.LossBP > maxLossBP {
 			return fmt.Errorf("%w: quantity %d, loss %d", ErrTechcardInvalid, l.Qty, l.LossBP)
@@ -73,33 +120,23 @@ func expandLines(lines []TechLine, k *big.Rat, preps map[string]Prep, path map[s
 			if l.LossBP > 0 {
 				q.Mul(q, big.NewRat(10000, int64(10000-l.LossBP)))
 			}
-			q.Mul(q, k)
-			if cur, ok := acc[l.ProductID]; ok {
-				cur.Add(cur, q)
-			} else {
-				acc[l.ProductID] = q
-			}
+			put(l.ProductID, q.Mul(q, k))
 			continue
 		}
 		if l.ProductID != "" || l.LossBP != 0 {
 			return fmt.Errorf("%w: prep line %q takes only a quantity", ErrTechcardInvalid, l.PrepID)
 		}
-		p, ok := preps[l.PrepID]
+		p, ok := e.preps[l.PrepID]
 		if !ok {
 			return fmt.Errorf("%w: %q", ErrTechcardUnknown, l.PrepID)
 		}
-		if path[l.PrepID] {
-			return fmt.Errorf("%w: %q", ErrTechcardCycle, l.PrepID)
-		}
-		if p.Yield <= 0 {
-			return fmt.Errorf("%w: prep %q has no yield", ErrTechcardInvalid, l.PrepID)
-		}
-		sub := new(big.Rat).Mul(k, big.NewRat(l.Qty, p.Yield))
-		path[l.PrepID] = true
-		err := expandLines(p.Recipe, sub, preps, path, acc)
-		delete(path, l.PrepID)
+		m, err := e.perUnit(l.PrepID, p)
 		if err != nil {
 			return err
+		}
+		f := new(big.Rat).Mul(k, new(big.Rat).SetInt64(l.Qty))
+		for id, r := range m {
+			put(id, new(big.Rat).Mul(r, f))
 		}
 	}
 	return nil

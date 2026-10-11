@@ -228,9 +228,10 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 		p.Recipe = lines
 		preps[pr.ID] = p
 	}
+	exp := domain.NewTechcardExpander(preps)
 	// Цикл ловим сразу во всех полуфабрикатах, даже если их не использует ни одно блюдо.
 	for i, pr := range in.Preps {
-		if _, err := domain.ExpandTechcard([]domain.TechLine{{PrepID: pr.ID, Qty: preps[pr.ID].Yield}}, preps); err != nil {
+		if _, err := exp.Expand([]domain.TechLine{{PrepID: pr.ID, Qty: preps[pr.ID].Yield}}); err != nil {
 			validationError(w, fmt.Sprintf("preps[%d].recipe", i), techcardMessage(err))
 			return
 		}
@@ -265,7 +266,7 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 			rt.techcardError(w, bad, msg, d.ID)
 			return
 		}
-		norms, err := domain.ExpandTechcard(lines, preps)
+		norms, err := exp.Expand(lines)
 		if err != nil {
 			validationError(w, fmt.Sprintf("dishes[%d].recipe", i), techcardMessage(err))
 			return
