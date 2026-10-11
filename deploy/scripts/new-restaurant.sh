@@ -16,7 +16,7 @@ rand() { head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
 port="${2:-}"
 if [ -z "$port" ]; then
   # Первый свободный порт после самого большого уже выданного экземплярам.
-  last="$(cat "$INSTANCES_ROOT"/*/.env 2>/dev/null | sed -n 's/^API_PORT=//p' | sort -n | tail -n 1)"
+  last="$(cat "$INSTANCES_ROOT"/*/.env 2>/dev/null | sed -n 's/^API_PORT=//p' | sort -n | tail -n 1 || true)"
   port=$(( ${last:-8079} + 1 ))
 fi
 case "$port" in ''|*[!0-9]*) die "порт должен быть числом" ;; esac
