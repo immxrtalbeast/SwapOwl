@@ -169,18 +169,28 @@ func TestStockSignalsCoalesceBehindFullBuffer(t *testing.T) {
 	if b.Subscribers() != 1 {
 		t.Fatal("subscriber dropped")
 	}
-	var last Event
-	for e := range s.C {
-		last = e
-		if e.Type == StockChanged {
-			break
+	ids, stocks := map[string]bool{}, 0
+	var lastID int64
+	for len(ids) < 500 {
+		e, ok := <-s.C
+		if !ok {
+			t.Fatal("closed")
+		}
+		lastID = e.ID
+		if e.Type != StockChanged {
+			continue
+		}
+		stocks++
+		var m struct {
+			IDs []string `json:"product_ids"`
+		}
+		_ = json.Unmarshal(e.Data, &m)
+		for _, id := range m.IDs {
+			ids[id] = true
 		}
 	}
-	var m struct {
-		IDs []string `json:"product_ids"`
-	}
-	_ = json.Unmarshal(last.Data, &m)
-	if len(m.IDs) != 500 || last.ID != SubscriberBuffer+500 {
-		t.Fatalf("ids %d, event id %d", len(m.IDs), last.ID)
+	// одно событие могло быть уже в руках насоса, остальные склеены; последнее несёт последний id
+	if stocks > 3 || lastID != SubscriberBuffer+500 {
+		t.Fatalf("stock events %d, last id %d", stocks, lastID)
 	}
 }
