@@ -163,6 +163,26 @@ export interface SupplySuggestion {
   explanation: string;
 }
 
+// GET /api/analytics/writeoffs и /shortfalls (7.4): деньги — целые копейки.
+export interface MoneyRow {
+  product_id: string;
+  product_name: string;
+  reason?: string;
+  quantity: Qty;
+  cost_minor: number;
+}
+export interface MoneyDay {
+  date: string;
+  cost_minor: number;
+}
+export interface MoneyReport {
+  from: string;
+  to: string;
+  total_minor: number;
+  by_product: MoneyRow[];
+  by_day: MoneyDay[];
+}
+
 // GET /api/hot-offers (7.4).
 export interface HotReason {
   product_id: string;
