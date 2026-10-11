@@ -45,3 +45,57 @@ OLAP: интервал `DateRange` — `To` **не входит** (в накла
 - **Накладные.** Состав полей `document` сокращён (id, номер, дата, статус, поставщик, склад, позиции `product/amount/price/sum`). Цена — по сидовой цене продукта.
 - **Токен.** Детерминированный (из seed, логина и пароля), не истекает; в настоящем iiko токен привязан к лицензии и сессии.
 - **Техкарты.** Одна на блюдо, без потерь при обработке (`amountIn=amountMiddle=amountOut`).
+
+# Адаптер (`cmd/iiko-adapter`)
+
+Отдельный процесс: ходит в iiko (сейчас — `cmd/fake-iiko`) и в наш API по ключу `Authorization: Bearer`; о БД ничего не знает (`.ai/solution.md`, 8.0–8.2). Клиент iiko — `internal/iiko/client`, переводы полей — `internal/iiko/mapping`.
+
+## Запуск
+
+```
+IIKO_URL=http://localhost:8081 IIKO_LOGIN=demo IIKO_PASSWORD=demo \
+API_URL=http://localhost:8080 API_KEY=<ключ operator или admin> \
+go run ./cmd/iiko-adapter          # цикл; флаг -once — один проход
+```
+
+Один проход: справочники → накладные → продажи → стоп-лист. Сбой этапа не останавливает остальные; процесс повторяет проход через `ADAPTER_INTERVAL`.
+
+## Переменные окружения
+
+| Переменная | По умолчанию | Смысл |
+|---|---|---|
+| `IIKO_URL`, `IIKO_LOGIN`, `IIKO_PASSWORD` | — (обязательны) | доступ к iiko |
+| `API_URL`, `API_KEY` | — (обязательны) | наш API и ключ; `PUT /api/catalog` требует `admin` или ключ `operator` |
+| `ADAPTER_STATE_FILE` | `iiko-adapter-state.json` | файл курсоров |
+| `ADAPTER_INTERVAL` | `5m` | пауза между проходами |
+| `ADAPTER_TZ` | `Europe/Moscow` | часовой пояс ресторана |
+| `ADAPTER_START_DATE` | вчера | `yyyy-MM-dd`, с какого дня читать при пустом курсоре |
+| `ADAPTER_DEFAULT_PRICE_MINOR_PER_1000` | `10000` | цена продукта, если в накладных за 30 дней её нет |
+| `ADAPTER_DEFAULT_LEAD_DAYS` | `2` | срок поставки продукта |
+| `ADAPTER_DEFAULT_PACK_SIZE` | `1000` | кратность заказа поставщику |
+| `ADAPTER_DEFAULT_PRIOR_DAILY` | `10` | априорный дневной спрос блюда |
+
+## Соответствие полей
+
+| iiko | Наш API |
+|---|---|
+| `products/list`, `type=GOODS` → `id`, `name`, `mainUnit` (кг/л/шт), `shelfLifeHours` | `PUT /api/catalog` `products[]`: `id`, `name`, `unit` (g/ml/pcs), `shelf_life_hours` |
+| цена продукта: последняя `price` позиции накладной за 30 дней (руб за основную единицу) | `price_minor_per_1000` = цена·100·1000 / (1000 для кг/л, 1 для шт) |
+| `type=DISH` → `id`, `name`, `defaultSalePrice` | `dishes[]`: `id`, `name`, `price_minor` (копейки) |
+| действующая техкарта (`dateTo=null`): `items[].productId`, `amountIn` / `assembledAmount` | `recipe[]`: `product_id`, `quantity`, `unit` (kg/l/pcs) |
+| приходная накладная (`status=PROCESSED`): `id`, `documentNumber`, `dateIncoming`, `items[]` | `POST /api/deliveries`: `id` (= id накладной), `number`, `created_at`, `items[]`: `product_id`, `quantity`, `unit`, `shelf_life_hours` |
+| OLAP `SALES` за закрытые дни: `DishId`, `OpenDate.Typed`, `DishAmountInt` | `POST /api/orders`, `source: "pos"`: один заказ на день, `items[]`: `dish_id`, `portions`; `id` = UUID v5 от `iiko-sales:<yyyy-MM-dd>` |
+| `GET /api/stop-list` (блюда с `available=false`) | `POST stopLists`: `items[]`: `productId` = id блюда, `balance` = 0 (заменяет список целиком, только при изменении) |
+
+Не передаются: удалённые позиции, блюда без действующей техкарты или с неизвестным продуктом в ней, накладные не в статусе `PROCESSED`, позиции с неизвестным продуктом (всё это — строкой в журнале).
+
+## Курсоры и повторы
+
+Курсоры — даты `yyyy-MM-dd` в файле состояния: `invoices` (последний прочитанный день; сегодняшний день читается заново) и `sales` (первый непереданный день). Продажи передаются только за закрытые дни. Курсор двигается после успешной передачи; повтор после сбоя безопасен: поставка с тем же id и заказ с тем же id принимаются API повторно (`200`). Ответ `409` (тот же id, другое содержимое — например, накладную поправили задним числом) пишется в журнал и не останавливает проход.
+
+## Допущения
+
+- В OLAP-отчёте нет id заказов iiko, поэтому заказ `pos` — сводный за день, а не по чекам.
+- Время события в API — время приёма (`.ai/solution.md`, 8.3 п. 1): история, загруженная пакетом, получает время загрузки.
+- `lead_days`, `pack_size`, `prior_daily` в iiko нет — берутся из переменных `ADAPTER_DEFAULT_*`; каждый проход обновляет каталог (в том числе цены) теми же правилами.
+- Стоп-лист в iiko — `[ПРЕДПОЛОЖЕНО]` (см. выше); блюда передаются как `productId`.
