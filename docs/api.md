@@ -84,9 +84,10 @@ curl -X POST http://localhost:8080/api/orders \
   -d '{"id": "5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e", "items": [{"dish_id": "salmon-pasta", "portions": 2}]}'
 ```
 
-`id` — UUID от клиента, обязателен. `portions` — целое 1…10000. Одно блюдо — не более одной строки.
+`id` — UUID от клиента, обязателен. `source` — `"api"` (по умолчанию) или `"pos"` (продажа из кассы); входит в хэш тела, другое значение — `400`. `portions` — целое 1…10000. Одно блюдо — не более одной строки.
 
-- `201` — `{"id", "status": "accepted", "at", "replayed": false, "writeoffs": [{"product_id", "batch_id", "qty": Qty, "expires_at"}]}`
+- `201` — `{"id", "source", "status": "accepted", "at", "replayed": false, "writeoffs": [{"product_id", "batch_id", "qty": Qty, "expires_at"}], "shortfalls": [{"product_id", "product_name", "quantity": Qty}]}`. Для `api` `shortfalls` всегда пуст.
+- `source: "pos"` — касса уже продала блюдо, отказать нельзя: по FEFO списывается всё доступное, остаток потребности по каждому продукту — недостача (`shortfalls`, таблица `shortfalls`, расхождение для сверки склада). Ответ всегда `201` со статусом `accepted`, `409 insufficient_stock` для `pos` не бывает. Остатки партий не уходят в минус; сумма `writeoffs` + `shortfalls` по продукту равна потребности.
 - `409 insufficient_stock` — `details: {"order_id", "status": "rejected", "at", "missing": [{"product_id", "product_name", "required", "available", "missing"}]}`; заказ сохранён как отклонённый.
 - Повтор с тем же id и телом: принятый — `200` и то же тело с `"replayed": true`; отклонённый — `409 insufficient_stock` и то же тело с `"replayed": true`. Тот же id, другое тело — `409 order_conflict`.
 

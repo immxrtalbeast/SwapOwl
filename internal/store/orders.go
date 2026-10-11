@@ -23,6 +23,12 @@ const (
 	OrderRejected = "rejected"
 )
 
+// Источники заказа.
+const (
+	SourceAPI = "api"
+	SourcePOS = "pos"
+)
+
 // OrderItem — строка заказа.
 type OrderItem struct {
 	DishID   string `json:"dish_id"`
@@ -32,10 +38,13 @@ type OrderItem struct {
 // OrderInput — заказ после разбора и проверки на границе API. Needs — суммарная потребность
 // по всем блюдам (проверенная арифметика, считается до транзакции).
 type OrderInput struct {
-	ID    string
-	Items []OrderItem
-	Needs []domain.Need
+	ID     string
+	Source string // SourceAPI (по умолчанию, "") | SourcePOS
+	Items  []OrderItem
+	Needs  []domain.Need
 }
+
+func (in OrderInput) isPOS() bool { return in.Source == SourcePOS }
 
 // WriteoffJSON — «партия — количество» принятого заказа.
 type WriteoffJSON struct {
@@ -54,25 +63,40 @@ type MissingJSON struct {
 	Missing     QtyJSON `json:"missing"`
 }
 
-// OrderResponse — тело ответа и сохранённый ответ заказа.
-type OrderResponse struct {
-	ID        string         `json:"id"`
-	Status    string         `json:"status"`
-	At        time.Time      `json:"at"`
-	Replayed  bool           `json:"replayed"`
-	Items     []OrderItem    `json:"items"`
-	Writeoffs []WriteoffJSON `json:"writeoffs"`
-	Missing   []MissingJSON  `json:"missing"`
+// ShortfallJSON — недостача продукта в продаже из кассы.
+type ShortfallJSON struct {
+	ProductID   string  `json:"product_id"`
+	ProductName string  `json:"product_name"`
+	Quantity    QtyJSON `json:"quantity"`
 }
 
-// BodyHash — хэш id и позиций (dish_id, порции), отсортированных по dish_id.
+// OrderResponse — тело ответа и сохранённый ответ заказа.
+type OrderResponse struct {
+	ID         string          `json:"id"`
+	Status     string          `json:"status"`
+	At         time.Time       `json:"at"`
+	Replayed   bool            `json:"replayed"`
+	Items      []OrderItem     `json:"items"`
+	Source     string          `json:"source"`
+	Writeoffs  []WriteoffJSON  `json:"writeoffs"`
+	Missing    []MissingJSON   `json:"missing"`
+	Shortfalls []ShortfallJSON `json:"shortfalls"`
+}
+
+// BodyHash — хэш id, источника и позиций (dish_id, порции), отсортированных по dish_id.
+// Источник api хэшируется как пустой, чтобы хэши прежних api-заказов не менялись.
 func (in OrderInput) BodyHash() []byte {
 	items := append([]OrderItem(nil), in.Items...)
 	sort.Slice(items, func(i, j int) bool { return items[i].DishID < items[j].DishID })
+	src := ""
+	if in.isPOS() {
+		src = SourcePOS
+	}
 	raw, _ := json.Marshal(struct {
-		ID    string      `json:"id"`
-		Items []OrderItem `json:"items"`
-	}{in.ID, items})
+		ID     string      `json:"id"`
+		Source string      `json:"source,omitempty"`
+		Items  []OrderItem `json:"items"`
+	}{in.ID, src, items})
 	sum := sha256.Sum256(raw)
 	return sum[:]
 }
@@ -151,11 +175,15 @@ func (d *DB) DishRecipes(ctx context.Context, ids []string) (map[string][]domain
 // Нехватки в обоих исходах коммитятся: отклонённый заказ сохраняется, партии не тронуты.
 func (d *DB) PlaceOrder(ctx context.Context, in OrderInput, now func() time.Time) (OrderResponse, error) {
 	hash := in.BodyHash()
+	source := SourceAPI
+	if in.isPOS() {
+		source = SourcePOS
+	}
 	var resp OrderResponse
 	err := d.InTx(ctx, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx,
-			`INSERT INTO orders (id, body_hash, status, at, response) VALUES ($1, $2, 'rejected', now(), '{}')
-			 ON CONFLICT (id) DO NOTHING`, in.ID, hash)
+			`INSERT INTO orders (id, body_hash, status, at, response, source) VALUES ($1, $2, 'rejected', now(), '{}', $3)
+			 ON CONFLICT (id) DO NOTHING`, in.ID, hash, source)
 		if err != nil {
 			return fmt.Errorf("store: insert order: %w", err)
 		}
@@ -214,8 +242,16 @@ func (d *DB) PlaceOrder(ctx context.Context, in OrderInput, now func() time.Time
 		if err != nil {
 			return err
 		}
-		plan, short := domain.PlanWriteoff(in.Needs, batches)
-		resp = OrderResponse{ID: in.ID, At: at, Items: in.Items, Writeoffs: []WriteoffJSON{}, Missing: []MissingJSON{}}
+		var plan []domain.Writeoff
+		var short []domain.Shortage
+		var shortfalls []domain.Shortfall
+		if in.isPOS() {
+			plan, shortfalls = domain.PlanSale(in.Needs, batches)
+		} else {
+			plan, short = domain.PlanWriteoff(in.Needs, batches)
+		}
+		resp = OrderResponse{ID: in.ID, Source: source, At: at, Items: in.Items,
+			Writeoffs: []WriteoffJSON{}, Missing: []MissingJSON{}, Shortfalls: []ShortfallJSON{}}
 		if short != nil {
 			resp.Status = OrderRejected
 			for _, s := range short {
@@ -228,6 +264,14 @@ func (d *DB) PlaceOrder(ctx context.Context, in OrderInput, now func() time.Time
 			expires := map[int64]time.Time{}
 			for _, b := range batches {
 				expires[b.ID] = b.ExpiresAt
+			}
+			for _, s := range shortfalls {
+				if _, err := tx.Exec(ctx, `INSERT INTO shortfalls (order_id, product_id, quantity, at) VALUES ($1, $2, $3, $4)`,
+					in.ID, s.ProductID, int64(s.Qty), at); err != nil {
+					return fmt.Errorf("store: insert shortfall: %w", err)
+				}
+				resp.Shortfalls = append(resp.Shortfalls, ShortfallJSON{ProductID: s.ProductID, ProductName: names[s.ProductID],
+					Quantity: QtyJSON{int64(s.Qty), unitsOf[s.ProductID]}})
 			}
 			for _, w := range plan {
 				tag, err := tx.Exec(ctx, `UPDATE batches SET remaining = remaining - $2 WHERE id = $1 AND remaining >= $2`, w.BatchID, int64(w.Qty))
