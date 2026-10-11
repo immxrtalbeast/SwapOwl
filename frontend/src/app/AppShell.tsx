@@ -12,6 +12,8 @@ import { UsersPage } from "../pages/users";
 import { AppHeader } from "./AppHeader";
 import { ClockProvider } from "./ClockContext";
 import { ConnectionProvider } from "./ConnectionContext";
+import { useAuth } from "../auth/AuthContext";
+import { hasRole } from "../auth/roles";
 import { SCREENS, screenFromHash } from "./screens";
 
 function ScreenView({ id }: { id: string }) {
@@ -38,6 +40,10 @@ export function AppShell() {
     return () => window.removeEventListener("hashchange", on);
   }, []);
 
+  const { state } = useAuth();
+  const role = state.kind === "user" ? state.role : null;
+  const visible = SCREENS.filter((s) => !s.minRole || hasRole(role, s.minRole));
+
   return (
     <ConnectionProvider>
       <ClockProvider>
@@ -45,7 +51,7 @@ export function AppShell() {
         <div style={{ display: "flex", flexWrap: "wrap", fontFamily: "system-ui, sans-serif" }}>
           <nav aria-label="Экраны" style={{ minWidth: 200, padding: 16 }}>
             <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-              {SCREENS.map((s) => (
+              {visible.map((s) => (
                 <li key={s.id} style={{ marginBottom: 4 }}>
                   <a
                     href={`#/${s.id}`}

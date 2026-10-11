@@ -1,3 +1,4 @@
+import type { Role } from "../auth/roles";
 // Типы ответов совпадают с контрактом бэкенда (.ai/solution.md, 7.4).
 export type Unit = "g" | "ml" | "pcs";
 
@@ -116,4 +117,23 @@ export interface DishServings {
   servings: number;
   missing: StopReason[];
   recipe: { product_id: string; quantity: Qty }[];
+}
+
+export interface UserAccount {
+  id: number;
+  login: string;
+  role: Role;
+  created_at: string;
+}
+
+export interface ApiKeyInfo {
+  id: number;
+  name: string;
+  role: Exclude<Role, "admin">;
+  created_at: string;
+}
+
+/** Ответ на создание ключа: поле key приходит один раз. */
+export interface CreatedApiKey extends ApiKeyInfo {
+  key: string;
 }
