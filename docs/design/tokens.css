@@ -1,0 +1,63 @@
+/* StockSense — токены дизайн-системы. Источник: docs/design/StockSense_App.html (UI kit из Claude Design).
+   Шрифты: IBM Plex Sans 400/500/600 и IBM Plex Mono 400/500 (@fontsource, cyrillic + latin). Иконки: Tabler Icons. */
+/* Token names = CSS variable names (as in src/theme/tokens.ts cssVariablesResolver). Light on :root, dark on Mantine's color-scheme attribute. */
+:root{
+--surface-page:#f5f6f8;--surface:#ffffff;--surface-sunken:#eceef2;--surface-hover:#f0f2f5;--skeleton:#e1e4ea;--overlay:rgba(14,17,22,0.48);
+--border:#d6dae1;--border-strong:#7d8697;
+--text:#14171c;--text-muted:#525a68;--text-subtle:#6b7383;
+--primary:#1a56c8;--primary-hover:#1647a6;--primary-subtle:#e7effc;--on-primary:#ffffff;--focus-ring:#1a56c8;
+--row-changed:#e3edff;
+--on-urgency-warn-solid:#2b1900;--on-urgency-solid:#ffffff;
+--urgency-ok-fg:#166534;--urgency-ok-bg:#e3f4e8;--urgency-ok-solid:#1d7f45;
+--urgency-warn-fg:#7f4600;--urgency-warn-bg:#fff1d6;--urgency-warn-row:#fff8e8;--urgency-warn-solid:#f2a516;
+--urgency-risk-fg:#a3330a;--urgency-risk-bg:#fde8de;--urgency-risk-row:#fef2ec;--urgency-risk-solid:#c8440e;
+--urgency-critical-fg:#b0152c;--urgency-critical-bg:#fde8eb;--urgency-critical-solid:#b8172f;
+--urgency-neutral-fg:#525a68;--urgency-neutral-bg:#eceef2;
+--urgency-info-fg:#1a56c8;--urgency-info-bg:#e7effc;
+--shadow-sm:0 1px 2px rgba(14,17,22,0.06),0 1px 1px rgba(14,17,22,0.04);
+--shadow-md:0 4px 12px rgba(14,17,22,0.10),0 1px 3px rgba(14,17,22,0.06);
+--shadow-lg:0 12px 32px rgba(14,17,22,0.16),0 2px 6px rgba(14,17,22,0.08);
+color-scheme:light;
+}
+[data-mantine-color-scheme="dark"]{
+--surface-page:#0e1116;--surface:#161a21;--surface-sunken:#1e232b;--surface-hover:#1b2028;--skeleton:#262c35;--overlay:rgba(0,0,0,0.6);
+--border:#2c333e;--border-strong:#6b7484;
+--text:#e7eaf0;--text-muted:#a2aab7;--text-subtle:#8a93a2;
+--primary:#7aa7ff;--primary-hover:#9dbcf5;--primary-subtle:#1a2a4a;--on-primary:#0a1328;--focus-ring:#7aa7ff;
+--row-changed:#1c2b49;
+--on-urgency-warn-solid:#2b1900;--on-urgency-solid:#0b0e12;
+--urgency-ok-fg:#74d69a;--urgency-ok-bg:#11301e;--urgency-ok-solid:#3fb871;
+--urgency-warn-fg:#f4bd55;--urgency-warn-bg:#36270b;--urgency-warn-row:#2a200c;--urgency-warn-solid:#f2a516;
+--urgency-risk-fg:#ff9466;--urgency-risk-bg:#3d1c0f;--urgency-risk-row:#2e170d;--urgency-risk-solid:#ff7a42;
+--urgency-critical-fg:#ff8593;--urgency-critical-bg:#3d151b;--urgency-critical-solid:#ff6b7d;
+--urgency-neutral-fg:#a2aab7;--urgency-neutral-bg:#232832;
+--urgency-info-fg:#8fb4ff;--urgency-info-bg:#17264a;
+--shadow-sm:0 1px 2px rgba(0,0,0,0.4);
+--shadow-md:0 4px 12px rgba(0,0,0,0.5),0 1px 3px rgba(0,0,0,0.4);
+--shadow-lg:0 12px 32px rgba(0,0,0,0.6),0 2px 6px rgba(0,0,0,0.4);
+color-scheme:dark;
+}
+:root{
+--font-sans:"IBM Plex Sans",-apple-system,"Segoe UI",sans-serif;
+--font-mono:"IBM Plex Mono",ui-monospace,monospace;
+--type-kpi:600 56px/60px var(--font-sans);
+--type-h1:600 22px/28px var(--font-sans);
+--type-h2:600 18px/24px var(--font-sans);
+--type-h3:600 15px/20px var(--font-sans);
+--type-body:400 14px/20px var(--font-sans);
+--type-body-strong:600 14px/20px var(--font-sans);
+--type-label:500 13px/18px var(--font-sans);
+--type-small:400 13px/18px var(--font-sans);
+--type-caption:600 12px/16px var(--font-sans);
+--type-clock:500 20px/24px var(--font-mono);
+--type-clock-lg:500 40px/44px var(--font-mono);
+--type-id:400 13px/18px var(--font-mono);
+}
+:root{
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-12:48px;
+--spacing-xs:4px;--spacing-sm:8px;--spacing-md:16px;--spacing-lg:24px;--spacing-xl:32px;
+--radius-badge:4px;--radius-control:6px;--radius-card:10px;
+--control-h:36px;--control-h-lg:44px;--control-h-row:30px;
+--row-h:44px;--row-h-batch:40px;--cell-py:8px;--cell-px:12px;--card-pad:16px;--section-gap:24px;
+--header-h:56px;--nav-w:224px;--nav-w-collapsed:64px;--content-max:1440px;--gutter:24px;--gutter-tablet:16px;
+--bp-xs:576px;--bp-sm:768px;--bp-md:992px;--bp-lg:1200px;--bp-xl:1408px;
