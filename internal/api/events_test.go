@@ -77,6 +77,24 @@ func TestEventsStreamFormatAndPing(t *testing.T) {
 	}
 }
 
+func TestEventsFirstBytesBeforePing(t *testing.T) {
+	srv, _, _ := newEventsServer(t, time.Minute)
+	start := time.Now()
+	resp, err := http.Get(srv.URL + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	sc := bufio.NewScanner(resp.Body)
+	lines := readUntil(t, sc, "retry: 3000")
+	if lines[0] != ": connected" {
+		t.Fatalf("first line %q", lines[0])
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("first bytes after %v", d)
+	}
+}
+
 func TestEventsOpenCloseAuditedAndUnsubscribed(t *testing.T) {
 	srv, bus, buf := newEventsServer(t, time.Hour)
 	resp, err := http.Get(srv.URL + "/events")

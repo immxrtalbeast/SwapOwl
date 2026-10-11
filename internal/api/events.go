@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -32,6 +33,13 @@ func (rt *Router) streamEvents(w http.ResponseWriter, r *http.Request) {
 	h.Set("Connection", "keep-alive")
 	h.Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+	// Первые байты сразу: прокси держит заголовки у себя, пока не получит тело, и без этого
+	// EventSource не открывается до первого ping. Комментарий браузер не обрабатывает.
+	_ = rc.SetWriteDeadline(time.Now().Add(writeTimeout))
+	if _, err := io.WriteString(w, ": connected\nretry: 3000\n\n"); err != nil {
+		rt.internalError(w, r, err)
+		return
+	}
 	if err := rc.Flush(); err != nil {
 		rt.internalError(w, r, err)
 		return
