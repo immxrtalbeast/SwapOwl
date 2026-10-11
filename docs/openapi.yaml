@@ -1,0 +1,1266 @@
+openapi: 3.1.0
+info:
+  title: Мониторинг остатков, сроков годности и стоп-листов
+  version: 1.0.0
+  description: |
+    HTTP JSON API и SSE-поток событий. Источник контракта — `.ai/solution.md` (7.4, 7.5), человекочитаемое
+    описание — `docs/api.md`. Множество маршрутов сверяется с роутером тестом `TestOpenAPIMatchesRouter`
+    (`internal/api/openapi_test.go`): новый маршрут без описания в `paths` валит тест.
+
+    Общее:
+    * Каждый ответ несёт заголовки `X-Stand-Time` (RFC 3339, время стенда) и `X-Request-Id`.
+    * Изменяющие запросы — только с `Content-Type: application/json`.
+    * Количество в ответах — `{"qty": 1500, "unit": "g"}`; на входе — JSON-строка `"0.15"` и `unit` ∈ g, kg, ml, l, pcs.
+    * Роли: `viewer` < `operator` < `admin`. Сессия — cookie `session`; интеграции — `Authorization: Bearer <ключ>`.
+      При `AUTH_REQUIRED=false` запрос без учётных данных работает с ролью `operator`.
+    * Маршруты склада, заказов и т. д. регистрируются, только если подключена соответствующая зависимость;
+      `/api/demo/*` при `DEMO_MODE=false` отвечают 404.
+servers:
+  - url: http://localhost:8080
+tags:
+  - {name: service, description: Служебные}
+  - {name: stock, description: Поставки, склад, мониторинг}
+  - {name: orders, description: Заказы и корректировки}
+  - {name: menu, description: Меню, стоп-лист, горячие предложения, поставки}
+  - {name: analytics, description: Аналитика}
+  - {name: access, description: Вход, пользователи, ключи, журнал}
+  - {name: demo, description: Управление стендом}
+  - {name: integration, description: Справочники и очередь для адаптера}
+security:
+  - session: []
+  - bearer: []
+paths:
+  /healthz:
+    get:
+      tags: [service]
+      summary: Проверка живости (БД доступна, миграции применены)
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {type: object, properties: {status: {type: string, const: ok}}}
+              example: {status: ok}
+        '503': {$ref: '#/components/responses/Overloaded'}
+  /metrics:
+    get:
+      tags: [service]
+      summary: Метрики в текстовом формате Prometheus
+      description: "Требует `Authorization: Bearer <METRICS_TOKEN>`. Без токена в конфиге или с неверным — `404` (ручка скрыта)."
+      security: [{metricsToken: []}]
+      responses:
+        '200':
+          description: Метрики
+          content:
+            text/plain:
+              schema: {type: string}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /events:
+    get:
+      tags: [service]
+      summary: Поток событий SSE (viewer)
+      description: |
+        `event: <тип>`, `data: <JSON>`, `id: <номер>`; каждое событие содержит `at`. События — сигналы «перечитай».
+        Клиент при (пере)подключении перечитывает данные; сервер шлёт `ping` каждые 15 с.
+        Типы: `delivery.accepted`, `order.accepted`, `order.rejected`, `batch.expiring`, `batch.expired`,
+        `stock.changed`, `stoplist.changed`, `hotoffers.changed`, `clock.changed`, `stand.reset`.
+      responses:
+        '200':
+          description: Поток `text/event-stream`
+          content:
+            text/event-stream:
+              schema: {type: string}
+              example: |
+                event: order.accepted
+                id: 128
+                data: {"at":"2026-10-09T12:00:00+03:00","order_id":"5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e","product_ids":["salmon","pasta"]}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/clock:
+    get:
+      tags: [demo]
+      summary: Часы стенда (открыт всем)
+      security: []
+      responses:
+        '200':
+          description: Состояние часов
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Clock'}
+  /api/deliveries:
+    post:
+      tags: [stock]
+      summary: Принять поставку (operator)
+      description: |
+        Идемпотентна по `id`. В позиции не больше одного из `shelf_life_hours` (1…87600) и `expires_on`;
+        без обоих берётся срок по умолчанию у продукта, иначе `400`. `occurred_at` — фактическое время прихода
+        (окно `LATE_EVENTS_HOURS`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeliveryRequest'}
+            example:
+              id: D-2026-0042
+              number: '42'
+              created_at: '2026-10-09T08:00:00+03:00'
+              items:
+                - {product_id: salmon, name: Лосось, quantity: '4', unit: kg, shelf_life_hours: 72}
+                - {product_id: cream, name: Сливки, quantity: '600', unit: ml, expires_on: '2026-10-12'}
+      responses:
+        '201':
+          description: Принята
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeliveryResponse'}
+              example:
+                id: D-2026-0042
+                number: '42'
+                created_at: '2026-10-09T08:00:00+03:00'
+                received_at: '2026-10-09T09:00:00+03:00'
+                replayed: false
+                batches:
+                  - {id: 17, line_no: 1, product_id: salmon, quantity: {qty: 4000, unit: g},
+                     received_at: '2026-10-09T09:00:00+03:00', expires_at: '2026-10-12T09:00:00+03:00', status: ok}
+                warnings: []
+        '200':
+          description: Тот же id и то же содержимое — сохранённый ответ с `replayed=true`
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeliveryResponse'}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409':
+          description: "`delivery_conflict` — тот же id, другое содержимое"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+    get:
+      tags: [stock]
+      summary: История поставок, новые сверху (viewer)
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/DeliveryResponse'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/deliveries/{id}:
+    get:
+      tags: [stock]
+      summary: Одна поставка (viewer)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}, example: D-2026-0042}
+      responses:
+        '200':
+          description: Поставка
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeliveryResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/products:
+    get:
+      tags: [stock]
+      summary: Продукты с остатками (viewer)
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/ProductStock'}}
+              example:
+                - {id: salmon, name: Лосось, unit: g, available: {qty: 4000, unit: g}, expiring: {qty: 1400, unit: g},
+                   batches_count: 2, nearest_expires_at: '2026-10-10T18:00:00+03:00'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/batches:
+    get:
+      tags: [stock]
+      summary: Партии (viewer)
+      description: По умолчанию без списанных в ноль, порядок `(expires_at, id)`.
+      parameters:
+        - {name: product_id, in: query, schema: {type: string}, example: salmon}
+        - {name: status, in: query, schema: {type: string, enum: [ok, expiring, expired]}}
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Batch'}}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/alerts:
+    get:
+      tags: [stock]
+      summary: Истекающие партии и просроченные за последние 24 ч стенда (viewer)
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Alert'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/movements:
+    get:
+      tags: [stock]
+      summary: Журнал движений, новые первыми (viewer)
+      parameters:
+        - {name: product_id, in: query, schema: {type: string}}
+        - {name: kind, in: query, schema: {type: string, enum: [receipt, sale, writeoff, return, adjustment]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1}}
+      responses:
+        '200':
+          description: Список движений
+          content:
+            application/json:
+              schema: {type: array, items: {type: object, additionalProperties: true}}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/supply-suggestions:
+    get:
+      tags: [menu]
+      summary: Предложение поставок (viewer)
+      description: Порядок — `blocks_dishes > 0` первыми, затем по `stockout_at`, затем по id.
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/SupplySuggestion'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/dishes:
+    get:
+      tags: [menu]
+      summary: Блюда с доступностью и порциями (viewer)
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/DishAvailability'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/stop-list:
+    get:
+      tags: [menu]
+      summary: Стоп-лист — блюда с `available=false` (viewer)
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/DishAvailability'}}
+              example:
+                - id: salmon-pasta
+                  name: Паста с лососем
+                  available: false
+                  servings: 0
+                  missing:
+                    - {product_id: salmon, product_name: Лосось, required: {qty: 150, unit: g},
+                       available: {qty: 0, unit: g}, missing: {qty: 150, unit: g}}
+                  recipe: [{product_id: salmon, quantity: {qty: 150, unit: g}}]
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/hot-offers:
+    get:
+      tags: [menu]
+      summary: Горячие предложения (viewer)
+      parameters:
+        - {name: algo, in: query, description: По умолчанию из `HOTOFFERS_ALGO`, schema: {type: string, enum: [a, b]}}
+      responses:
+        '200':
+          description: Предложения и исключённые блюда
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HotOffers'}
+              example:
+                algo: b
+                offers:
+                  - dish_id: salmon-steak
+                    dish_name: Стейк из лосося
+                    priority: 412.5
+                    target_portions: 7
+                    usual_portions: 3
+                    sell_until: '2026-10-09T16:00:00+03:00'
+                    reasons:
+                      - {product_id: salmon, product_name: Лосось, batch_id: 17, at_risk: {qty: 1400, unit: g},
+                         expires_at: '2026-10-09T16:00:00+03:00', working_hours_left: 5.0}
+                    explanation: 'Лосось, партия №17: 1,4 кг не успеет разойтись за 5 рабочих часов. 7 порций спасут весь остаток.'
+                excluded:
+                  - {dish_id: caprese, product_id: tomato, why: Помидоров осталось на 5 рабочих часов}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/orders:
+    post:
+      tags: [orders]
+      summary: Создать заказ (operator)
+      description: |
+        `id` — UUID от клиента. `source`: `api` (по умолчанию; всё или ничего) или `pos` (продажа из кассы:
+        недостача пишется в `shortfalls`, отказа нет). Повтор с тем же id и телом — `200`/`409` с `replayed=true`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OrderRequest'}
+            example:
+              id: 5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e
+              items: [{dish_id: salmon-pasta, portions: 2}]
+      responses:
+        '201':
+          description: Принят
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OrderResponse'}
+              example:
+                id: 5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e
+                source: api
+                status: accepted
+                at: '2026-10-09T12:00:00+03:00'
+                replayed: false
+                writeoffs: [{product_id: salmon, batch_id: 17, qty: {qty: 300, unit: g}, expires_at: '2026-10-12T09:00:00+03:00'}]
+                shortfalls: []
+        '200':
+          description: Повтор принятого заказа (`replayed=true`)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OrderResponse'}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409':
+          description: |
+            `insufficient_stock` (в `details` — `order_id`, `status=rejected`, `at`, `missing`) или `order_conflict`
+            (тот же id, другое тело).
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+              example:
+                error:
+                  code: insufficient_stock
+                  message: недостаточно продуктов
+                  details:
+                    order_id: 5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e
+                    status: rejected
+                    at: '2026-10-09T12:00:00+03:00'
+                    missing:
+                      - {product_id: cream, product_name: Сливки, required: {qty: 400, unit: ml},
+                         available: {qty: 100, unit: ml}, missing: {qty: 300, unit: ml}}
+    get:
+      tags: [orders]
+      summary: История заказов (viewer)
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [accepted, rejected]}}
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/OrderResponse'}}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/orders/{id}/cancel:
+    post:
+      tags: [orders]
+      summary: Отменить принятый заказ, вернув проданное в партии (operator)
+      parameters:
+        - {name: id, in: path, required: true, description: Отменяемый заказ, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties: {id: {type: string, minLength: 1, maxLength: 128, description: id операции (идемпотентность)}}
+            example: {id: cancel-001}
+      responses:
+        '201':
+          description: Отменён
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                  order_id: {type: string}
+                  returned: {type: array, items: {$ref: '#/components/schemas/CorrectionLine'}}
+                  expired: {type: array, items: {$ref: '#/components/schemas/CorrectionLine'}}
+                  at: {type: string, format: date-time}
+                  replayed: {type: boolean}
+        '200': {description: Повтор операции (`replayed=true`)}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: "`order_not_cancellable`, `already_cancelled` или `correction_conflict`"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/writeoffs:
+    post:
+      tags: [orders]
+      summary: Списать брак с партии (operator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, batch_id, qty, reason]
+              properties:
+                id: {type: string, minLength: 1, maxLength: 128}
+                batch_id: {type: integer}
+                qty: {$ref: '#/components/schemas/QtyInput'}
+                unit: {$ref: '#/components/schemas/Unit'}
+                reason: {type: string, enum: [spoilage, damage]}
+            example: {id: wo-001, batch_id: 17, qty: '1.5', unit: kg, reason: spoilage}
+      responses:
+        '201':
+          description: Списано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                  batch_id: {type: integer}
+                  product_id: {type: string}
+                  qty: {$ref: '#/components/schemas/Qty'}
+                  reason: {type: string}
+                  remaining: {$ref: '#/components/schemas/Qty'}
+                  at: {type: string, format: date-time}
+                  replayed: {type: boolean}
+        '200': {description: Повтор операции (`replayed=true`)}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: "`insufficient_batch` (qty больше остатка партии) или `correction_conflict`"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/inventory:
+    post:
+      tags: [orders]
+      summary: Инвентаризация продукта (operator)
+      description: Недостача списывается по FEFO движениями `adjustment`; излишек — новая партия `INV-<id>`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, product_id, counted]
+              properties:
+                id: {type: string, minLength: 1, maxLength: 128}
+                product_id: {type: string}
+                counted: {$ref: '#/components/schemas/QtyInput'}
+                unit: {$ref: '#/components/schemas/Unit'}
+            example: {id: inv-001, product_id: salmon, counted: '2.5', unit: kg}
+      responses:
+        '201':
+          description: Применена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                  product_id: {type: string}
+                  counted: {$ref: '#/components/schemas/Qty'}
+                  shortage: {type: array, items: {$ref: '#/components/schemas/CorrectionLine'}}
+                  surplus: {type: [object, 'null'], additionalProperties: true}
+                  at: {type: string, format: date-time}
+                  replayed: {type: boolean}
+        '200': {description: Повтор операции (`replayed=true`)}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409':
+          description: "`correction_conflict` — тот же id, другое тело"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/catalog:
+    put:
+      tags: [integration]
+      summary: Импорт справочников из учётной системы (admin или ключ operator)
+      description: |
+        Добавление и обновление без удаления; `recipe` блюда заменяется целиком; одна транзакция.
+        Вошедший по паролю `operator` получает `403`.
+      parameters:
+        - {name: dry_run, in: query, description: Вернуть разницу, ничего не записав, schema: {type: boolean}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CatalogRequest'}
+            example:
+              products:
+                - {id: rice, name: Рис, unit: g, price_minor_per_1000: 15000, lead_days: 2, pack_size: 1000, shelf_life_hours: 720}
+              dishes:
+                - id: pilaf
+                  name: Плов
+                  price_minor: 45000
+                  prior_daily: 12.5
+                  recipe: [{product_id: rice, quantity: '0.15', unit: kg}]
+      responses:
+        '200':
+          description: Результат импорта
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dry_run: {type: boolean}
+                  products:
+                    type: array
+                    items: {$ref: '#/components/schemas/CatalogAction'}
+                  dishes:
+                    type: array
+                    items: {$ref: '#/components/schemas/CatalogAction'}
+              example:
+                dry_run: true
+                products: [{id: rice, action: created}]
+                dishes: [{id: pilaf, action: updated, fields: [price_minor, recipe]}]
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409':
+          description: "`unit_conflict` — у существующего продукта другая единица (`details.product_id`, `current_unit`, `import_unit`)"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/outbox:
+    get:
+      tags: [integration]
+      summary: Недоставленные сообщения для адаптера, по возрастанию id (operator)
+      parameters:
+        - {name: after, in: query, schema: {type: integer, minimum: 0}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1}}
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: {type: integer}
+                    kind: {type: string}
+                    payload: {}
+                    created_at: {type: string, format: date-time}
+                    attempts: {type: integer}
+                    last_error: {type: [string, 'null']}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/outbox/{id}/ack:
+    post:
+      tags: [integration]
+      summary: Подтвердить доставку или ошибку сообщения (operator)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer, minimum: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok]
+              properties:
+                ok: {type: boolean}
+                error: {type: string, description: Обрезается до 2000 символов}
+            example: {ok: false, error: timeout}
+      responses:
+        '200': {description: Принято}
+        '204': {description: Принято}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/analytics/writeoffs:
+    get:
+      tags: [analytics]
+      summary: Списания по продуктам и причинам — количество и стоимость (viewer)
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+      responses:
+        '200':
+          description: Отчёт
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/analytics/shortfalls:
+    get:
+      tags: [analytics]
+      summary: Недостачи касс (`source=pos`) — расхождения для сверки склада (viewer)
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+      responses:
+        '200':
+          description: Отчёт
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/analytics/shortages:
+    get:
+      tags: [analytics]
+      summary: Продукты по числу отклонённых заказов и недостающему количеству (viewer)
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+      responses:
+        '200':
+          description: Отчёт
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/analytics/bench:
+    get:
+      tags: [analytics]
+      summary: Результат bench алгоритмов горячих предложений (viewer)
+      responses:
+        '200':
+          description: "`available=false`, если результата bench нет"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available: {type: boolean}
+                  runs: {type: integer}
+                  main_algo: {type: string}
+                  waste_reduction_vs_random_pct: {type: number}
+                  waste_reduction_vs_nearest_pct: {type: number}
+              example:
+                {available: true, runs: 200, main_algo: b, waste_reduction_vs_random_pct: 39.0, waste_reduction_vs_nearest_pct: 27.0}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/demo/clock/speed:
+    post:
+      tags: [demo]
+      summary: Скорость часов стенда
+      description: "Требует `Authorization: Bearer <DEMO_TOKEN>`. При `DEMO_MODE=false` — 404."
+      security: [{demoToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [speed]
+              properties: {speed: {type: number, minimum: 0, maximum: 3600}}
+            example: {speed: 600}
+      responses:
+        '200': {description: Применено}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: Часы не ускоренные
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/demo/clock/jump:
+    post:
+      tags: [demo]
+      summary: Прыжок времени вперёд
+      description: "Требует `Authorization: Bearer <DEMO_TOKEN>`."
+      security: [{demoToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hours]
+              properties: {hours: {type: number, exclusiveMinimum: 0, maximum: 720}}
+            example: {hours: 6}
+      responses:
+        '200': {description: Применено}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: Часы не ускоренные
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/demo/reset:
+    post:
+      tags: [demo]
+      summary: Сброс стенда к демо-данным
+      description: "Требует `Authorization: Bearer <DEMO_TOKEN>`."
+      security: [{demoToken: []}]
+      responses:
+        '200': {description: Сброс выполнен}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/demo/simulator:
+    post:
+      tags: [demo]
+      summary: Запустить или поставить на паузу генератор заказов (operator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [running]
+              properties: {running: {type: boolean}}
+            example: {running: true}
+      responses:
+        '200': {description: Применено}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/demo/burst:
+    post:
+      tags: [demo]
+      summary: Параллельные заказы по одной порции блюда (operator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dish_id, orders]
+              properties:
+                dish_id: {type: string}
+                orders: {type: integer, minimum: 1, maximum: 50}
+            example: {dish_id: salmon-pasta, orders: 10}
+      responses:
+        '200': {description: Результат серии}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/auth/login:
+    post:
+      tags: [access]
+      summary: Вход по логину и паролю
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, password]
+              properties: {login: {type: string}, password: {type: string}}
+            example: {login: admin, password: s3cret}
+      responses:
+        '200':
+          description: Вход выполнен; cookie `session` (HttpOnly, SameSite=Strict, Secure)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {login: {type: string}, role: {$ref: '#/components/schemas/Role'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429':
+          description: "`too_many_attempts` — больше 5 неудач на login за 15 минут"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/auth/logout:
+    post:
+      tags: [access]
+      summary: Выход (viewer)
+      responses:
+        '204': {description: Сессия удалена}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/auth/me:
+    get:
+      tags: [access]
+      summary: Текущий пользователь (viewer)
+      responses:
+        '200':
+          description: При `AUTH_REQUIRED=false` без учётных данных — `login=null`, `role=operator`
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  login: {type: [string, 'null']}
+                  role: {$ref: '#/components/schemas/Role'}
+                  auth_required: {type: boolean}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/auth/password:
+    post:
+      tags: [access]
+      summary: Сменить свой пароль (viewer)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old, new]
+              properties: {old: {type: string}, new: {type: string}}
+      responses:
+        '200': {description: Пароль изменён}
+        '204': {description: Пароль изменён}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/users:
+    get:
+      tags: [access]
+      summary: Пользователи (admin)
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema: {type: array, items: {type: object, additionalProperties: true}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [access]
+      summary: Создать пользователя (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login, password, role]
+              properties: {login: {type: string}, password: {type: string}, role: {$ref: '#/components/schemas/Role'}}
+            example: {login: chef, password: s3cret-pass, role: operator}
+      responses:
+        '201': {description: Создан}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409':
+          description: Логин занят
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/users/{id}:
+    delete:
+      tags: [access]
+      summary: Удалить пользователя (admin)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '204': {description: Удалён}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: Последнего admin удалить нельзя
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/api-keys:
+    get:
+      tags: [access]
+      summary: Ключи интеграций (admin)
+      responses:
+        '200':
+          description: Список (без секретов)
+          content:
+            application/json:
+              schema: {type: array, items: {type: object, additionalProperties: true}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [access]
+      summary: Создать ключ (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, role]
+              properties: {name: {type: string}, role: {$ref: '#/components/schemas/Role'}}
+            example: {name: iiko-adapter, role: operator}
+      responses:
+        '201':
+          description: Создан; поле `key` показывается один раз
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {key: {type: string}}
+                additionalProperties: true
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/api-keys/{id}:
+    delete:
+      tags: [access]
+      summary: Удалить ключ (admin)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '204': {description: Удалён}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/audit:
+    get:
+      tags: [access]
+      summary: Журнал действий, новые сверху (admin)
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1}}
+      responses:
+        '200':
+          description: Записи
+          content:
+            application/json:
+              schema: {type: array, items: {type: object, additionalProperties: true}}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+components:
+  securitySchemes:
+    session: {type: apiKey, in: cookie, name: session}
+    bearer: {type: http, scheme: bearer, description: Ключ интеграции из /api/api-keys}
+    demoToken: {type: http, scheme: bearer, description: Значение DEMO_TOKEN}
+    metricsToken: {type: http, scheme: bearer, description: Значение METRICS_TOKEN}
+  parameters:
+    From:
+      name: from
+      in: query
+      description: Дата `YYYY-MM-DD` (сутки по поясу ресторана) или момент RFC 3339; по умолчанию — 7 суток до `to`
+      schema: {type: string}
+    To:
+      name: to
+      in: query
+      description: Дата `YYYY-MM-DD` (включительно) или момент RFC 3339; по умолчанию — «сейчас»
+      schema: {type: string}
+  responses:
+    Validation:
+      description: "`validation_error`, `unknown_product` или `unknown_dish`"
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example:
+            error:
+              code: validation_error
+              message: quantity must be a string
+              details: {field: "items[0].quantity"}
+    Unauthorized:
+      description: "`unauthorized` — нет действительной сессии, ключа или токена"
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Forbidden:
+      description: "`forbidden` — роли недостаточно"
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFound:
+      description: "`not_found`"
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Overloaded:
+      description: "`overloaded` — БД недоступна"
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+              description: |
+                400: validation_error, unknown_product, unknown_dish; 401: unauthorized; 403: forbidden;
+                404: not_found, unknown_batch, unknown_order; 405: method_not_allowed;
+                409: delivery_conflict, order_conflict, insufficient_stock, unit_conflict, correction_conflict,
+                insufficient_batch, order_not_cancellable, already_cancelled; 429: too_many_attempts;
+                500: internal; 503: overloaded.
+            message: {type: string}
+            details: {type: object, additionalProperties: true}
+    Unit:
+      type: string
+      enum: [g, kg, ml, l, pcs]
+    Role:
+      type: string
+      enum: [viewer, operator, admin]
+    Qty:
+      description: Количество в ответах — целое в базовых единицах (g, ml, pcs)
+      type: object
+      required: [qty, unit]
+      properties:
+        qty: {type: integer, format: int64}
+        unit: {type: string, enum: [g, ml, pcs]}
+      example: {qty: 1500, unit: g}
+    QtyInput:
+      description: Количество на входе — только JSON-строка; JSON-число (`400`) отклоняется
+      type: string
+      pattern: '^[0-9]+(\.[0-9]+)?$'
+      example: '0.15'
+    Clock:
+      type: object
+      properties:
+        now: {type: string, format: date-time}
+        speed: {type: number}
+        timezone: {type: string}
+        simulated: {type: boolean}
+        simulator_running: {type: boolean}
+    DeliveryRequest:
+      type: object
+      required: [id, items]
+      properties:
+        id: {type: string, description: Уникальный id от поставщика}
+        number: {type: string}
+        created_at: {type: string, format: date-time}
+        occurred_at: {type: string, format: date-time}
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [product_id, quantity]
+            properties:
+              product_id: {type: string}
+              name: {type: string}
+              quantity: {$ref: '#/components/schemas/QtyInput'}
+              unit: {$ref: '#/components/schemas/Unit'}
+              shelf_life_hours: {type: integer, minimum: 1, maximum: 87600}
+              expires_on: {type: string, format: date}
+    DeliveryResponse:
+      type: object
+      properties:
+        id: {type: string}
+        number: {type: string}
+        created_at: {type: string, format: date-time}
+        received_at: {type: string, format: date-time}
+        replayed: {type: boolean}
+        batches:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: integer}
+              line_no: {type: integer}
+              product_id: {type: string}
+              quantity: {$ref: '#/components/schemas/Qty'}
+              received_at: {type: string, format: date-time}
+              expires_at: {type: string, format: date-time}
+              status: {type: string, enum: [ok, expiring, expired]}
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              line_no: {type: integer}
+              code: {type: string, examples: [expired_on_arrival]}
+              message: {type: string}
+    ProductStock:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        unit: {type: string}
+        available: {$ref: '#/components/schemas/Qty'}
+        expiring: {$ref: '#/components/schemas/Qty'}
+        batches_count: {type: integer}
+        nearest_expires_at: {type: [string, 'null'], format: date-time}
+    Batch:
+      type: object
+      properties:
+        id: {type: integer}
+        product_id: {type: string}
+        delivery_id: {type: string}
+        delivery_created_at: {type: string, format: date-time}
+        quantity: {$ref: '#/components/schemas/Qty'}
+        remaining: {$ref: '#/components/schemas/Qty'}
+        received_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        time_left_seconds: {type: integer}
+        status: {type: string, enum: [ok, expiring, expired]}
+    Alert:
+      type: object
+      properties:
+        batch_id: {type: integer}
+        product_id: {type: string}
+        product_name: {type: string}
+        remaining: {$ref: '#/components/schemas/Qty'}
+        expires_at: {type: string, format: date-time}
+        time_left_seconds: {type: integer}
+        status: {type: string, enum: [expiring, expired]}
+        doomed: {type: boolean}
+    SupplySuggestion:
+      type: object
+      properties:
+        product_id: {type: string}
+        product_name: {type: string}
+        quantity: {$ref: '#/components/schemas/Qty'}
+        usable_stock: {$ref: '#/components/schemas/Qty'}
+        rate_per_day: {$ref: '#/components/schemas/Qty'}
+        stockout_at: {type: [string, 'null'], format: date-time}
+        blocks_dishes: {type: integer}
+        urgency: {type: string, enum: [now, soon, planned]}
+        explanation: {type: string}
+    DishAvailability:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        available: {type: boolean}
+        servings: {type: integer}
+        missing:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id: {type: string}
+              product_name: {type: string}
+              required: {$ref: '#/components/schemas/Qty'}
+              available: {$ref: '#/components/schemas/Qty'}
+              missing: {$ref: '#/components/schemas/Qty'}
+        recipe:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id: {type: string}
+              quantity: {$ref: '#/components/schemas/Qty'}
+    HotOffers:
+      type: object
+      properties:
+        algo: {type: string, enum: [a, b]}
+        offers:
+          type: array
+          items:
+            type: object
+            properties:
+              dish_id: {type: string}
+              dish_name: {type: string}
+              priority: {type: number}
+              target_portions: {type: integer, description: У алгоритма `a` равен 0}
+              usual_portions: {type: integer}
+              sell_until: {type: string, format: date-time}
+              reasons:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    product_id: {type: string}
+                    product_name: {type: string}
+                    batch_id: {type: integer}
+                    at_risk: {$ref: '#/components/schemas/Qty'}
+                    expires_at: {type: string, format: date-time}
+                    working_hours_left: {type: number}
+              explanation: {type: string}
+        excluded:
+          type: array
+          items:
+            type: object
+            properties:
+              dish_id: {type: string}
+              product_id: {type: string}
+              why: {type: string}
+    OrderRequest:
+      type: object
+      required: [id, items]
+      properties:
+        id: {type: string, format: uuid}
+        source: {type: string, enum: [api, pos], default: api}
+        occurred_at: {type: string, format: date-time}
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [dish_id, portions]
+            properties:
+              dish_id: {type: string}
+              portions: {type: integer, minimum: 1, maximum: 10000}
+    OrderResponse:
+      type: object
+      properties:
+        id: {type: string}
+        source: {type: string, enum: [api, pos]}
+        status: {type: string, enum: [accepted, rejected]}
+        at: {type: string, format: date-time}
+        replayed: {type: boolean}
+        writeoffs:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id: {type: string}
+              batch_id: {type: integer}
+              qty: {$ref: '#/components/schemas/Qty'}
+              expires_at: {type: string, format: date-time}
+        shortfalls:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id: {type: string}
+              product_name: {type: string}
+              quantity: {$ref: '#/components/schemas/Qty'}
+    CorrectionLine:
+      type: object
+      properties:
+        batch_id: {type: integer}
+        product_id: {type: string}
+        qty: {$ref: '#/components/schemas/Qty'}
+    CatalogRequest:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            type: object
+            required: [id, name, unit, price_minor_per_1000, lead_days, pack_size]
+            properties:
+              id: {type: string}
+              name: {type: string}
+              unit: {type: string, enum: [g, ml, pcs]}
+              price_minor_per_1000: {type: integer, minimum: 0}
+              lead_days: {type: integer}
+              pack_size: {type: integer}
+              shelf_life_hours: {type: integer, minimum: 1, maximum: 87600}
+        dishes:
+          type: array
+          items:
+            type: object
+            required: [id, name, price_minor, prior_daily, recipe]
+            properties:
+              id: {type: string}
+              name: {type: string}
+              price_minor: {type: integer}
+              prior_daily: {type: number}
+              recipe:
+                type: array
+                minItems: 1
+                items:
+                  type: object
+                  required: [product_id, quantity]
+                  properties:
+                    product_id: {type: string}
+                    quantity: {$ref: '#/components/schemas/QtyInput'}
+                    unit: {$ref: '#/components/schemas/Unit'}
+    CatalogAction:
+      type: object
+      properties:
+        id: {type: string}
+        action: {type: string, enum: [created, updated, unchanged]}
+        fields: {type: array, items: {type: string}}
