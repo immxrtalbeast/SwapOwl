@@ -1,5 +1,11 @@
+import type { Role } from "../auth/roles";
 import { ApiError } from "./types";
 import type { Batch, DeliveryInput, DeliveryResult, Dish, DishServings, Order, OrderItemInput, ProductStock } from "./types";
+
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  onUnauthorized = fn;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -9,6 +15,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
+    // Любой 401 ведёт на экран входа; ошибку неверного пароля при входе обрабатывает сама форма.
+    if (res.status === 401 && path !== "/api/auth/login") onUnauthorized?.();
     const e = body?.error;
     throw new ApiError(res.status, e?.code ?? "internal", e?.message ?? `Ошибка ${res.status}`, e?.details ?? {});
   }
@@ -16,6 +24,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  me: () => request<{ login: string | null; role: Role; auth_required: boolean }>("/api/auth/me"),
+  login: (login: string, password: string) =>
+    request<{ login: string; role: Role }>("/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) }),
+  logout: () => request<null>("/api/auth/logout", { method: "POST" }),
   products: () => request<ProductStock[]>("/api/products"),
   batches: (productId?: string) =>
     request<Batch[]>(`/api/batches${productId ? `?product_id=${encodeURIComponent(productId)}` : ""}`),

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { RoleGate } from "../../auth/AuthContext";
 import { api } from "../../api/client";
 import type { Batch, ProductStock } from "../../api/types";
 import { DeliveryForm } from "./DeliveryForm";
@@ -40,7 +41,9 @@ export function StockPage() {
         state.products.map((p) => (
           <ProductRow key={p.id} product={p} batches={state.batches.filter((b) => b.product_id === p.id)} />
         ))}
-      <DeliveryForm onReceived={load} />
+      <RoleGate min="operator">
+        <DeliveryForm onReceived={load} />
+      </RoleGate>
     </main>
   );
 }
