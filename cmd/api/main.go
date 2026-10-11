@@ -17,6 +17,7 @@ import (
 	"umirhack/internal/auth"
 	"umirhack/internal/clock"
 	"umirhack/internal/config"
+	"umirhack/internal/events"
 	"umirhack/internal/janitor"
 	"umirhack/internal/store"
 )
@@ -67,8 +68,12 @@ func run() error {
 	}
 
 	clk := clock.Real{}
-	go janitor.New(db, clk.Now, nil).Run(ctx) // OnSweep и Kick — в тикетах SSE и управления часами
-	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc, Stock: db, Orders: db, Menu: db, Location: cfg.Location})
+	bus := events.New(clk.Now)
+	pub := newPublisher(bus, db, clk.Now, log)
+	pub.prime(ctx)
+	go janitor.New(db, clk.Now, pub.onSweep).Run(ctx) // Kick — в тикете управления часами
+	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc,
+		Stock: pubStock{db, pub}, Orders: pubOrders{db, pub}, Menu: db, Location: cfg.Location, Events: bus})
 	srv := &http.Server{
 		Addr:              ":" + envOr("PORT", "8080"),
 		Handler:           router.Handler(),
@@ -87,6 +92,7 @@ func run() error {
 	case <-ctx.Done():
 	}
 	log.Info("shutting down")
+	bus.Close() // иначе открытые SSE-соединения держат Shutdown до таймаута
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
