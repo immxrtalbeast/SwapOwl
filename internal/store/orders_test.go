@@ -193,3 +193,46 @@ func TestPlaceOrderStrictExpiryBoundary(t *testing.T) {
 		t.Fatalf("at expires_at: %v %+v", err, r)
 	}
 }
+
+func TestPlaceOrderPOSWritesOffAvailableAndRecordsShortfall(t *testing.T) {
+	db, clk := orderDB(t)
+	receive(t, db, clk, "D1", 300, 72)
+	in := order(o1, 5, 500)
+	in.Source = SourcePOS
+	resp, err := db.PlaceOrder(context.Background(), in, clk.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != OrderAccepted || resp.Source != SourcePOS || len(resp.Writeoffs) != 1 ||
+		len(resp.Shortfalls) != 1 || resp.Shortfalls[0].Quantity.Qty != 200 {
+		t.Fatalf("%+v", resp)
+	}
+	rem, sold := remainingSum(t, db)
+	var short int64
+	_ = db.Pool.QueryRow(context.Background(), `SELECT COALESCE(SUM(quantity),0) FROM shortfalls WHERE order_id = $1`, o1).Scan(&short)
+	if rem != 0 || sold != 300 || short != 200 {
+		t.Fatalf("remaining=%d sold=%d shortfall=%d", rem, sold, short)
+	}
+	again, err := db.PlaceOrder(context.Background(), in, clk.Now)
+	if err != nil || !again.Replayed || len(again.Shortfalls) != 1 {
+		t.Fatalf("replay: %+v %v", again, err)
+	}
+	if _, sold2 := remainingSum(t, db); sold2 != 300 {
+		t.Fatalf("replay sold again: %d", sold2)
+	}
+	api := in
+	api.Source = SourceAPI
+	if _, err := db.PlaceOrder(context.Background(), api, clk.Now); !errors.Is(err, ErrOrderConflict) {
+		t.Fatalf("same id other source: %v", err)
+	}
+}
+
+func TestPlaceOrderPOSWithoutStockIsAcceptedWithShortfallOnly(t *testing.T) {
+	db, clk := orderDB(t)
+	in := order(o2, 1, 100)
+	in.Source = SourcePOS
+	resp, err := db.PlaceOrder(context.Background(), in, clk.Now)
+	if err != nil || resp.Status != OrderAccepted || len(resp.Writeoffs) != 0 || len(resp.Shortfalls) != 1 {
+		t.Fatalf("%+v %v", resp, err)
+	}
+}

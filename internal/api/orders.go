@@ -34,8 +34,9 @@ const (
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 type orderIn struct {
-	ID    string `json:"id"`
-	Items []struct {
+	ID     string `json:"id"`
+	Source string `json:"source"`
+	Items  []struct {
 		DishID   string `json:"dish_id"`
 		Portions *int   `json:"portions"`
 	} `json:"items"`
@@ -63,6 +64,14 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(in.Items) == 0 || len(in.Items) > maxOrderItems {
 		validationError(w, "items", fmt.Sprintf("items must contain 1..%d positions", maxOrderItems))
+		return
+	}
+	switch in.Source {
+	case "":
+		in.Source = store.SourceAPI
+	case store.SourceAPI, store.SourcePOS:
+	default:
+		validationError(w, "source", `source must be "api" or "pos"`)
 		return
 	}
 	in.ID = strings.ToLower(in.ID)
@@ -120,7 +129,7 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(needs, func(i, j int) bool { return needs[i].ProductID < needs[j].ProductID })
 
-	resp, err := rt.deps.Orders.PlaceOrder(r.Context(), store.OrderInput{ID: in.ID, Items: items, Needs: needs}, rt.deps.Now)
+	resp, err := rt.deps.Orders.PlaceOrder(r.Context(), store.OrderInput{ID: in.ID, Source: in.Source, Items: items, Needs: needs}, rt.deps.Now)
 	switch {
 	case err == nil:
 	case errors.Is(err, store.ErrOrderConflict):

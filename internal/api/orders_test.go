@@ -67,6 +67,24 @@ func TestPostOrderSumsNeedsAcrossDishes(t *testing.T) {
 	}
 }
 
+func TestPostOrderSource(t *testing.T) {
+	item := `"items":[{"dish_id":"soup","portions":1}]`
+	for body, want := range map[string]string{
+		`{"id":"` + oid + `",` + item + `}`:                "api",
+		`{"id":"` + oid + `","source":"api",` + item + `}`: "api",
+		`{"id":"` + oid + `","source":"pos",` + item + `}`: "pos",
+	} {
+		fo := &fakeOrders{resp: store.OrderResponse{ID: oid, Status: store.OrderAccepted}}
+		if rec := postOrder(t, fo, body); rec.Code != http.StatusCreated || fo.in.Source != want {
+			t.Fatalf("%s: %d source=%q", body, rec.Code, fo.in.Source)
+		}
+	}
+	fo := &fakeOrders{}
+	if rec := postOrder(t, fo, `{"id":"`+oid+`","source":"kiosk",`+item+`}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad source: %d", rec.Code)
+	}
+}
+
 func TestPostOrderRejectedIs409WithMissing(t *testing.T) {
 	fo := &fakeOrders{resp: store.OrderResponse{ID: oid, Status: store.OrderRejected,
 		Missing: []store.MissingJSON{{ProductID: "salmon"}}}}
