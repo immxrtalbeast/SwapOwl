@@ -54,6 +54,8 @@ type Deps struct {
 	Clock ClockInfo
 	// Demo — управление стендом (2.8). nil — DEMO_MODE=false: /api/demo/* отвечают 404.
 	Demo Demo
+	// Sim — запуск и пауза генератора заказов; nil — ручка /api/demo/simulator не регистрируется.
+	Sim SimControl
 	// DemoToken — значение DEMO_TOKEN; пустой не открывает ничего.
 	DemoToken string
 	// NotSimulated — ошибка Demo «часы не ускоренные»; Router отвечает на неё 409.
@@ -105,6 +107,7 @@ func (rt *Router) Routes() {
 	rt.eventsRoutes()
 	rt.clockRoutes()
 	rt.demoRoutes()
+	rt.demoSimRoutes()
 }
 
 // Handle регистрирует хендлер для метода и шаблона пути (синтаксис ServeMux без метода: "/api/x/{id}").
