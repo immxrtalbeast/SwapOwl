@@ -42,6 +42,8 @@ type Deps struct {
 	HotConfig HotOffersConfig
 	// Supply — предложение поставок (2.6). nil — маршрут не регистрируется.
 	Supply SupplySource
+	// Analytics — деньги: списания и расхождения кассы (7.4). nil — маршруты не регистрируются.
+	Analytics Analytics
 	// Location — часовой пояс ресторана для expires_on; nil — UTC.
 	Location *time.Location
 	// Monitor — лента предупреждений и журнал движений (2.6). nil — маршруты не регистрируются.
@@ -104,6 +106,7 @@ func (rt *Router) Routes() {
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()
 	rt.supplyRoutes()
+	rt.analyticsRoutes()
 	rt.eventsRoutes()
 	rt.clockRoutes()
 	rt.demoRoutes()
