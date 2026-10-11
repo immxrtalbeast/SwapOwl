@@ -41,9 +41,10 @@ func UnitOf(mainUnit string) (Unit, error) {
 	return Unit{}, fmt.Errorf("неизвестная единица %q", mainUnit)
 }
 
-// Qty форматирует количество как десятичную строку без экспоненты.
-func Qty(v float64) string {
-	return strconv.FormatFloat(math.Round(v*1e6)/1e6, 'f', -1, 64)
+// Qty переводит количество в основной единице в целое число базовых единиц (строкой).
+// Дробь мельче базовой единицы округляется; результат не меньше 0.
+func Qty(v float64, u Unit) string {
+	return strconv.FormatInt(int64(math.Round(v*float64(u.Factor))), 10)
 }
 
 // Catalog — тело PUT /api/catalog.
@@ -132,7 +133,11 @@ func BuildCatalog(products []iiko.Product, charts []iiko.AssemblyChart, prices m
 				okDish = false
 				break
 			}
-			dish.Recipe = append(dish.Recipe, RecipeItem{ProductID: it.ProductID, Quantity: Qty(it.AmountIn / amount), Unit: u.Main})
+			q := Qty(it.AmountIn/amount, u)
+			if q == "0" { // норма не меньше одной базовой единицы
+				q = "1"
+			}
+			dish.Recipe = append(dish.Recipe, RecipeItem{ProductID: it.ProductID, Quantity: q, Unit: u.Base})
 		}
 		if okDish {
 			cat.Dishes = append(cat.Dishes, dish)
@@ -186,10 +191,10 @@ func BuildDelivery(inv iiko.IncomingInvoice, units map[string]Unit, shelf map[st
 	d = Delivery{ID: inv.ID, Number: inv.DocumentNumber, CreatedAt: at.Format(time.RFC3339), Items: []DeliveryItem{}}
 	for _, it := range inv.Items {
 		u, known := units[it.Product]
-		if !known || it.Amount <= 0 {
+		if !known || it.Amount <= 0 || Qty(it.Amount, u) == "0" {
 			continue
 		}
-		d.Items = append(d.Items, DeliveryItem{ProductID: it.Product, Quantity: Qty(it.Amount), Unit: u.Main, ShelfLifeHours: shelf[it.Product]})
+		d.Items = append(d.Items, DeliveryItem{ProductID: it.Product, Quantity: Qty(it.Amount, u), Unit: u.Base, ShelfLifeHours: shelf[it.Product]})
 	}
 	if len(d.Items) == 0 {
 		return d, "нет известных позиций", false

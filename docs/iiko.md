@@ -82,8 +82,8 @@ go run ./cmd/iiko-adapter          # цикл; флаг -once — один пр�
 | `products/list`, `type=GOODS` → `id`, `name`, `mainUnit` (кг/л/шт), `shelfLifeHours` | `PUT /api/catalog` `products[]`: `id`, `name`, `unit` (g/ml/pcs), `shelf_life_hours` |
 | цена продукта: последняя `price` позиции накладной за 30 дней (руб за основную единицу) | `price_minor_per_1000` = цена·100·1000 / (1000 для кг/л, 1 для шт) |
 | `type=DISH` → `id`, `name`, `defaultSalePrice` | `dishes[]`: `id`, `name`, `price_minor` (копейки) |
-| действующая техкарта (`dateTo=null`): `items[].productId`, `amountIn` / `assembledAmount` | `recipe[]`: `product_id`, `quantity`, `unit` (kg/l/pcs) |
-| приходная накладная (`status=PROCESSED`): `id`, `documentNumber`, `dateIncoming`, `items[]` | `POST /api/deliveries`: `id` (= id накладной), `number`, `created_at`, `items[]`: `product_id`, `quantity`, `unit`, `shelf_life_hours` |
+| действующая техкарта (`dateTo=null`): `items[].productId`, `amountIn` / `assembledAmount` | `recipe[]`: `product_id`, `quantity` (целое число базовых единиц, не меньше 1), `unit` (g/ml/pcs) |
+| приходная накладная (`status=PROCESSED`): `id`, `documentNumber`, `dateIncoming`, `items[]` | `POST /api/deliveries`: `id` (= id накладной), `number`, `created_at`, `items[]`: `product_id`, `quantity` (целые базовые единицы), `unit` (g/ml/pcs), `shelf_life_hours` |
 | OLAP `SALES` за закрытые дни: `DishId`, `OpenDate.Typed`, `DishAmountInt` | `POST /api/orders`, `source: "pos"`: один заказ на день, `items[]`: `dish_id`, `portions`; `id` = UUID v5 от `iiko-sales:<yyyy-MM-dd>` |
 | `GET /api/stop-list` (блюда с `available=false`) | `POST stopLists`: `items[]`: `productId` = id блюда, `balance` = 0 (заменяет список целиком, только при изменении) |
 
@@ -91,7 +91,7 @@ go run ./cmd/iiko-adapter          # цикл; флаг -once — один пр�
 
 ## Курсоры и повторы
 
-Курсоры — даты `yyyy-MM-dd` в файле состояния: `invoices` (последний прочитанный день; сегодняшний день читается заново) и `sales` (первый непереданный день). Продажи передаются только за закрытые дни. Курсор двигается после успешной передачи; повтор после сбоя безопасен: поставка с тем же id и заказ с тем же id принимаются API повторно (`200`). Ответ `409` (тот же id, другое содержимое — например, накладную поправили задним числом) пишется в журнал и не останавливает проход.
+Курсоры — даты `yyyy-MM-dd` в файле состояния: `invoices` (последний прочитанный день; сегодняшний день читается заново) и `sales` (первый непереданный день). Продажи передаются только за закрытые дни. Курсор двигается после успешной передачи; повтор после сбоя безопасен: поставка с тем же id и заказ с тем же id принимаются API повторно (`200`). Ответ `4xx` (кроме 401, 403, 429), например `409` при том же id и другом содержимом или `400` на невалидную позицию, пишется в журнал, элемент пропускается, курсор идёт дальше; сеть и `5xx` останавливают проход, повтор на следующем. Продажи блюд, которых нет в принятом каталоге, пропускаются с записью в журнал.
 
 ## Допущения
 

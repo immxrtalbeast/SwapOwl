@@ -62,6 +62,18 @@ type adapter struct {
 	start     time.Time // с какого дня читать при пустых курсорах
 	defaults  mapping.Defaults
 	log       *log.Logger
+	dishes    map[string]bool // блюда, принятые в последний каталог
+}
+
+// skippable — ответ API, который повтором не исправить: 4xx, кроме 401/403/429.
+// Такой элемент пишется в журнал и пропускается, чтобы не стопорить курсор.
+func skippable(err error) (*apiError, bool) {
+	var ae *apiError
+	if errors.As(err, &ae) && ae.Status >= 400 && ae.Status < 500 &&
+		ae.Status != http.StatusUnauthorized && ae.Status != http.StatusForbidden && ae.Status != http.StatusTooManyRequests {
+		return ae, true
+	}
+	return nil, false
 }
 
 func dayStart(t time.Time, loc *time.Location) time.Time {
@@ -126,6 +138,10 @@ func (a *adapter) syncCatalog(ctx context.Context, today time.Time) (map[string]
 			shelf[p.ID] = p.ShelfLifeHours
 		}
 	}
+	a.dishes = map[string]bool{}
+	for _, d := range cat.Dishes {
+		a.dishes[d.ID] = true
+	}
 	a.log.Printf("справочники: продуктов %d, блюд %d", len(cat.Products), len(cat.Dishes))
 	return units, shelf, nil
 }
@@ -159,9 +175,8 @@ func (a *adapter) syncInvoices(ctx context.Context, st *state, today time.Time, 
 				continue
 			}
 			if _, err := a.api.do(ctx, http.MethodPost, "/api/deliveries", d); err != nil {
-				var ae *apiError
-				if errors.As(err, &ae) && ae.Status == http.StatusConflict {
-					a.log.Printf("накладная %s: поставка уже принята с другим содержимым: %s", inv.ID, ae.Body)
+				if ae, ok := skippable(err); ok {
+					a.log.Printf("накладная %s пропущена: статус %d: %s", inv.ID, ae.Status, ae.Body)
 					continue
 				}
 				return fmt.Errorf("накладная %s: %w", inv.ID, err)
@@ -185,11 +200,18 @@ func (a *adapter) syncSales(ctx context.Context, st *state, today time.Time) err
 		if err != nil {
 			return err
 		}
-		for _, o := range mapping.BuildOrders(sales) {
+		kept := sales[:0:0]
+		for _, s := range sales {
+			if a.dishes != nil && !a.dishes[s.DishID] {
+				a.log.Printf("продажа %s: блюдо %s (%d порц.) не в каталоге, пропущена", s.Date, s.DishID, s.Portions)
+				continue
+			}
+			kept = append(kept, s)
+		}
+		for _, o := range mapping.BuildOrders(kept) {
 			if _, err := a.api.do(ctx, http.MethodPost, "/api/orders", o); err != nil {
-				var ae *apiError
-				if errors.As(err, &ae) && ae.Status == http.StatusConflict {
-					a.log.Printf("заказ %s: уже принят с другим содержимым: %s", o.ID, ae.Body)
+				if ae, ok := skippable(err); ok {
+					a.log.Printf("заказ %s пропущен: статус %d: %s", o.ID, ae.Status, ae.Body)
 					continue
 				}
 				return fmt.Errorf("заказ %s: %w", o.ID, err)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -146,4 +147,66 @@ func TestOrderIDStable(t *testing.T) {
 	if got := mapping.UUIDv5(mapping.Namespace, "python.org"); got != "886313e1-3b8a-5372-9b90-0c9aee199e5d" {
 		t.Fatalf("UUID v5: %s", got)
 	}
+}
+
+// rejectOrder отвечает 400 на заказ с заданным id (как unknown_dish), остальное — как stubAPI.
+type rejectOrder struct {
+	*stubAPI
+	bad string
+}
+
+func (r rejectOrder) ServeHTTP(w http.ResponseWriter, q *http.Request) {
+	if q.URL.Path == "/api/orders" {
+		b, _ := io.ReadAll(q.Body)
+		var o mapping.Order
+		_ = json.Unmarshal(b, &o)
+		if o.ID == r.bad {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"code":"unknown_dish"}}`))
+			return
+		}
+		q.Body = io.NopCloser(bytes.NewReader(b))
+	}
+	r.stubAPI.ServeHTTP(w, q)
+}
+
+func TestRejectedDayDoesNotStopCursor(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, _ := setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
+	s := httptest.NewServer(rejectOrder{stub, mapping.OrderID("2026-01-02")})
+	defer s.Close()
+	a.api.base = s.URL
+	if err := a.runOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := loadState(a.statePath)
+	if n := stub.count(http.MethodPost, "/api/orders"); n != 2 || st.Sales != "2026-01-04" {
+		t.Fatalf("заказов принято %d, курсор продаж %q", n, st.Sales)
+	}
+}
+
+func TestSoldDishNotInCatalogIsSkipped(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, _ := setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
+	if err := a.syncSalesWithout(t, stub, seed.Dishes()[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range stub.calls {
+		if c.Path == "/api/orders" && bytes.Contains(c.Body, []byte(`"`+seed.Dishes()[0].ID+`"`)) {
+			t.Fatalf("блюдо вне каталога передано: %s", c.Body)
+		}
+	}
+}
+
+// syncSalesWithout выкидывает блюдо из «принятого каталога» и передаёт продажи.
+func (a *adapter) syncSalesWithout(t *testing.T, _ *stubAPI, dish string) error {
+	t.Helper()
+	a.dishes = map[string]bool{}
+	for _, d := range seed.Dishes() {
+		if d.ID != dish {
+			a.dishes[d.ID] = true
+		}
+	}
+	st := state{}
+	return a.syncSales(context.Background(), &st, dayStart(a.now(), a.loc))
 }
