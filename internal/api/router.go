@@ -34,6 +34,8 @@ type Deps struct {
 	Catalog Catalog
 	// Orders — заказы и меню (2.3). nil — маршруты заказов не регистрируются.
 	Orders Orders
+	// Corrections — списание брака, инвентаризация, отмена заказа. nil — маршруты не регистрируются.
+	Corrections Corrections
 	// Menu — стоп-лист и порции (2.5). nil — маршруты не регистрируются.
 	Menu MenuSource
 	// HotOffers — снимок для горячих предложений (2.7). nil — маршрут не регистрируется.
@@ -100,6 +102,7 @@ func (rt *Router) Routes() {
 	rt.stockRoutes()
 	rt.catalogRoutes()
 	rt.orderRoutes()
+	rt.correctionRoutes()
 	rt.stopListRoutes()
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()

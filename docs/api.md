@@ -135,6 +135,31 @@ curl -X POST http://localhost:8080/api/orders \
 
 История; отклонённые отделены полем `status` (`accepted` / `rejected`).
 
+## Корректировки остатка (operator)
+
+Каждая операция идемпотентна по своему `id` (строка 1…128 символов, ключ — в таблице `corrections`, миграция `0005`): тот же `id` и то же тело — `200` и прежний ответ с `"replayed": true`, другое тело — `409 correction_conflict`. Отклонённая операция ничего не записывает, и её `id` остаётся свободным. Количества — JSON-строки, `unit` необязателен (по умолчанию базовая единица продукта). Все операции идут по протоколу блокировок 2.3 и меняют остаток относительными `UPDATE`. После новой операции уходят SSE `stock.changed` и, если состав стоп-листа изменился, `stoplist.changed`.
+
+Виды движений: `receipt`/`return` увеличивают остаток партии, `sale`/`writeoff`/`adjustment` уменьшают; `receipt + return − sale − writeoff − adjustment = remaining`. Значения — в `internal/store/kinds.go`.
+
+### `POST /api/writeoffs`
+
+`{"id", "batch_id", "qty": "1.5", "unit": "kg", "reason": "spoilage" | "damage"}` — списывает брак с партии: движение `writeoff` с этой причиной. `201` — `{"id", "batch_id", "product_id", "qty", "reason", "remaining", "at", "replayed"}`. Ошибки: `400 validation_error`, `404 unknown_batch`, `409 insufficient_batch` (`qty` больше остатка партии).
+
+### `POST /api/inventory`
+
+`{"id", "product_id", "counted": "2.5", "unit": "kg"}` — пересчитанное количество продукта (допустим `"0"`); сверяется с суммой остатков непросроченных партий.
+- Недостача — списывается по FEFO движениями `adjustment` / `inventory_shortage`.
+- Излишек — новая партия поставки `INV-<id>` (`quantity = remaining`), срок — `shelf_life_hours` продукта от момента операции, движение `receipt` / `inventory_surplus`. Нет срока по умолчанию — `400 validation_error`.
+- Совпало с учётом — ничего не пишется.
+
+`201` — `{"id", "product_id", "counted", "shortage": [{"batch_id", "product_id", "qty"}], "surplus": null | {партия}, "at", "replayed"}`. Неизвестный продукт — `400 unknown_product`.
+
+### `POST /api/orders/{id}/cancel`
+
+`{"id"}` — `id` операции; `{id}` в пути — отменяемый заказ. Допустима один раз и только для принятого заказа. Проданное возвращается в те же партии, если они не просрочены (`now < expires_at`): движение `return`. Проданное из просроченных партий остаток не восстанавливает: пишутся `return` и `adjustment` / `return_expired` на то же количество (баланс партии не меняется).
+
+`201` — `{"id", "order_id", "returned": [{"batch_id", "product_id", "qty"}], "expired": [...], "at", "replayed"}`. Ошибки: `404 unknown_order`, `409 order_not_cancellable` (заказ отклонён), `409 already_cancelled` (другая операция уже отменила заказ). Недостача `pos`-заказа (`shortfalls`) не пересматривается.
+
 ## Горячие предложения
 
 ### `GET /api/hot-offers?algo=` (viewer)
