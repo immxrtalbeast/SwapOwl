@@ -36,3 +36,6 @@ func RoundToPack(q, pack domain.Qty) domain.Qty { return catalog.RoundToPack(q, 
 
 // FormatQty — см. catalog.FormatQty.
 func FormatQty(q domain.Qty, base domain.Unit) (string, string) { return catalog.FormatQty(q, base) }
+
+// DemoProductIDs — см. catalog.DemoProductIDs.
+func DemoProductIDs() map[string]bool { return catalog.DemoProductIDs() }

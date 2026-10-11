@@ -81,7 +81,9 @@ func Dishes() []Dish {
 		return domain.RecipeItem{ProductID: p, Quantity: q}
 	}
 	return []Dish{
-		{"salmon-pasta", "Паста с лососем", 69000, 20, []domain.RecipeItem{r("salmon", 120), r("pasta", 100), r("cream", 80)}},
+		{"salmon-pasta", "Паста с лососем", 69000, 12, []domain.RecipeItem{r("salmon", 150), r("pasta", 120), r("cream", 100)}},
+		{"salmon-steak", "Стейк из лосося", 89000, 5, []domain.RecipeItem{r("salmon", 200)}},
+		{"cream-soup", "Крем-суп", 35000, 8, []domain.RecipeItem{r("cream", 200), r("potato", 250)}},
 		{"caesar", "Цезарь с курицей", 52000, 25, []domain.RecipeItem{r("chicken", 100), r("lettuce", 80), r("parmesan", 20), r("egg", 1)}},
 		{"tomato-salad", "Салат с томатами", 38000, 15, []domain.RecipeItem{r("tomato", 150), r("lettuce", 40)}},
 		{"beef-steak", "Стейк из вырезки", 129000, 10, []domain.RecipeItem{r("beef", 220), r("potato", 200)}},
@@ -90,28 +92,66 @@ func Dishes() []Dish {
 	}
 }
 
-// StartingDeliveries — стартовые поставки: две партии за 3 и 27 часов до t0,
-// покрывают примерно двое суток априорного спроса.
+// Условия демо-сценария (.ai/demo.md, «Условия сида»): три партии лосося и сливок на t0.
+// Остальных скоропортящихся поставок лосося и сливок, доступных на t0, в сиде нет.
+const (
+	// DemoMinPortions — запас остальных продуктов в порциях каждого блюда на t0.
+	DemoMinPortions = 40
+	salmonL1Ago     = 72 * time.Hour // Л-1 принята 3 суток назад
+	salmonL1Shelf   = 77             // истекает через 5 ч
+	salmonL2Shelf   = 75             // истекает через 3 суток после t0, принята за 3 ч
+	creamC1Shelf    = 29             // истекает через 26 ч, принята за 3 ч
+	demoRecvAgo     = 3 * time.Hour
+)
+
+// DemoProductIDs — продукты, партии которых на t0 заданы сценарием вручную.
+func DemoProductIDs() map[string]bool { return map[string]bool{"salmon": true, "cream": true} }
+
+// StartingDeliveries — стартовые поставки: остальные продукты двумя поставками за 27 и 3 часа до t0
+// (с запасом не меньше DemoMinPortions порций каждого блюда), лосось Л-1 (2 кг) и Л-2 (4 кг)
+// и сливки С-1 (600 мл) — по условиям демо-сценария.
 func StartingDeliveries(t0 time.Time) []Delivery {
 	prods := Products()
 	need := DailyNeed()
+	perPortion := map[string]domain.Qty{}
+	for _, d := range Dishes() {
+		for _, it := range d.Recipe {
+			perPortion[it.ProductID] += it.Quantity
+		}
+	}
+	demo := DemoProductIDs()
 	var out []Delivery
-	for i, ago := range []time.Duration{27 * time.Hour, 3 * time.Hour} {
+	for i, ago := range []time.Duration{27 * time.Hour, demoRecvAgo} {
 		d := Delivery{
 			ID:        fmt.Sprintf("D-SEED-%d", i+1),
 			Number:    fmt.Sprintf("S%d", i+1),
 			CreatedAt: t0.Add(-ago),
 		}
 		for _, p := range prods {
+			if demo[p.ID] {
+				continue
+			}
 			qty := RoundToPack(domain.Qty(need[p.ID]+0.999), p.PackSize)
+			if i == 1 { // свежая поставка гарантирует запас на 40 порций любого блюда
+				if min := RoundToPack(DemoMinPortions*perPortion[p.ID], p.PackSize); min > qty {
+					qty = min
+				}
+			}
 			if qty == 0 {
 				qty = p.PackSize
 			}
 			q, u := FormatQty(qty, p.Unit)
 			d.Items = append(d.Items, DeliveryItem{p.ID, p.Name, q, u, p.ShelfLifeHours})
 		}
+		if i == 1 {
+			d.Items = append(d.Items,
+				DeliveryItem{"salmon", "Лосось", "4", "kg", salmonL2Shelf}, // Л-2
+				DeliveryItem{"cream", "Сливки", "600", "ml", creamC1Shelf}) // С-1
+		}
 		out = append(out, d)
 	}
+	out = append(out, Delivery{ID: "D-SEED-3", Number: "S3", CreatedAt: t0.Add(-salmonL1Ago),
+		Items: []DeliveryItem{{"salmon", "Лосось", "2", "kg", salmonL1Shelf}}}) // Л-1
 	return out
 }
 

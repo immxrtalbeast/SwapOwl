@@ -7,7 +7,34 @@ import (
 	"time"
 
 	"umirhack/internal/generator"
+	"umirhack/internal/seed"
 )
+
+// creamDishes — блюда со сливками. Демо-профиль их не заказывает: сливки С-1 нужны сценарию
+// для шага 5 (.ai/demo.md), и после шага 4 их остаётся на S = 2 порции крем-супа.
+func creamDishes() map[string]bool {
+	out := map[string]bool{}
+	for _, d := range seed.Dishes() {
+		for _, it := range d.Recipe {
+			if it.ProductID == "cream" {
+				out[d.ID] = true
+			}
+		}
+	}
+	return out
+}
+
+// demoProfile убирает из заказа позиции со сливками; пустой заказ отбрасывается.
+func demoProfile(o generator.Order, skip map[string]bool) (generator.Order, bool) {
+	items := make([]generator.OrderItem, 0, len(o.Items))
+	for _, it := range o.Items {
+		if !skip[it.DishID] {
+			items = append(items, it)
+		}
+	}
+	o.Items = items
+	return o, len(items) > 0
+}
 
 // OrderSink принимает заказ генератора — теми же сервисами, что и POST /api/orders.
 type OrderSink interface {
@@ -90,6 +117,7 @@ func (s *Simulator) run(ctx context.Context, done chan struct{}, from time.Time)
 	}
 	t := time.NewTicker(tick)
 	defer t.Stop()
+	skip := creamDishes()
 	for {
 		select {
 		case <-ctx.Done():
@@ -117,8 +145,12 @@ func (s *Simulator) run(ctx context.Context, done chan struct{}, from time.Time)
 			if e.Kind != generator.KindOrder || e.Order == nil {
 				continue
 			}
-			if err := s.Sink.PlaceOrder(ctx, *e.Order); err != nil && ctx.Err() == nil {
-				s.Log.Error("simulator order failed", slog.String("order_id", e.Order.ID), slog.String("error", err.Error()))
+			o, ok := demoProfile(*e.Order, skip)
+			if !ok {
+				continue
+			}
+			if err := s.Sink.PlaceOrder(ctx, o); err != nil && ctx.Err() == nil {
+				s.Log.Error("simulator order failed", slog.String("order_id", o.ID), slog.String("error", err.Error()))
 			}
 		}
 	}
