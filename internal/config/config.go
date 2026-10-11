@@ -67,7 +67,7 @@ func Load(getenv func(string) string) (Config, error) {
 		DemandPriorDays:   p.int("DEMAND_PRIOR_DAYS", 3),
 		SupplyCoverDays:   p.int("SUPPLY_COVER_DAYS", 3),
 		SupplyMinPortions: p.int("SUPPLY_MIN_PORTIONS", 10),
-		HotOffersAlgo:     p.str("HOTOFFERS_ALGO", "a"),
+		HotOffersAlgo:     p.str("HOTOFFERS_ALGO", "b"),
 		HotTopN:           p.int("HOT_TOP_N", 3),
 		HotWMinHours:      p.float("HOT_W_MIN_HOURS", 0.5),
 		HotCoverHours:     p.float("HOT_COVER_HOURS", 12),
