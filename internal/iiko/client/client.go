@@ -190,3 +190,14 @@ func (c *Client) SetStopList(ctx context.Context, items []iiko.StopItem) error {
 	_, err := c.do(ctx, http.MethodPost, iiko.PathStopLists, nil, iiko.StopListResponse{Items: items})
 	return err
 }
+
+// Balance читает остатки по складам на момент at (часовой пояс ресторана).
+func (c *Client) Balance(ctx context.Context, at time.Time) ([]iiko.BalanceItem, error) {
+	q := url.Values{"timestamp": {at.Format(iiko.DateTimeLayout)}}
+	b, err := c.do(ctx, http.MethodGet, iiko.PathBalanceStores, q, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out []iiko.BalanceItem
+	return out, json.Unmarshal(b, &out)
+}

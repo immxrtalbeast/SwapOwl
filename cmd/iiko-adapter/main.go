@@ -48,6 +48,12 @@ func envInt(name string, def int64) (int64, error) {
 func run(args []string) error {
 	fs := flag.NewFlagSet("iiko-adapter", flag.ContinueOnError)
 	once := fs.Bool("once", false, "один проход и выход")
+	rec := len(args) > 0 && args[0] == "reconcile"
+	asJSON := fs.Bool("json", false, "reconcile: вывод в JSON")
+	all := fs.Bool("all", false, "reconcile: все продукты, не только расхождения")
+	if rec {
+		args = args[1:]
+	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -103,6 +109,9 @@ func run(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if rec {
+		return a.runReconcile(ctx, os.Stdout, *asJSON, *all)
+	}
 	if *once {
 		return a.runOnce(ctx)
 	}

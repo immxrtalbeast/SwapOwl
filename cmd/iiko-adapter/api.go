@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"umirhack/internal/iiko/reconcile"
 )
 
 // apiClient ходит в наш API по ключу Authorization: Bearer.
@@ -73,4 +75,27 @@ func (a *apiClient) stoppedDishes(ctx context.Context) ([]string, error) {
 		ids = append(ids, r.ID)
 	}
 	return ids, nil
+}
+
+// productStock — остатки из GET /api/products (непросроченные партии).
+func (a *apiClient) productStock(ctx context.Context) ([]reconcile.Ours, error) {
+	b, err := a.do(ctx, http.MethodGet, "/api/products", nil)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Available struct {
+			Qty int64 `json:"qty"`
+		} `json:"available"`
+	}
+	if err := json.Unmarshal(b, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]reconcile.Ours, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, reconcile.Ours{ID: r.ID, Name: r.Name, Qty: r.Available.Qty})
+	}
+	return out, nil
 }
