@@ -17,6 +17,8 @@ import (
 	"umirhack/internal/auth"
 	"umirhack/internal/clock"
 	"umirhack/internal/config"
+	"umirhack/internal/domain"
+	"umirhack/internal/hotoffers"
 	"umirhack/internal/janitor"
 	"umirhack/internal/store"
 )
@@ -68,7 +70,12 @@ func run() error {
 
 	clk := clock.Real{}
 	go janitor.New(db, clk.Now, nil).Run(ctx) // OnSweep и Kick — в тикетах SSE и управления часами
-	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc, Stock: db, Orders: db, Menu: db, Location: cfg.Location})
+	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt}
+	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: clk.Now, Auth: authSvc, Stock: db, Orders: db, Menu: db, Location: cfg.Location,
+		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{
+			WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
+		HotConfig: api.HotOffersConfig{DefaultAlgo: cfg.HotOffersAlgo, Rank: hotoffers.Config{
+			TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter}}})
 	srv := &http.Server{
 		Addr:              ":" + envOr("PORT", "8080"),
 		Handler:           router.Handler(),

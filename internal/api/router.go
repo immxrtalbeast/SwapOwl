@@ -33,6 +33,10 @@ type Deps struct {
 	Orders Orders
 	// Menu — стоп-лист и порции (2.5). nil — маршруты не регистрируются.
 	Menu MenuSource
+	// HotOffers — снимок для горячих предложений (2.7). nil — маршрут не регистрируется.
+	HotOffers HotOffersSource
+	// HotConfig — основной алгоритм и параметры R/Bg.
+	HotConfig HotOffersConfig
 	// Location — часовой пояс ресторана для expires_on; nil — UTC.
 	Location *time.Location
 }
@@ -72,6 +76,7 @@ func (rt *Router) Routes() {
 	rt.stockRoutes()
 	rt.orderRoutes()
 	rt.stopListRoutes()
+	rt.hotOffersRoutes()
 }
 
 // Handle регистрирует хендлер для метода и шаблона пути (синтаксис ServeMux без метода: "/api/x/{id}").
