@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"runtime/debug"
 	"time"
+
+	"umirhack/internal/metrics"
 )
 
 type ctxKey int
@@ -79,8 +81,8 @@ func (w *statusWriter) Flush() {
 // Unwrap позволяет http.ResponseController добраться до исходного ResponseWriter.
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-// wrap собирает цепочку: request id и заголовки → журнал → восстановление после паники.
-func wrap(next http.Handler, log *slog.Logger, now func() time.Time) http.Handler {
+// wrap собирает цепочку: request id и заголовки → журнал и метрики (по шаблону пути) → восстановление после паники.
+func wrap(next http.Handler, log *slog.Logger, now func() time.Time, reg *metrics.Registry) http.Handler {
 	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		id := r.Header.Get("X-Request-Id")
@@ -107,6 +109,9 @@ func wrap(next http.Handler, log *slog.Logger, now func() time.Time) http.Handle
 				if !w.wrote {
 					WriteError(w, http.StatusInternalServerError, CodeInternal, "internal error", nil)
 				}
+			}
+			if reg != nil {
+				reg.ObserveRequest(r.Method, route.pattern, w.status, time.Since(start))
 			}
 			log.LogAttrs(r.Context(), slog.LevelInfo, "request",
 				slog.String("request_id", id),

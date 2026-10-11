@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"umirhack/internal/generator"
 	"umirhack/internal/hotoffers"
 	"umirhack/internal/janitor"
+	"umirhack/internal/metrics"
 	"umirhack/internal/stand"
 	"umirhack/internal/store"
 )
@@ -106,7 +108,9 @@ func run() error {
 	pub := newPublisher(bus, db, now, log)
 	pub.outbox = db
 	pub.prime(ctx)
-	jan := janitor.New(stand.GatedJanitorStore{Inner: db, Gate: gate}, now, pub.onSweep)
+	sweeps := &sweepStamp{Store: stand.GatedJanitorStore{Inner: db, Gate: gate}}
+	sweeps.last.Store(time.Now().UnixNano()) // до первого прохода отсчёт идёт от старта
+	jan := janitor.New(sweeps, now, pub.onSweep)
 	expiry := domain.ExpiryConfig{Share: cfg.ExpiringShare, MinHours: cfg.ExpiringMinHours, MaxShare: cfg.ExpiringMaxShare}
 	jan.Expiry, jan.OnExpiring = &expiry, pub.onExpiring
 	go jan.Run(ctx)
@@ -125,7 +129,16 @@ func run() error {
 	}
 	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt}
 	monitor := store.Monitor{DB: db, Params: store.AlertParams{Expiry: expiry, Schedule: schedule, WMin: cfg.HotWMinHours}}
-	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: now, Auth: authSvc, Audit: db, Clock: clockInfo(st), Demo: demo, Sim: sim, DemoToken: cfg.DemoToken,
+	reg := metrics.New()
+	reg.Gauge("sse_subscribers", "Открытые SSE-подключения.", func() float64 { return float64(bus.Subscribers()) })
+	reg.Gauge("janitor_last_sweep_age_seconds", "Секунд с последнего успешного прохода «дворника» (реальное время).",
+		func() float64 { return time.Since(time.Unix(0, sweeps.last.Load())).Seconds() })
+	reg.Gauge("outbox_undelivered", "Недоставленные исходящие сообщения.", func() float64 {
+		c, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		return float64(countOutbox(c, db))
+	})
+	router := api.NewRouter(api.Deps{Metrics: reg, MetricsToken: os.Getenv("METRICS_TOKEN"), Log: log, DB: db, Now: now, Auth: authSvc, Audit: db, Clock: clockInfo(st), Demo: demo, Sim: sim, DemoToken: cfg.DemoToken,
 		NotSimulated: stand.ErrNotSimulated, Gate: gate,
 		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: orders, Corrections: pubCorrections{db, pub}, Menu: db, Outbox: db, Monitor: monitor, Analytics: db, Location: cfg.Location, Events: bus,
 		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{
@@ -248,4 +261,31 @@ func (c pubCorrections) CancelOrder(ctx context.Context, in store.CancelInput, n
 		c.p.stockChanged(ctx, uniqSorted(products))
 	}
 	return res, nil
+}
+
+// sweepStamp запоминает время последнего успешного прохода «дворника» для метрики отставания.
+type sweepStamp struct {
+	janitor.Store
+	last atomic.Int64 // UnixNano реального времени
+}
+
+func (s *sweepStamp) Sweep(ctx context.Context, now func() time.Time, cfg *domain.ExpiryConfig) (store.SweepResult, error) {
+	res, err := s.Store.Sweep(ctx, now, cfg)
+	if err == nil {
+		s.last.Store(time.Now().UnixNano())
+	}
+	return res, err
+}
+
+// countOutbox считает недоставленные исходящие; нет таблицы или ошибка БД — 0 (8.0а).
+func countOutbox(ctx context.Context, db *store.DB) int {
+	n, after := 0, int64(0)
+	for {
+		list, err := db.ListOutbox(ctx, after, store.MaxOutboxLimit)
+		if err != nil || len(list) == 0 {
+			return n
+		}
+		n += len(list)
+		after = list[len(list)-1].ID
+	}
 }
