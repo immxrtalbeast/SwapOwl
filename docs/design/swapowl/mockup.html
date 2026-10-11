@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Макет SwapOwl</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@500;700&family=Roboto:wght@300;400;500;700&family=Neucha&display=swap">
+<style>
+/* Макет в языке линейки Swap: светлая «миллиметровка», моноширинный капс, один фирменный цвет, рукописные пометки.
+   Сознательно одна светлая тема — как у SwapDog и SwapCat. */
+:root {
+  color-scheme: light;
+  --brand: #1fb46e;          /* меняется переключателем палитры */
+  --brand-ink: #0f6b41;      /* текст и обводки фирменного цвета */
+  --brand-tint: #d9f4e6;     /* плашки */
+  --brand-grid: #cfeedd;     /* линии сетки */
+  --paper: #f1f2f1;          /* фон лендинга */
+  --surface: #ffffff;
+  --ink: #16191d;
+  --ink-2: #4b525c;
+  --line: #e2e5e8;
+  --warn: #c2410c; --warn-tint: #ffedd5;
+  --bad: #b91c1c;  --bad-tint: #fee2e2;
+  --font-display: "Roboto Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-body: "Roboto", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-hand: "Neucha", "Comic Sans MS", cursive;
+}
+:root[data-palette="mint"]   { --brand:#10b3a3; --brand-ink:#0b6a62; --brand-tint:#d3f3ef; --brand-grid:#c8ece8 }
+:root[data-palette="dusk"]   { --brand:#6b5cff; --brand-ink:#3f32c4; --brand-tint:#e6e3ff; --brand-grid:#dcd8ff }
+:root[data-palette="pine"]   { --brand:#1d6f52; --brand-ink:#124a36; --brand-tint:#d6ebe2; --brand-grid:#cfe3da }
+
+* { box-sizing: border-box }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.5 var(--font-body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; }
+:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px }
+button { font: inherit; cursor: pointer }
+
+/* Переключатель палитры */
+.picker { background: var(--ink); color: #fff; }
+.picker .wrap { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding-block: 10px; font-size: 14px }
+.picker b { font-family: var(--font-display); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; font-size: 12px; opacity: .8 }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px }
+.swatch { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3f46; background: #23272d; color: #fff; border-radius: 999px; padding: 4px 12px 4px 6px; font-size: 13px }
+.swatch i { width: 18px; height: 18px; border-radius: 50%; display: block }
+.swatch[aria-pressed="true"] { border-color: #fff; background: #31363d }
+
+/* Верхняя панель продукта */
+.top { background: var(--surface); box-shadow: 0 2px 10px rgb(0 0 0 / .06); position: relative; z-index: 2 }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; padding-block: 10px; gap: 12px }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--brand); font-weight: 400; font-size: 26px; text-decoration: none; letter-spacing: -.01em }
+.brand svg { width: 34px; height: 34px; flex: none }
+.btn { display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: var(--brand); color: #fff;
+  font-family: var(--font-display); font-weight: 700; font-size: 14px; letter-spacing: .02em; padding: 12px 22px; text-decoration: none; white-space: nowrap }
+.btn.big { padding: 22px 34px; font-size: 16px; border-radius: 10px; box-shadow: 0 8px 24px color-mix(in srgb, var(--brand) 30%, transparent) }
+.btn.ghost { background: transparent; color: var(--brand-ink); border: 2px solid var(--brand-ink); box-shadow: none }
+
+/* Первый экран: миллиметровка */
+.hero { background-color: var(--paper);
+  background-image: linear-gradient(var(--brand-grid) 1px, transparent 1px), linear-gradient(90deg, var(--brand-grid) 1px, transparent 1px);
+  background-size: 140px 140px; background-position: -1px -1px; }
+.hero .wrap { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 40px; align-items: center; padding-block: 72px 80px }
+.pills { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 22px }
+.pill { background: var(--brand-tint); color: var(--brand-ink); font-family: var(--font-display); font-weight: 500; font-size: 13px; border-radius: 999px; padding: 8px 16px }
+h1 { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: clamp(30px, 4.2vw, 54px); line-height: 1.08; letter-spacing: -.01em; margin: 0 0 22px; text-wrap: balance }
+h1 em { font-style: normal; color: var(--brand) }
+h1 .lc { text-transform: none }
+.lead { font-size: clamp(17px, 1.6vw, 22px); line-height: 1.45; color: var(--ink); max-width: 33em; margin: 0 0 40px }
+.ctas { display: flex; flex-wrap: wrap; gap: 18px 28px; align-items: center; position: relative }
+.link { font-family: var(--font-display); font-weight: 700; color: var(--brand); text-decoration: none; font-size: 16px }
+.hand { font-family: var(--font-hand); color: var(--brand); font-size: 26px; line-height: 1.05 }
+.note-cta { position: absolute; left: min(330px, 70%); top: 78px; display: flex; gap: 6px; align-items: flex-start }
+.note-cta svg { width: 70px; height: 54px; flex: none }
+
+/* Окно приложения */
+.window { position: relative }
+.app { background: var(--surface); border-radius: 14px; box-shadow: 0 30px 60px rgb(20 30 40 / .18), 0 0 0 10px #1c1f24; overflow: hidden; display: grid; grid-template-columns: 54px minmax(0, 1fr); min-height: 380px }
+.rail { background: var(--brand); display: flex; flex-direction: column; align-items: center; gap: 14px; padding-block: 14px }
+.rail svg { width: 30px; height: 30px }
+.rail span { width: 26px; height: 26px; border-radius: 7px; background: rgb(255 255 255 / .18); display: grid; place-items: center; color: #fff; font: 700 11px/1 var(--font-display) }
+.rail span.on { background: #fff; color: var(--brand-ink) }
+.pane { padding: 18px 18px 14px; min-width: 0 }
+.pane h2 { margin: 0 0 4px; font-size: 22px; font-weight: 700 }
+.sub { color: var(--ink-2); font-size: 12.5px; margin-bottom: 12px }
+.tbl { overflow-x: auto }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums }
+th { text-align: left; font: 500 11px/1.2 var(--font-display); color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; padding: 8px 8px; background: color-mix(in srgb, var(--brand-tint) 55%, #fff); white-space: nowrap }
+td { padding: 9px 8px; border-bottom: 1px solid var(--line); white-space: nowrap }
+td.num { font-family: var(--font-display); text-align: right }
+.chip { display: inline-block; border-radius: 6px; padding: 2px 8px; font-size: 12px; font-weight: 700 }
+.chip.warn { background: var(--warn-tint); color: var(--warn) }
+.chip.ok { background: #eef0f2; color: var(--ink-2) }
+.chip.bad { background: var(--bad-tint); color: var(--bad) }
+tr.hot td { background: color-mix(in srgb, var(--warn-tint) 45%, #fff) }
+.offer { margin-top: 12px; border: 2px solid var(--brand); border-radius: 10px; padding: 10px 12px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap }
+.offer b { font-size: 15px }
+.offer .goal { font: 700 20px/1 var(--font-display); color: var(--brand-ink) }
+.offer small { color: var(--ink-2) }
+.note-app { position: absolute; right: 24px; top: -92px; display: flex; align-items: flex-end; gap: 4px; transform: rotate(-3deg) }
+.note-app svg { width: 64px; height: 56px }
+.note-num { position: absolute; left: -128px; bottom: 96px; transform: rotate(-6deg); text-align: right }
+
+/* Блок про то, что внутри */
+.how { background: var(--surface); }
+.how .wrap { padding-block: 56px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px }
+.how h3 { font-family: var(--font-display); text-transform: uppercase; font-size: 17px; margin: 10px 0 8px; letter-spacing: .01em }
+.how p { margin: 0; color: var(--ink-2); max-width: 34em }
+.step { font-family: var(--font-hand); font-size: 56px; line-height: 1; color: var(--brand) }
+.foot { padding-block: 22px; color: var(--ink-2); font-size: 13px }
+
+@media (max-width: 920px) {
+  .hero .wrap { grid-template-columns: minmax(0, 1fr); padding-block: 48px 64px }
+  .note-cta { position: static; margin-top: 4px }
+  .note-app { position: static; transform: none; margin-bottom: 8px }
+  .note-num { display: none }
+  .how .wrap { grid-template-columns: minmax(0, 1fr) }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .draw path { stroke-dasharray: 220; stroke-dashoffset: 0; animation: draw 1.1s ease-out .2s both }
+  @keyframes draw { from { stroke-dashoffset: 220 } to { stroke-dashoffset: 0 } }
+}
+</style>
+
+<div class="picker" role="region" aria-label="Палитра макета">
+  <div class="wrap">
+    <b>Палитра</b>
+    <div class="swatches" id="swatches">
+      <button class="swatch" data-p="fresh" aria-pressed="true"><i style="background:#1fb46e"></i>Свежесть</button>
+      <button class="swatch" data-p="mint" aria-pressed="false"><i style="background:#10b3a3"></i>Мята</button>
+      <button class="swatch" data-p="dusk" aria-pressed="false"><i style="background:#6b5cff"></i>Сумерки</button>
+      <button class="swatch" data-p="pine" aria-pressed="false"><i style="background:#1d6f52"></i>Хвоя</button>
+    </div>
+    <span style="opacity:.7">Синий и оранжевый уже заняты: SwapDog и SwapCat</span>
+  </div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- Лист с загнутым углом и мордой совы: глаза-кольца, клюв, ушки-перья -->
+    <symbol id="owl" viewBox="0 0 64 64">
+      <rect width="64" height="64" rx="12" fill="currentColor"/>
+      <path d="M19 11h18l9 9v31a2 2 0 0 1-2 2H19a2 2 0 0 1-2-2V13a2 2 0 0 1 2-2z" fill="#fff"/>
+      <path d="M37 11v7a2 2 0 0 0 2 2h7z" fill="currentColor" opacity=".35"/>
+      <path d="M21.5 22l4 4.5M41.5 22l-4 4.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="26" cy="32" r="5.2" fill="none" stroke="currentColor" stroke-width="2.6"/>
+      <circle cx="37" cy="32" r="5.2" fill="none" stroke="currentColor" stroke-width="2.6"/>
+      <circle cx="26.8" cy="32.6" r="1.9" fill="currentColor"/>
+      <circle cx="37.8" cy="32.6" r="1.9" fill="currentColor"/>
+      <path d="M29.6 39.2h3.8l-1.9 3.2z" fill="currentColor"/>
+      <path d="M25 47c4 1.6 9 1.6 13 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none" opacity=".5"/>
+    </symbol>
+    <symbol id="owl-inv" viewBox="0 0 64 64">
+      <path d="M19 11h18l9 9v31a2 2 0 0 1-2 2H19a2 2 0 0 1-2-2V13a2 2 0 0 1 2-2z" fill="#fff"/>
+      <path d="M37 11v7a2 2 0 0 0 2 2h7z" fill="currentColor" opacity=".35"/>
+      <path d="M21.5 22l4 4.5M41.5 22l-4 4.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="26" cy="32" r="5.2" fill="none" stroke="currentColor" stroke-width="2.6"/>
+      <circle cx="37" cy="32" r="5.2" fill="none" stroke="currentColor" stroke-width="2.6"/>
+      <circle cx="26.8" cy="32.6" r="1.9" fill="currentColor"/>
+      <circle cx="37.8" cy="32.6" r="1.9" fill="currentColor"/>
+      <path d="M29.6 39.2h3.8l-1.9 3.2z" fill="currentColor"/>
+    </symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" style="color:var(--brand)"><svg aria-hidden="true" style="color:var(--brand)"><use href="#owl"/></svg>SwapOwl</a>
+    <a class="btn" href="#demo">Попробовать</a>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <div class="pills">
+          <span class="pill">Работает поверх iiko</span>
+          <span class="pill">Для одиночных точек и сетей</span>
+        </div>
+        <h1>Сроки и стоп&#8209;лист поверх <em class="lc">iiko</em> — продукты <em>не уходят</em> в списание</h1>
+        <p class="lead">SwapOwl ведёт каждую партию со сроком годности, сам ставит блюда в стоп-лист, когда кончаются продукты, и подсказывает, что продать сегодня, пока партия не истекла.</p>
+        <div class="ctas">
+          <a class="btn big" href="#demo" id="demo">Начать пользоваться</a>
+          <a class="link" href="#how">Как подключить</a>
+          <div class="note-cta">
+            <svg class="draw" viewBox="0 0 70 54" aria-hidden="true"><path d="M64 46C46 46 22 38 12 10M12 10l-6 12M12 10l11 7" fill="none" stroke="var(--brand)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="hand">демо-стенд<br>за 1 клик</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="window" aria-label="Пример экрана SwapOwl">
+        <div class="note-app">
+          <span class="hand">лосось спасаем<br>до 16:00</span>
+          <svg class="draw" viewBox="0 0 64 56" aria-hidden="true"><path d="M6 8c22 2 40 14 44 40M50 48l-10-6M50 48l4-11" fill="none" stroke="var(--brand)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="app">
+          <nav class="rail" aria-label="Разделы (макет)">
+            <svg aria-hidden="true" style="color:var(--brand)"><use href="#owl-inv"/></svg>
+            <span class="on">СК</span><span>МН</span><span>ЗК</span><span>ПС</span><span>₽</span>
+          </nav>
+          <div class="pane">
+            <h2>Склад</h2>
+            <div class="sub">Пример данных демо-стенда · время стенда 11:00, вс 11 октября</div>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Продукт</th><th>Партия</th><th style="text-align:right">Остаток</th><th>Срок</th></tr></thead>
+                <tbody>
+                  <tr class="hot"><td>Лосось</td><td>№ Л-1</td><td class="num">2,0 кг</td><td><span class="chip warn">через 5 ч</span></td></tr>
+                  <tr><td>Лосось</td><td>№ Л-2</td><td class="num">4,0 кг</td><td><span class="chip ok">через 3 сут</span></td></tr>
+                  <tr><td>Сливки</td><td>№ С-1</td><td class="num">600 мл</td><td><span class="chip ok">через 26 ч</span></td></tr>
+                  <tr><td>Картофель</td><td>№ К-3</td><td class="num">18,8 кг</td><td><span class="chip ok">через 11 сут</span></td></tr>
+                  <tr><td>Салат романо</td><td>№ Р-2</td><td class="num">0 г</td><td><span class="chip bad">списан, истёк</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="offer">
+              <div><b>🔥 Стейк из лосося</b><br><small>Л-1: 1,4 кг не успеет разойтись за 5 рабочих часов</small></div>
+              <div style="text-align:right"><div class="goal">7 порций</div><small>обычно 3 · до 16:00</small></div>
+            </div>
+          </div>
+        </div>
+        <span class="note-num hand">−1,4 кг<br>в мусор</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="how" id="how" aria-labelledby="how-title">
+    <div class="wrap"><h2 id="how-title" style="font-family:var(--font-display);text-transform:uppercase;font-size:clamp(22px,2.6vw,30px);margin:0;padding-block:44px 0;text-wrap:balance">Подключение — работа инженера, а&nbsp;не&nbsp;разработка</h2></div>
+    <div class="wrap">
+      <div><span class="step">1</span><h3>Справочники из iiko</h3><p>Номенклатура и техкарты с потерями и полуфабрикатами переносятся адаптером, без ручного ввода.</p></div>
+      <div><span class="step">2</span><h3>Теневой режим</h3><p>Неделю SwapOwl считает рядом с iiko и каждый день сверяет остатки. В кассу пока ничего не пишет.</p></div>
+      <div><span class="step">3</span><h3>Боевой режим</h3><p>Стоп-лист уходит в iiko сам, управляющий получает в Telegram партии, которые пора продавать.</p></div>
+    </div>
+  </section>
+  <div class="foot wrap">Макет: концепт продукта для линейки Swap «Флагмана». Данные на экране — пример демо-стенда.</div>
+</main>
+
+<script>
+(function () {
+  var root = document.documentElement, box = document.getElementById("swatches");
+  function apply(p) {
+    if (p === "fresh") root.removeAttribute("data-palette"); else root.setAttribute("data-palette", p);
+    box.querySelectorAll(".swatch").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.p === p)); });
+  }
+  try { var saved = localStorage.getItem("swapowl-palette"); if (saved) apply(saved); } catch (e) {}
+  box.addEventListener("click", function (e) {
+    var b = e.target.closest(".swatch"); if (!b) return;
+    apply(b.dataset.p);
+    try { localStorage.setItem("swapowl-palette", b.dataset.p); } catch (e2) {}
+  });
+})();
+</script>
