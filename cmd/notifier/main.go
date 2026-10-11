@@ -55,6 +55,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	n.MarkDigestStartup(ctx)
+	n.SeedSent(ctx)
 	go func() {
 		t := time.NewTicker(30 * time.Second)
 		defer t.Stop()
@@ -67,6 +68,6 @@ func run() error {
 			}
 		}
 	}()
-	api.Subscribe(ctx, 5*time.Second, nil, func(ev notify.Event) { n.Handle(ctx, ev) }, lg.Printf)
+	api.Subscribe(ctx, 5*time.Second, func() { go n.CatchUp(ctx) }, func(ev notify.Event) { n.Handle(ctx, ev) }, lg.Printf)
 	return nil
 }

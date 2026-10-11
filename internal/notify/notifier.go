@@ -21,9 +21,10 @@ type Notifier struct {
 	DigestAt string // "HH:MM" по времени ресторана
 	Logf     func(string, ...any)
 
-	mu         sync.Mutex
+	sendMu     sync.Mutex     // сериализует отправку и защищает sent
 	sent       map[int64]bool // партии, о которых уже написали
-	digestDate string         // дата последней сводки
+	mu         sync.Mutex
+	digestDate string // дата последней сводки
 }
 
 func (n *Notifier) logf(f string, a ...any) {
@@ -44,44 +45,73 @@ func (n *Notifier) Handle(ctx context.Context, ev Event) {
 		n.logf("batch.expiring: не разобрать данные")
 		return
 	}
-	n.mu.Lock()
-	if n.sent == nil {
-		n.sent = map[int64]bool{}
-	}
-	done := n.sent[d.BatchID]
-	n.mu.Unlock()
-	if done {
-		return
-	}
-	if err := n.notifyBatch(ctx, d.BatchID); err != nil {
+	alerts, err := n.API.Alerts(ctx)
+	if err != nil {
 		n.logf("партия %d: %v", d.BatchID, err)
 		return
 	}
-	n.mu.Lock()
-	n.sent[d.BatchID] = true
-	n.mu.Unlock()
-}
-
-func (n *Notifier) notifyBatch(ctx context.Context, id int64) error {
-	alerts, err := n.API.Alerts(ctx)
-	if err != nil {
-		return err
-	}
-	var a *Alert
-	for i := range alerts {
-		if alerts[i].BatchID == id {
-			a = &alerts[i]
+	for _, a := range alerts {
+		if a.BatchID == d.BatchID {
+			n.notifyAlert(ctx, a)
 		}
 	}
-	if a == nil {
-		return nil // уже распродана или списана — писать не о чем
+}
+
+// CatchUp шлёт сообщения по истекающим партиям из /api/alerts, о которых ещё не писали:
+// сервер присылает batch.expiring один раз, поэтому упавшая отправка или разрыв SSE
+// догоняются здесь (на каждом тике и после переподключения).
+func (n *Notifier) CatchUp(ctx context.Context) {
+	alerts, err := n.API.Alerts(ctx)
+	if err != nil {
+		n.logf("лента предупреждений: %v", err)
+		return
+	}
+	for _, a := range alerts {
+		if a.Status == "expiring" {
+			n.notifyAlert(ctx, a)
+		}
+	}
+}
+
+// SeedSent при старте помечает уже истекающие партии отправленными, ничего не отправляя,
+// чтобы перезапуск не завалил чат повторами.
+func (n *Notifier) SeedSent(ctx context.Context) {
+	alerts, err := n.API.Alerts(ctx)
+	if err != nil {
+		n.logf("лента предупреждений: %v", err)
+		return
+	}
+	n.sendMu.Lock()
+	defer n.sendMu.Unlock()
+	if n.sent == nil {
+		n.sent = map[int64]bool{}
+	}
+	for _, a := range alerts {
+		if a.Status == "expiring" {
+			n.sent[a.BatchID] = true
+		}
+	}
+}
+
+func (n *Notifier) notifyAlert(ctx context.Context, a Alert) {
+	n.sendMu.Lock()
+	defer n.sendMu.Unlock()
+	if n.sent == nil {
+		n.sent = map[int64]bool{}
+	}
+	if n.sent[a.BatchID] {
+		return
 	}
 	offers, err := n.API.HotOffers(ctx)
 	if err != nil {
 		n.logf("горячие предложения недоступны: %v", err)
 	}
 	prices := n.prices(ctx)
-	return n.Out.Send(ctx, FormatExpiring(*a, offers, prices, n.loc(ctx)))
+	if err := n.Out.Send(ctx, FormatExpiring(a, offers, prices, n.loc(ctx))); err != nil {
+		n.logf("партия %d: %v", a.BatchID, err)
+		return // повторим на следующем проходе CatchUp
+	}
+	n.sent[a.BatchID] = true
 }
 
 // prices — оценка цены за базовую единицу по недавним потерям (в API нет прямого чтения цен).
@@ -119,6 +149,7 @@ func (n *Notifier) loc(ctx context.Context) *time.Location {
 
 // Tick проверяет, не пора ли отправить дневную сводку; вызывается периодически.
 func (n *Notifier) Tick(ctx context.Context) {
+	n.CatchUp(ctx)
 	c, err := n.API.Clock(ctx)
 	if err != nil {
 		n.logf("часы стенда: %v", err)

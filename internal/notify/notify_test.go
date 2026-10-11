@@ -112,11 +112,13 @@ func TestOtherEventsIgnored(t *testing.T) {
 
 func TestDigestOncePerDayAtConfiguredTime(t *testing.T) {
 	n, bot, _ := newNotifier(t, "2026-10-09T21:59:00+03:00")
+	n.SeedSent(context.Background())
 	n.Tick(context.Background())
 	if len(bot.texts()) != 0 {
 		t.Fatal("сводка раньше времени")
 	}
 	n2, bot2, _ := newNotifier(t, "2026-10-09T22:01:00+03:00")
+	n2.SeedSent(context.Background())
 	n2.Tick(context.Background())
 	n2.Tick(context.Background())
 	got := bot2.texts()
@@ -133,6 +135,7 @@ func TestDigestOncePerDayAtConfiguredTime(t *testing.T) {
 func TestDigestSkippedWhenStartedAfterTime(t *testing.T) {
 	n, bot, _ := newNotifier(t, "2026-10-09T23:00:00+03:00")
 	n.MarkDigestStartup(context.Background())
+	n.SeedSent(context.Background())
 	n.Tick(context.Background())
 	if len(bot.texts()) != 0 {
 		t.Fatal("сводка при старте после времени")
@@ -201,4 +204,39 @@ func TestRub(t *testing.T) {
 			t.Errorf("Rub(%d)=%q want %q", in, got, want)
 		}
 	}
+}
+
+func TestCatchUpRetriesFailedSendAndSeedSkips(t *testing.T) {
+	n, bot, tgc := newNotifier(t, "2026-10-09T12:00:00+03:00")
+	flaky := &flakySender{inner: tgc}
+	n.Out = flaky
+	ctx := context.Background()
+	n.Handle(ctx, Event{Type: "batch.expiring", Data: `{"batch_id":17}`}) // отправка падает
+	if len(bot.texts()) != 0 {
+		t.Fatal("сообщение ушло при ошибке")
+	}
+	n.Tick(ctx) // догоняющий проход повторяет
+	n.Tick(ctx)
+	if got := bot.texts(); len(got) != 1 || !strings.Contains(got[0], "№17") {
+		t.Fatalf("после повтора: %v", got)
+	}
+	n2, bot2, _ := newNotifier(t, "2026-10-09T12:00:00+03:00")
+	n2.SeedSent(ctx)
+	n2.CatchUp(ctx)
+	if len(bot2.texts()) != 0 {
+		t.Fatalf("после старта повтор: %v", bot2.texts())
+	}
+}
+
+type flakySender struct {
+	inner Sender
+	fails int
+}
+
+func (f *flakySender) Send(ctx context.Context, text string) error {
+	if f.fails == 0 {
+		f.fails++
+		return io.ErrUnexpectedEOF
+	}
+	return f.inner.Send(ctx, text)
 }
