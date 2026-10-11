@@ -69,15 +69,16 @@ export function AppShell() {
     <ConnectionProvider>
       <ClockProvider>
         <BadgesProvider>
+          <a href="#so-main" className="so-skip" onClick={(e) => { e.preventDefault(); document.getElementById("so-main")?.focus(); }}>К содержимому</a>
           <div style={{ display: "flex", minHeight: "100vh" }}>
             <AppNav screens={visible} current={screen} />
             <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
               <AppHeader />
-              <main className="so-main" style={{ flex: 1, minWidth: 0, width: "100%", boxSizing: "border-box" }}>
+              <main id="so-main" tabIndex={-1} className="so-main" style={{ flex: 1, minWidth: 0, width: "100%", boxSizing: "border-box" }}>
                 <Offline />
                 <ScreenView id={screen} />
               </main>
-              <footer style={{ padding: "12px var(--gutter)", font: "var(--type-small)", color: "var(--text-subtle)" }}>
+              <footer style={{ padding: "12px var(--gutter)", font: "var(--type-small)", color: "var(--text-muted)" }}>
                 SwapOwl · Концепт для линейки Swap «Флагмана»
               </footer>
             </div>

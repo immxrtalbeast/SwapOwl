@@ -28,13 +28,13 @@ export function SecondaryButton(props: Props) {
   );
 }
 
-/** Текстовая: --type-button цвета --primary, без фона. */
+/** Текстовая: --type-button цвета --brand-ink (на --paper --primary даёт 4,2 : 1), без фона. */
 export function TextButton(props: Props) {
   return (
     <Button
       {...props}
       variant="subtle"
-      styles={{ root: { ...base, color: "var(--primary)", background: "transparent", paddingInline: 8 }, label: { font: "var(--type-button)" } }}
+      styles={{ root: { ...base, color: "var(--brand-ink)", background: "transparent", paddingInline: 8 }, label: { font: "var(--type-button)" } }}
     />
   );
 }

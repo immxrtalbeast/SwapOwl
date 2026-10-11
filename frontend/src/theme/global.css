@@ -8,6 +8,9 @@ body {
 }
 :focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 a { color: var(--primary); }
+main:focus { outline: none; }
+.so-skip { position: absolute; left: 8px; top: -64px; z-index: 1000; padding: 8px 16px; border-radius: 8px; background: var(--primary); color: var(--on-primary); font: var(--type-button); }
+.so-skip:focus { top: 8px; }
 .so-num { font: var(--type-num); }
 .so-caption { font: var(--type-caption); text-transform: uppercase; letter-spacing: .04em; }
 @keyframes so-row-changed { from { background: var(--row-changed); } to { background: transparent; } }
