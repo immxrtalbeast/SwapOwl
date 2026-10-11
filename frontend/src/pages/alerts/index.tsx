@@ -1,5 +1,6 @@
 import { formatQty, formatTimeLeft } from "../stock/format";
 import { useAlerts } from "./useAlerts";
+import { hotOffersUrl } from "../hot-offers/query";
 import { alertUrgency, urgencyView } from "./urgency";
 
 export function AlertsPage() {
@@ -23,6 +24,7 @@ export function AlertsPage() {
               <th align="right">Количество</th>
               <th align="left">Срок</th>
               <th align="left">Состояние</th>
+              <th align="left">Что делать</th>
             </tr>
           </thead>
           <tbody>
@@ -40,6 +42,7 @@ export function AlertsPage() {
                     <span aria-hidden="true">{v.icon} </span>
                     {v.label}
                   </td>
+                  <td>{a.status === "expiring" && <a href={hotOffersUrl(a.product_id)}>Блюда, которые спасают</a>}</td>
                 </tr>
               );
             })}

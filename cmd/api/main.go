@@ -125,6 +125,10 @@ func run() error {
 				WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}}},
 		HotConfig: api.HotOffersConfig{DefaultAlgo: cfg.HotOffersAlgo, Rank: hotoffers.Config{
 			TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter}}})
+	go newHotWatcher(bus, store.Snapshotter{DB: db, Params: store.SnapshotParams{
+		WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
+		hotoffers.Config{TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter},
+		now, log).run(ctx)
 
 	srv := &http.Server{
 		Addr:              ":" + envOr("PORT", "8080"),

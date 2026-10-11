@@ -1,6 +1,6 @@
 import type { Role } from "../auth/roles";
 import { ApiError } from "./types";
-import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, Dish, DishServings, Order, SupplySuggestion, OrderItemInput, ProductStock } from "./types";
+import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, OrderItemInput, ProductStock } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
@@ -38,6 +38,7 @@ export const api = {
     request<{ login: string; role: Role }>("/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) }),
   logout: () => request<null>("/api/auth/logout", { method: "POST" }),
   alerts: () => request<Alert[]>("/api/alerts"),
+  hotOffers: (algo?: HotAlgo) => request<HotOffersResponse>(`/api/hot-offers${algo ? `?algo=${algo}` : ""}`),
   supplySuggestions: () => request<SupplySuggestion[]>("/api/supply-suggestions"),
   products: () => request<ProductStock[]>("/api/products"),
   batches: (productId?: string) =>

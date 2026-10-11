@@ -218,3 +218,8 @@ func plural(n int64, one, few, many string) string {
 	}
 	return many
 }
+
+// BuildHotOffers — тот же расчёт, что у GET /api/hot-offers, для отпечатка списка (hotoffers.changed).
+func BuildHotOffers(snap store.Snapshot, algo string, cfg hotoffers.Config) HotOffersResponse {
+	return buildHotOffers(snap, algo, cfg)
+}
