@@ -65,7 +65,8 @@ export function StockPage() {
     }
   }, []);
 
-  useLive(load, ["stock.changed", "clock.changed", "stand.reset"]);
+  // Как в ленте предупреждений: окно истечения открывает «дворник» событием batch.expiring без stock.changed.
+  useLive(load, ["batch.expiring", "batch.expired", "stock.changed", "clock.changed", "stand.reset"]);
 
   const rows = useMemo(
     () => (state.kind === "ready" ? buildRows(state.products, state.batches, state.alerts, expanded) : []),

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api/client";
 import type { ReceivingBatch } from "../../api/types";
 import { useConnection } from "../../app/ConnectionContext";
@@ -80,7 +80,12 @@ export function ReceivingPage() {
   const conn = useConnection();
   const f = useStandFormat();
   const [loadedAt, setLoadedAt] = useState<string | null>(null);
-  if (state.kind === "ready" && loadedAt === null) setLoadedAt(f.time(f.now));
+  // Время последнего успешного обновления: ready-состояние пересоздаётся при каждой удачной загрузке.
+  const nowMs = f.now.getTime();
+  useEffect(() => {
+    if (state.kind === "ready") setLoadedAt(f.time(nowMs));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
   const stale = conn === "offline" ? loadedAt : null;
 
   return (
