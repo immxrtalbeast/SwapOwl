@@ -91,17 +91,19 @@ func (a *adapter) runOnce(ctx context.Context) error {
 	today := dayStart(a.now(), a.loc)
 	var errs []error
 
+	// Накладные и продажи зависят от каталога этого прохода: без него 400 от API
+	// выглядело бы неисправимым и данные были бы пропущены навсегда.
+	a.dishes = nil
 	units, shelf, err := a.syncCatalog(ctx, today)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("справочники: %w", err))
-	}
-	if units != nil {
+	} else {
 		if err := a.syncInvoices(ctx, &st, today, units, shelf); err != nil {
 			errs = append(errs, fmt.Errorf("накладные: %w", err))
 		}
-	}
-	if err := a.syncSales(ctx, &st, today); err != nil {
-		errs = append(errs, fmt.Errorf("продажи: %w", err))
+		if err := a.syncSales(ctx, &st, today); err != nil {
+			errs = append(errs, fmt.Errorf("продажи: %w", err))
+		}
 	}
 	if err := saveState(a.statePath, st); err != nil {
 		errs = append(errs, fmt.Errorf("состояние: %w", err))
@@ -202,7 +204,7 @@ func (a *adapter) syncSales(ctx context.Context, st *state, today time.Time) err
 		}
 		kept := sales[:0:0]
 		for _, s := range sales {
-			if a.dishes != nil && !a.dishes[s.DishID] {
+			if !a.dishes[s.DishID] {
 				a.log.Printf("продажа %s: блюдо %s (%d порц.) не в каталоге, пропущена", s.Date, s.DishID, s.Portions)
 				continue
 			}

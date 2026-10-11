@@ -210,3 +210,31 @@ func (a *adapter) syncSalesWithout(t *testing.T, _ *stubAPI, dish string) error 
 	st := state{}
 	return a.syncSales(context.Background(), &st, dayStart(a.now(), a.loc))
 }
+
+// noCatalog: каталог не принимается (503), заказы без каталога дали бы 400 unknown_dish.
+type noCatalog struct{ *stubAPI }
+
+func (n noCatalog) ServeHTTP(w http.ResponseWriter, q *http.Request) {
+	switch q.URL.Path {
+	case "/api/catalog":
+		w.WriteHeader(http.StatusServiceUnavailable)
+	case "/api/orders":
+		w.WriteHeader(http.StatusBadRequest)
+	default:
+		n.stubAPI.ServeHTTP(w, q)
+	}
+}
+
+func TestCatalogFailKeepsCursors(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, _ := setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
+	s := httptest.NewServer(noCatalog{stub})
+	defer s.Close()
+	a.api.base = s.URL
+	if err := a.runOnce(context.Background()); err == nil {
+		t.Fatal("ожидалась ошибка справочников")
+	}
+	if st, _ := loadState(a.statePath); st.Sales != "" || st.Invoices != "" {
+		t.Fatalf("курсоры сдвинуты без каталога: %+v", st)
+	}
+}
