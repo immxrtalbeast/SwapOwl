@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -124,5 +125,46 @@ func TestSweepPublishesBatchExpiredCapped(t *testing.T) {
 	if !strings.Contains(got, `"count":60`) || !strings.Contains(got, `"product_ids":["p1"]`) ||
 		strings.Contains(got, `,50,`) || !strings.Contains(got, "stoplist.changed") {
 		t.Fatalf("%s", got)
+	}
+}
+
+// stepMenu отдаёт остатки по очереди; первый запрос после prime задерживается.
+type stepMenu struct {
+	mu    sync.Mutex
+	have  []domain.Qty
+	delay []time.Duration
+	i     int
+}
+
+func (m *stepMenu) MenuSnapshot(context.Context, time.Time) (store.MenuSnapshot, error) {
+	m.mu.Lock()
+	have, delay := m.have[m.i], m.delay[m.i]
+	m.i++
+	m.mu.Unlock()
+	time.Sleep(delay)
+	return store.MenuSnapshot{
+		Dishes:    []domain.Dish{{ID: "d1", Recipe: []domain.RecipeItem{{ProductID: "p1", Quantity: 10}}}},
+		Available: map[string]domain.Qty{"p1": have},
+	}, nil
+}
+
+// Медленный снимок A (d1 доступно) не должен применяться после свежего снимка B (d1 в стоп-листе).
+func TestStopListRecheckNotReordered(t *testing.T) {
+	menu := &stepMenu{have: []domain.Qty{100, 100, 0}, delay: []time.Duration{0, 100 * time.Millisecond, 0}}
+	bus := events.New(func() time.Time { return t0 })
+	p := newPublisher(bus, menu, func() time.Time { return t0 }, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	p.prime(context.Background())
+	sub := bus.Subscribe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() { defer wg.Done(); p.recheckStopList(context.Background()) }() // A
+	time.Sleep(20 * time.Millisecond)
+	p.recheckStopList(context.Background()) // B
+	wg.Wait()
+
+	got := drain(sub)
+	if len(got) != 1 || !strings.Contains(got[0], `"added":["d1"]`) {
+		t.Fatalf("want single added:[d1], got %v", got)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sort"
+	"sync"
 	"time"
 
 	"umirhack/internal/api"
@@ -23,6 +24,10 @@ type publisher struct {
 	stop *events.StopTracker
 	now  func() time.Time
 	log  *slog.Logger
+
+	// recheckMu держит снимок меню и Update вместе: иначе устаревший снимок мог бы
+	// примениться после свежего и записать в трекер неверный стоп-лист.
+	recheckMu sync.Mutex
 }
 
 func newPublisher(bus *events.Bus, menu api.MenuSource, now func() time.Time, log *slog.Logger) *publisher {
@@ -39,6 +44,8 @@ func (p *publisher) stockChanged(ctx context.Context, productIDs []string) {
 }
 
 func (p *publisher) recheckStopList(ctx context.Context) {
+	p.recheckMu.Lock()
+	defer p.recheckMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	snap, err := p.menu.MenuSnapshot(ctx, p.now().UTC())
