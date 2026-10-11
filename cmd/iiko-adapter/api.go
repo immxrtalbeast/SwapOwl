@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"umirhack/internal/iiko/reconcile"
 )
@@ -58,23 +60,36 @@ func (a *apiClient) do(ctx context.Context, method, path string, body any) ([]by
 	return b, nil
 }
 
-// stoppedDishes — id блюд из GET /api/stop-list.
-func (a *apiClient) stoppedDishes(ctx context.Context) ([]string, error) {
-	b, err := a.do(ctx, http.MethodGet, "/api/stop-list", nil)
+// outboxEntry — строка GET /api/outbox.
+type outboxEntry struct {
+	ID        int64           `json:"id"`
+	Kind      string          `json:"kind"`
+	Payload   json.RawMessage `json:"payload"`
+	CreatedAt time.Time       `json:"created_at"`
+	Attempts  int             `json:"attempts"`
+}
+
+// listOutbox — недоставленные сообщения по возрастанию id (GET /api/outbox).
+func (a *apiClient) listOutbox(ctx context.Context, limit int) ([]outboxEntry, error) {
+	b, err := a.do(ctx, http.MethodGet, "/api/outbox?limit="+strconv.Itoa(limit), nil)
 	if err != nil {
 		return nil, err
 	}
-	var rows []struct {
-		ID string `json:"id"`
-	}
+	var rows []outboxEntry
 	if err := json.Unmarshal(b, &rows); err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, len(rows))
-	for _, r := range rows {
-		ids = append(ids, r.ID)
+	return rows, nil
+}
+
+// ackOutbox — POST /api/outbox/{id}/ack: доставлено (ok) либо ошибка с текстом.
+func (a *apiClient) ackOutbox(ctx context.Context, id int64, ok bool, msg string) error {
+	body := map[string]any{"ok": ok}
+	if msg != "" {
+		body["error"] = msg
 	}
-	return ids, nil
+	_, err := a.do(ctx, http.MethodPost, "/api/outbox/"+strconv.FormatInt(id, 10)+"/ack", body)
+	return err
 }
 
 // productStock — остатки из GET /api/products (непросроченные партии).

@@ -63,6 +63,12 @@ type adapter struct {
 	defaults  mapping.Defaults
 	log       *log.Logger
 	dishes    map[string]bool // блюда, принятые в последний каталог
+
+	mode       string        // modeShadow | modeLive
+	shadowPath string        // журнал «что было бы отправлено» теневого режима
+	retryBase  time.Duration // первая пауза после ошибки iiko; дальше удваивается
+	retryMax   time.Duration
+	retryAt    map[int64]time.Time // id строки outbox → не повторять раньше этого момента
 }
 
 // skippable — ответ API, который повтором не исправить: 4xx, кроме 401/403/429.
@@ -81,7 +87,7 @@ func dayStart(t time.Time, loc *time.Location) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, loc)
 }
 
-// runOnce: справочники, накладные, продажи, стоп-лист. Сбой этапа не мешает остальным;
+// runOnce: справочники, накладные, продажи, исходящие сообщения (стоп-лист). Сбой этапа не мешает остальным;
 // курсор двигается только после успешной передачи, повтор безопасен (идемпотентность API).
 func (a *adapter) runOnce(ctx context.Context) error {
 	st, err := loadState(a.statePath)
@@ -108,8 +114,8 @@ func (a *adapter) runOnce(ctx context.Context) error {
 	if err := saveState(a.statePath, st); err != nil {
 		errs = append(errs, fmt.Errorf("состояние: %w", err))
 	}
-	if err := a.syncStopList(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("стоп-лист: %w", err))
+	if err := a.processOutbox(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("outbox: %w", err))
 	}
 	return errors.Join(errs...)
 }
@@ -222,30 +228,6 @@ func (a *adapter) syncSales(ctx context.Context, st *state, today time.Time) err
 		st.Sales = to.Format(iiko.DateLayout)
 		from = to
 	}
-	return nil
-}
-
-func (a *adapter) syncStopList(ctx context.Context) error {
-	ids, err := a.api.stoppedDishes(ctx)
-	if err != nil {
-		return err
-	}
-	sort.Strings(ids)
-	items := make([]iiko.StopItem, 0, len(ids))
-	for _, id := range ids {
-		items = append(items, iiko.StopItem{ProductID: id, Balance: 0})
-	}
-	cur, err := a.iiko.StopList(ctx)
-	if err != nil {
-		return err
-	}
-	if sameStop(cur, items) {
-		return nil
-	}
-	if err := a.iiko.SetStopList(ctx, items); err != nil {
-		return err
-	}
-	a.log.Printf("стоп-лист в iiko: %d позиций", len(items))
 	return nil
 }
 
