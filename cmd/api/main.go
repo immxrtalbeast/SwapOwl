@@ -19,6 +19,7 @@ import (
 	"umirhack/internal/config"
 	"umirhack/internal/domain"
 	"umirhack/internal/events"
+	"umirhack/internal/generator"
 	"umirhack/internal/hotoffers"
 	"umirhack/internal/janitor"
 	"umirhack/internal/stand"
@@ -109,15 +110,22 @@ func run() error {
 	go jan.Run(ctx)
 	st := &stand.Stand{DB: db, Clock: accl, Gate: gate, Sweep: jan, Bus: bus, Loc: cfg.Location,
 		AfterChange: pub.recheckStopList}
-	var demo api.Demo
+	orders := pubOrders{db, pub}
+	var (
+		demo api.Demo
+		sim  api.SimControl
+	)
 	if cfg.DemoMode {
 		demo = st
+		// Генератор идёт в процессе через тот же путь, что POST /api/orders (2.8).
+		st.Sim = stand.NewSimulator(ctx, simSink{api.OrderPlacer{Orders: orders, Now: now, Gate: gate}}, now, simSeed, log)
+		sim = st.Sim
 	}
 	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt}
 	monitor := store.Monitor{DB: db, Params: store.AlertParams{Expiry: expiry, Schedule: schedule, WMin: cfg.HotWMinHours}}
-	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: now, Auth: authSvc, Clock: clockInfo(st), Demo: demo, DemoToken: cfg.DemoToken,
+	router := api.NewRouter(api.Deps{Log: log, DB: db, Now: now, Auth: authSvc, Clock: clockInfo(st), Demo: demo, Sim: sim, DemoToken: cfg.DemoToken,
 		NotSimulated: stand.ErrNotSimulated, Gate: gate,
-		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: pubOrders{db, pub}, Menu: db, Monitor: monitor, Location: cfg.Location, Events: bus,
+		Stock: pubStock{db, pub}, Catalog: pubCatalog{db, pub}, Orders: orders, Menu: db, Monitor: monitor, Location: cfg.Location, Events: bus,
 		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{
 			WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
 		Supply: store.SupplyReader{DB: db, CoverDays: cfg.SupplyCoverDays, MinPortions: int64(cfg.SupplyMinPortions),
@@ -181,8 +189,23 @@ func envOr(key, def string) string {
 
 // clockInfo даёт GET /api/clock данные ускоренных часов; для реальных — nil (speed=1, simulated=false).
 func clockInfo(st *stand.Stand) api.ClockInfo {
-	if st.Clock == nil {
+	if st.Clock == nil && st.Sim == nil {
 		return nil
 	}
 	return st
+}
+
+// simSeed — seed генератора заказов на стенде.
+const simSeed = 2026
+
+// simSink кладёт заказы генератора через OrderPlacer.
+type simSink struct{ p api.OrderPlacer }
+
+func (s simSink) PlaceOrder(ctx context.Context, o generator.Order) error {
+	items := make([]store.OrderItem, 0, len(o.Items))
+	for _, it := range o.Items {
+		items = append(items, store.OrderItem{DishID: it.DishID, Portions: it.Portions})
+	}
+	_, err := s.p.Place(ctx, o.ID, store.SourceAPI, items)
+	return err
 }

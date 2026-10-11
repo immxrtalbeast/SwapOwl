@@ -48,6 +48,8 @@ type Stand struct {
 	Sweep Sweeper
 	Bus   *events.Bus
 	Loc   *time.Location
+	// Sim — генератор заказов; nil — на стенде его нет. Сброс его останавливает (2.8).
+	Sim *Simulator
 
 	// AfterChange вызывается после прыжка и сброса, уже без затвора: сверка стоп-листа
 	// (stoplist.changed) делается издателем событий, который живёт в cmd/api.
@@ -85,7 +87,7 @@ func (s *Stand) Speed() float64 {
 	return s.Clock.Speed()
 }
 func (s *Stand) Simulated() bool        { return s.Clock != nil }
-func (s *Stand) SimulatorRunning() bool { return false } // симулятор управляется отдельным тикетом
+func (s *Stand) SimulatorRunning() bool { return s.Sim != nil && s.Sim.Running() }
 
 func (s *Stand) clockChanged() {
 	s.Bus.Publish(events.ClockChanged, map[string]any{
@@ -149,6 +151,9 @@ func (s *Stand) Reset(ctx context.Context) error {
 }
 
 func (s *Stand) reset(ctx context.Context) error {
+	if s.Sim != nil {
+		s.Sim.Stop() // до затвора: шаг генератора берёт его на чтение
+	}
 	s.Gate.Lock()
 	defer s.Gate.Unlock()
 	t0 := T0(s.wall(), s.Loc)
