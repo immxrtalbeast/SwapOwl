@@ -84,3 +84,25 @@ func (d *DB) LastEventTime(ctx context.Context) (time.Time, error) {
 	}
 	return t.UTC(), nil
 }
+
+// SimulatorRunning читает признак «генератор заказов включён»; false, если строки часов ещё нет.
+func (s ClockStore) SimulatorRunning(ctx context.Context) (bool, error) {
+	var on bool
+	err := s.DB.Pool.QueryRow(ctx, `SELECT simulator_running FROM clock_state WHERE id`).Scan(&on)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("store: load simulator state: %w", err)
+	}
+	return on, nil
+}
+
+// SetSimulatorRunning сохраняет признак отдельным UPDATE, не трогая время и скорость.
+// Строки часов ещё нет (в симулированном режиме она появляется при первом сохранении часов) — no-op.
+func (s ClockStore) SetSimulatorRunning(ctx context.Context, on bool) error {
+	if _, err := s.DB.Pool.Exec(ctx, `UPDATE clock_state SET simulator_running = $1 WHERE id`, on); err != nil {
+		return fmt.Errorf("store: save simulator state: %w", err)
+	}
+	return nil
+}

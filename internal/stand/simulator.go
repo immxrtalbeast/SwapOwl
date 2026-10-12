@@ -41,6 +41,12 @@ type OrderSink interface {
 	PlaceOrder(ctx context.Context, o generator.Order) error
 }
 
+// RunStore хранит признак «генератор включён», чтобы он пережил рестарт API.
+type RunStore interface {
+	SimulatorRunning(ctx context.Context) (bool, error)
+	SetSimulatorRunning(ctx context.Context, on bool) error
+}
+
 // MaxCatchUp — сколько времени стенда генератор отрабатывает за один шаг: после прыжка
 // вперёд он не заливает заказами весь пропущенный интервал, а берёт только хвост.
 const MaxCatchUp = 2 * time.Hour
@@ -54,6 +60,8 @@ type Simulator struct {
 	// Tick — период шагов в реальном времени; 0 — 250 мс.
 	Tick time.Duration
 	Log  *slog.Logger
+	// State — где хранится признак «включён»; nil — не сохраняется.
+	State RunStore
 
 	base context.Context
 	mu   sync.Mutex
@@ -77,11 +85,38 @@ func (s *Simulator) Running() bool {
 }
 
 // SetRunning запускает или останавливает генератор; повторный вызов с тем же значением — без эффекта.
+// Явное значение сохраняется в State.
 func (s *Simulator) SetRunning(running bool) {
 	if running {
 		s.start()
+		s.persist(true)
 	} else {
 		s.Stop()
+	}
+}
+
+// Restore после рестарта API включает генератор, если он был включён до остановки.
+func (s *Simulator) Restore(ctx context.Context) error {
+	if s.State == nil {
+		return nil
+	}
+	on, err := s.State.SimulatorRunning(ctx)
+	if err != nil {
+		return err
+	}
+	if on {
+		s.start()
+	}
+	return nil
+}
+
+func (s *Simulator) persist(on bool) {
+	if s.State == nil {
+		return
+	}
+	// Отмена base при остановке процесса не должна терять явную паузу.
+	if err := s.State.SetSimulatorRunning(context.WithoutCancel(s.base), on); err != nil {
+		s.Log.Error("simulator state save failed", slog.String("error", err.Error()))
 	}
 }
 
@@ -96,8 +131,14 @@ func (s *Simulator) start() {
 	go s.run(ctx, s.done, s.Now())
 }
 
-// Stop останавливает генератор и ждёт завершения текущего шага.
+// Stop — явная остановка (пауза, сброс стенда): генератор выключается и это сохраняется.
+// Остановка процесса признак не меняет: горутина гаснет по отмене base.
 func (s *Simulator) Stop() {
+	s.halt()
+	s.persist(false)
+}
+
+func (s *Simulator) halt() {
 	s.mu.Lock()
 	cancel, done := s.stop, s.done
 	s.stop, s.done = nil, nil
