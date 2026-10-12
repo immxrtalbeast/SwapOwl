@@ -1,0 +1,17 @@
+# Адаптер iiko и демо-эмулятор iiko (fake-iiko) в одном образе; fake-iiko запускается с другим entrypoint.
+# Сборка из корня репозитория: docker build -f deploy/Dockerfile.adapter .
+FROM golang:1.22-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/iiko-adapter ./cmd/iiko-adapter \
+ && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/fake-iiko ./cmd/fake-iiko
+
+FROM alpine:3.20
+RUN apk add --no-cache tzdata ca-certificates && adduser -D -u 10001 app && mkdir /data && chown app /data
+USER app
+WORKDIR /data
+COPY --from=build /out/iiko-adapter /out/fake-iiko /usr/local/bin/
+ENTRYPOINT ["/usr/local/bin/iiko-adapter"]

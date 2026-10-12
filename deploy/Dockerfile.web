@@ -1,0 +1,14 @@
+# Статика фронта. Сборка из корня репозитория: docker build -f deploy/Dockerfile.web .
+FROM node:20-alpine AS build
+WORKDIR /src/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend ./
+RUN npm run build
+
+FROM caddy:2-alpine
+RUN printf ':80 {\n\troot * /srv\n\ttry_files {path} /index.html\n\tfile_server\n\tencode zstd gzip\n}\n' > /etc/caddy/Caddyfile \
+ && printf '{\n\tauto_https off\n\tadmin off\n}\n' | cat - /etc/caddy/Caddyfile > /tmp/c && mv /tmp/c /etc/caddy/Caddyfile
+COPY --from=build /src/frontend/dist /srv
+EXPOSE 80
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

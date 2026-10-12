@@ -43,3 +43,22 @@ deploy/scripts/backup.sh instances/cafe-lenina
    ```
 3. Запустить API: `$dc up -d api`, проверить `curl -fsS http://127.0.0.1:<порт>/healthz`.
 4. Склад восстановлен на момент копии; поставки и заказы после неё надо перепослать из учётной системы (поставки идемпотентны по id).
+
+## Первый запуск на сервере
+
+Стенд (VPS 1 vCPU / 2 ГБ, Ubuntu 24.04) разворачивается кодом: `deploy/docker-compose.prod.yml`, проект `swapowl`. Чужой контейнер `postgresql` на сервере не трогаем: наш PostgreSQL свой, внутри сети compose, порт не публикуется, том `swapowl_pgdata`. Наружу открыты только 80 и 443 (Caddy).
+
+1. **DNS.** A-запись `SITE_DOMAIN` на IP сервера. Без неё Let's Encrypt не выдаст сертификат.
+2. **Секреты GitHub** (Settings → Secrets → Actions): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (закрытый ключ пользователя с доступом к docker).
+3. **Сервер:** `scp deploy/scripts/server-init.sh root@host:/tmp/ && ssh root@host bash /tmp/server-init.sh` — swap-файл 2 ГБ (если нет), ufw 22/80/443, каталог `/opt/swapowl`. Скрипт можно запускать повторно.
+4. **`.env`:** `cp deploy/.env.prod.example /opt/swapowl/.env`, `chmod 600`, заполнить `SITE_DOMAIN`, `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, `DEMO_TOKEN`, `METRICS_TOKEN`. `ADAPTER_API_KEY` и `NOTIFIER_API_KEY` — ключи интеграции из API (выпускаются после первого запуска, затем `deploy.sh` повторно); пока они пусты, `iiko-adapter` и `notifier` перезапускаются — это нормально.
+5. **Первый деплой вручную:** Actions → Deploy → Run workflow, `tag` = sha коммита из `main`, для которого собраны образы (образы собирает запуск после зелёного CI на push в `main`; если их ещё нет, дождитесь первого такого запуска). Дальше выкатка идёт сама.
+6. Проверка: `curl -fsS https://<SITE_DOMAIN>/healthz`.
+
+`/metrics` доступен только с loopback/частных адресов и дополнительно требует `Authorization: Bearer $METRICS_TOKEN`.
+
+`deploy.sh <tag>`: запоминает текущий тег в `/opt/swapowl/.last_good`, перед обновлением делает `backup.sh`, выполняет `pull` и `up -d`, до 60 с ждёт `/healthz`. Не дождался — возвращает прошлый тег и выходит с кодом 1 (workflow красный).
+
+## Откат
+
+Actions → Deploy → Run workflow, `tag` = нужный sha (или тег предыдущего успешного деплоя). Либо на сервере: `/opt/swapowl/deploy/scripts/deploy.sh <tag>`. Миграции базы откатом не отменяются; при несовместимой схеме восстановите копию (см. «Восстановление после сбоя»).
