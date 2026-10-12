@@ -16,6 +16,8 @@ type Product struct {
 	LeadDays          int
 	PackSize          domain.Qty
 	ShelfLifeHours    int // срок хранения по умолчанию для поставок
+	// ShelfAfterOpenHours — срок после вскрытия упаковки; 0 — вскрытие срок не меняет.
+	ShelfAfterOpenHours int
 }
 
 // Dish — блюдо с рецептом и априорным спросом.
@@ -59,21 +61,28 @@ func WorkingHours() Hours {
 
 // Products возвращает справочник продуктов (каждый вызов — новая копия).
 func Products() []Product {
-	return []Product{
-		{"salmon", "Лосось", domain.UnitG, 180000, 2, 1000, 72},
-		{"cream", "Сливки", domain.UnitMl, 25000, 1, 1000, 96},
-		{"pasta", "Паста", domain.UnitG, 18000, 3, 1000, 4320},
-		{"chicken", "Куриное филе", domain.UnitG, 32000, 1, 1000, 96},
-		{"tomato", "Томаты", domain.UnitG, 20000, 1, 1000, 120},
-		{"lettuce", "Салат романо", domain.UnitG, 40000, 1, 500, 72},
-		{"parmesan", "Пармезан", domain.UnitG, 120000, 3, 500, 720},
-		{"beef", "Говяжья вырезка", domain.UnitG, 210000, 2, 1000, 96},
-		{"potato", "Картофель", domain.UnitG, 6000, 3, 5000, 336},
-		{"bun", "Булочка", domain.UnitPcs, 1500000, 1, 20, 72},
-		{"egg", "Яйцо", domain.UnitPcs, 1200000, 2, 30, 360},
-		{"milk", "Молоко", domain.UnitMl, 9000, 1, 1000, 120},
+	ps := []Product{
+		{"salmon", "Лосось", domain.UnitG, 180000, 2, 1000, 72, 0},
+		{"cream", "Сливки", domain.UnitMl, 25000, 1, 1000, 96, 0},
+		{"pasta", "Паста", domain.UnitG, 18000, 3, 1000, 4320, 0},
+		{"chicken", "Куриное филе", domain.UnitG, 32000, 1, 1000, 96, 0},
+		{"tomato", "Томаты", domain.UnitG, 20000, 1, 1000, 120, 0},
+		{"lettuce", "Салат романо", domain.UnitG, 40000, 1, 500, 72, 0},
+		{"parmesan", "Пармезан", domain.UnitG, 120000, 3, 500, 720, 0},
+		{"beef", "Говяжья вырезка", domain.UnitG, 210000, 2, 1000, 96, 0},
+		{"potato", "Картофель", domain.UnitG, 6000, 3, 5000, 336, 0},
+		{"bun", "Булочка", domain.UnitPcs, 1500000, 1, 20, 72, 0},
+		{"egg", "Яйцо", domain.UnitPcs, 1200000, 2, 30, 360, 0},
+		{"milk", "Молоко", domain.UnitMl, 9000, 1, 1000, 120, 0},
 	}
+	for i := range ps {
+		ps[i].ShelfAfterOpenHours = afterOpenHours[ps[i].ID]
+	}
+	return ps
 }
+
+// afterOpenHours — срок после вскрытия упаковки (СанПиН, ХАССП); у остальных продуктов вскрытие срок не меняет.
+var afterOpenHours = map[string]int{"milk": 48, "cream": 48, "parmesan": 120}
 
 // Dishes возвращает блюда с рецептами (каждый вызов — новая копия).
 func Dishes() []Dish {

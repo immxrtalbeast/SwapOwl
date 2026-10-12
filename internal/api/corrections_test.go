@@ -16,6 +16,7 @@ type fakeCorrections struct {
 	wo   store.WriteoffInput
 	inv  store.InventoryInput
 	can  store.CancelInput
+	open store.OpenInput
 	err  error
 	repl bool
 }

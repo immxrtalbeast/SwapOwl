@@ -123,6 +123,7 @@ func (rt *Router) Routes() {
 	rt.catalogRoutes()
 	rt.orderRoutes()
 	rt.correctionRoutes()
+	rt.openedRoutes()
 	rt.stopListRoutes()
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()
