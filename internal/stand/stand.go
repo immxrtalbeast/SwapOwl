@@ -86,6 +86,10 @@ func (s *Stand) Speed() float64 {
 	}
 	return s.Clock.Speed()
 }
+
+// FollowHot реализует api.HotFollower: слушается ли генератор заказов горячих предложений.
+func (s *Stand) FollowHot() bool { return s.Sim != nil && s.Sim.Following() }
+
 func (s *Stand) Simulated() bool        { return s.Clock != nil }
 func (s *Stand) SimulatorRunning() bool { return s.Sim != nil && s.Sim.Running() }
 

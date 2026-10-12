@@ -50,6 +50,14 @@ const deliveryHour = 8 * time.Hour // поставки приходят в 08:00
 // Каждый календарный день ресторана генерируется независимо от остальных,
 // поэтому соседние интервалы склеиваются без расхождений.
 func Generate(seedValue int64, from, to time.Time) ([]Event, error) {
+	return GenerateWeighted(seedValue, from, to, nil)
+}
+
+// GenerateWeighted — Generate с множителями веса блюд при выборе (модель M2, 2.7): число заказов,
+// позиций и порций от весов не зависит, меняется только то, какое блюдо выбрано. Поток случайных
+// чисел расходуется так же, как без весов, поэтому при пустых весах результат совпадает с Generate.
+// Блюда без записи в weights имеют множитель 1.
+func GenerateWeighted(seedValue int64, from, to time.Time, weights map[string]float64) ([]Event, error) {
 	hours := seed.WorkingHours()
 	loc, err := time.LoadLocation(hours.TZ)
 	if err != nil {
@@ -62,7 +70,7 @@ func Generate(seedValue int64, from, to time.Time) ([]Event, error) {
 	day := time.Date(lf.Year(), lf.Month(), lf.Day(), 0, 0, 0, 0, loc)
 	var out []Event
 	for ; day.Before(to); day = time.Date(day.Year(), day.Month(), day.Day()+1, 0, 0, 0, 0, loc) {
-		for _, e := range generateDay(seedValue, day, hours) {
+		for _, e := range generateDay(seedValue, day, hours, weights) {
 			if !e.At.Before(from) && e.At.Before(to) {
 				out = append(out, e)
 			}
@@ -82,7 +90,7 @@ func at(day time.Time, off time.Duration) time.Time {
 	return time.Date(day.Year(), day.Month(), day.Day(), s/3600, s/60%60, s%60, 0, day.Location())
 }
 
-func generateDay(seedValue int64, day time.Time, hours seed.Hours) []Event {
+func generateDay(seedValue int64, day time.Time, hours seed.Hours, weights map[string]float64) []Event {
 	idx := dayIndex(day)
 	r := newRNG(mix(seedValue, idx))
 	var out []Event
@@ -118,16 +126,27 @@ func generateDay(seedValue int64, day time.Time, hours seed.Hours) []Event {
 	}
 	const avgPortions = 3.0 // среднее число порций в заказе
 	n := int(math.Round(total / avgPortions * (0.8 + 0.4*r.float())))
+	weighted := make([]float64, len(dishes)) // вес выбора блюда; сумма не влияет на число заказов
+	wTotal := 0.0
+	for i, ds := range dishes {
+		w := ds.PriorDaily
+		if m, ok := weights[ds.ID]; ok && m > 0 {
+			w *= m
+		}
+		weighted[i] = w
+		wTotal += w
+	}
 	for i := 0; i < n; i++ {
 		o := Order{ID: uuid(r), At: at(day, orderOffset(r, hours))}
 		used := map[string]bool{}
 		for k, lines := 0, 1+r.intn(2); k < lines; k++ {
-			ds := pickDish(r, dishes, total)
+			ds := pickDish(r, dishes, weighted, wTotal)
+			portions := 1 + r.intn(2) // всегда тратится, чтобы повтор блюда не сдвигал поток случайных чисел
 			if used[ds.ID] {
 				continue
 			}
 			used[ds.ID] = true
-			o.Items = append(o.Items, OrderItem{DishID: ds.ID, Portions: 1 + r.intn(2)})
+			o.Items = append(o.Items, OrderItem{DishID: ds.ID, Portions: portions})
 		}
 		out = append(out, Event{At: o.At, Kind: KindOrder, Order: &o})
 	}
@@ -158,13 +177,13 @@ func orderOffset(r *rng, h seed.Hours) time.Duration {
 	return lo + time.Duration(r.intn(secs))*time.Second
 }
 
-func pickDish(r *rng, dishes []seed.Dish, total float64) seed.Dish {
+func pickDish(r *rng, dishes []seed.Dish, weights []float64, total float64) seed.Dish {
 	x := r.float() * total
-	for _, d := range dishes {
-		if x < d.PriorDaily {
+	for i, d := range dishes {
+		if x < weights[i] {
 			return d
 		}
-		x -= d.PriorDaily
+		x -= weights[i]
 	}
 	return dishes[len(dishes)-1]
 }

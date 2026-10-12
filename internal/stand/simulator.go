@@ -47,6 +47,27 @@ type RunStore interface {
 	SetSimulatorRunning(ctx context.Context, on bool) error
 }
 
+// HotSource отдаёт блюда текущего списка горячих предложений по порядку (позиция 1 — первая).
+// Расчёт тот же, что у GET /api/hot-offers, но без HTTP.
+type HotSource interface {
+	HotDishes(ctx context.Context, now time.Time) ([]string, error)
+}
+
+// DefaultHotUplift — подъём веса блюда на первой позиции списка (основная точка bench, M2, 2.7).
+// Величина выдумана, как и в bench: утверждается только направление эффекта.
+const DefaultHotUplift = 1.5
+
+// HotWeights — множители веса блюд по списку: u_i = 1 + (u−1)/i для позиции i = 1…k.
+func HotWeights(dishes []string, uplift float64) map[string]float64 {
+	w := make(map[string]float64, len(dishes))
+	for i, id := range dishes {
+		if _, dup := w[id]; !dup {
+			w[id] = 1 + (uplift-1)/float64(i+1)
+		}
+	}
+	return w
+}
+
 // MaxCatchUp — сколько времени стенда генератор отрабатывает за один шаг: после прыжка
 // вперёд он не заливает заказами весь пропущенный интервал, а берёт только хвост.
 const MaxCatchUp = 2 * time.Hour
@@ -62,6 +83,12 @@ type Simulator struct {
 	Log  *slog.Logger
 	// State — где хранится признак «включён»; nil — не сохраняется.
 	State RunStore
+	// Hot и FollowHot — «слушаются» ли гости горячих предложений (модель M2): число гостей то же,
+	// блюдо из списка выбирается чаще. FollowHot=false или Hot=nil — как без списка.
+	// FEFO и инварианты склада от флага не зависят: заказы идут тем же путём.
+	Hot       HotSource
+	FollowHot bool
+	Uplift    float64 // 0 — DefaultHotUplift
 
 	base context.Context
 	mu   sync.Mutex
@@ -150,6 +177,46 @@ func (s *Simulator) halt() {
 	<-done
 }
 
+// Following — слушаются ли гости горячих предложений.
+func (s *Simulator) Following() bool { return s.FollowHot && s.Hot != nil }
+
+// step отрабатывает интервал [from, to) времени стенда: события генератора идут в Sink.
+func (s *Simulator) step(ctx context.Context, skip map[string]bool, from, to time.Time) error {
+	var weights map[string]float64
+	if s.Following() {
+		dishes, err := s.Hot.HotDishes(ctx, to)
+		if err != nil { // список недоступен — шаг идёт без подъёма, как при FollowHot=false
+			s.Log.Warn("simulator hot offers failed", slog.String("error", err.Error()))
+		} else {
+			u := s.Uplift
+			if u <= 0 {
+				u = DefaultHotUplift
+			}
+			weights = HotWeights(dishes, u)
+		}
+	}
+	evs, err := generator.GenerateWeighted(s.Seed, from, to, weights)
+	if err != nil {
+		return err
+	}
+	for _, e := range evs {
+		if ctx.Err() != nil {
+			return nil
+		}
+		if e.Kind != generator.KindOrder || e.Order == nil {
+			continue
+		}
+		o, ok := demoProfile(*e.Order, skip)
+		if !ok {
+			continue
+		}
+		if err := s.Sink.PlaceOrder(ctx, o); err != nil && ctx.Err() == nil {
+			s.Log.Error("simulator order failed", slog.String("order_id", o.ID), slog.String("error", err.Error()))
+		}
+	}
+	return nil
+}
+
 func (s *Simulator) run(ctx context.Context, done chan struct{}, from time.Time) {
 	defer close(done)
 	tick := s.Tick
@@ -173,26 +240,11 @@ func (s *Simulator) run(ctx context.Context, done chan struct{}, from time.Time)
 		if to.Sub(from) > MaxCatchUp {
 			from = to.Add(-MaxCatchUp)
 		}
-		evs, err := generator.Generate(s.Seed, from, to)
-		if err != nil {
+		start := from
+		from = to
+		if err := s.step(ctx, skip, start, to); err != nil {
 			s.Log.Error("simulator generate failed", slog.String("error", err.Error()))
 			return
-		}
-		from = to
-		for _, e := range evs {
-			if ctx.Err() != nil {
-				return
-			}
-			if e.Kind != generator.KindOrder || e.Order == nil {
-				continue
-			}
-			o, ok := demoProfile(*e.Order, skip)
-			if !ok {
-				continue
-			}
-			if err := s.Sink.PlaceOrder(ctx, o); err != nil && ctx.Err() == nil {
-				s.Log.Error("simulator order failed", slog.String("order_id", o.ID), slog.String("error", err.Error()))
-			}
 		}
 	}
 }
