@@ -85,30 +85,32 @@ func round1(v float64) float64 { return float64(int64(v*10+0.5)) / 10 }
 
 type candidate struct {
 	t        Transfer
-	atRisk   int64   // объём партии под риском в A
-	capacity int64   // сколько B успеет продать сверх своего остатка
+	atRisk   int64 // объём партии под риском в A
+	capacity int64 // сколько B успеет продать сверх своего остатка
+	price    int64 // копейки за 1000 базовых единиц
+	hasPrice bool
 	value    float64 // для сортировки: копейки, без цены — граммы со знаком «ниже любой цены»
 }
 
 // SuggestTransfers считает подсказки по снимкам доступных точек.
 //
 // Для каждой партии точки A под риском и каждой другой точки B: B расходует продукт быстрее A (rate_per_day из
-// supply-suggestions; нет записи — расход 0); до срока партии за вычетом transferHours остаётся время window > 0;
-// B успеет продать за него rate_B/24 × window сверх собственного остатка usable_stock. Объём — меньшее из
-// «под риском» и этой ёмкости B. Одна партия и ёмкость одной точки жадно не делятся дважды. Берутся первые MaxTransfers
+// supply-suggestions; нет записи — расход 0); до срока партии за вычетом transferHours остаётся окно > 0;
+// B успеет продать за него rate_B × окно(мин) / 1440 сверх собственного остатка usable_stock. Объём — меньшее из
+// «под риском» и этой ёмкости B. Цена — из каталога точки A (/api/forecast/writeoffs), иначе из prices (HUB_PRICES). Расчёт целочисленный. Одна партия и ёмкость одной точки жадно не делятся дважды. Берутся первые MaxTransfers
 // по убыванию ₽ (без цен — по убыванию количества).
 func SuggestTransfers(states []PointState, transferHours float64, prices map[string]int64) []Transfer {
 	type key struct {
 		point, product string
 	}
-	rate := map[key]float64{} // базовых единиц в час
+	rate := map[key]int64{} // базовых единиц в сутки
 	stock := map[key]int64{}
 	for _, s := range states {
 		if s.Status != StatusOK {
 			continue
 		}
 		for _, d := range s.Demand {
-			rate[key{s.ID, d.ProductID}] = float64(d.RatePerDay.Qty) / 24
+			rate[key{s.ID, d.ProductID}] = d.RatePerDay.Qty
 			stock[key{s.ID, d.ProductID}] = d.UsableStock.Qty
 		}
 	}
@@ -118,8 +120,8 @@ func SuggestTransfers(states []PointState, transferHours float64, prices map[str
 			continue
 		}
 		for _, rb := range a.RiskBatches {
-			window := rb.ExpiresAt.Sub(*a.StandTime).Hours() - transferHours
-			if window <= 0 || rb.AtRisk.Qty <= 0 {
+			windowMin := int64(rb.ExpiresAt.Sub(*a.StandTime).Minutes() - transferHours*60)
+			if windowMin <= 0 || rb.AtRisk.Qty <= 0 {
 				continue
 			}
 			for _, b := range states {
@@ -131,7 +133,7 @@ func SuggestTransfers(states []PointState, transferHours float64, prices map[str
 				if !ok || rb2 <= rate[key{a.ID, rb.ProductID}] {
 					continue
 				}
-				capacity := int64(rb2*window) - stock[kb]
+				capacity := rb2*windowMin/(24*60) - stock[kb]
 				q := rb.AtRisk.Qty
 				if capacity < q {
 					q = capacity
@@ -144,16 +146,17 @@ func SuggestTransfers(states []PointState, transferHours float64, prices map[str
 					Qty:    Qty{Qty: q, Unit: rb.AtRisk.Unit},
 					FromID: a.ID, FromName: a.Name, ToID: b.ID, ToName: b.Name, ExpiresAt: rb.ExpiresAt,
 				}, atRisk: rb.AtRisk.Qty, capacity: capacity})
+				pr, ok := a.Prices[rb.ProductID] // цена каталога точки-источника, иначе запасная из HUB_PRICES
+				if !ok {
+					pr, ok = prices[rb.ProductID]
+				}
+				cands[len(cands)-1].price, cands[len(cands)-1].hasPrice = pr, ok
 			}
 		}
 	}
-	price := func(t Transfer) (int64, bool) {
-		p, ok := prices[t.ProductID]
-		return p * t.Qty.Qty / 1000, ok
-	}
 	for i := range cands {
-		if v, ok := price(cands[i].t); ok {
-			cands[i].value = float64(v) + 1e15 // с ценой всегда выше безценовых
+		if cands[i].hasPrice {
+			cands[i].value = float64(cands[i].price*cands[i].t.Qty.Qty/1000) + 1e15 // с ценой всегда выше безценовых
 		} else {
 			cands[i].value = float64(cands[i].t.Qty.Qty)
 		}
@@ -191,7 +194,8 @@ func SuggestTransfers(states []PointState, transferHours float64, prices map[str
 		usedBatch[bk] += q
 		usedCap[kb] += q
 		t.Qty.Qty = q
-		if v, ok := price(t); ok {
+		if c.hasPrice {
+			v := c.price * q / 1000
 			t.SavesMinor = &v
 		}
 		t.Text = fmt.Sprintf("%s %s: %s → %s", t.ProductName, FormatQty(t.Qty), t.FromName, t.ToName)

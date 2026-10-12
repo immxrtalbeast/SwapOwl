@@ -51,7 +51,9 @@ type PointState struct {
 
 	// Для подсказок о перемещении (transfers.go); наружу не отдаются.
 	RiskBatches []RiskBatch `json:"-"`
-	Demand      []Demand    `json:"-"`
+	// Prices — цена продукта по каталогу точки, копейки за 1000 базовых единиц (из /api/forecast/writeoffs).
+	Prices map[string]int64 `json:"-"`
+	Demand []Demand         `json:"-"`
 
 	// Ленты для /api/network/points/{id}.
 	Alerts   []Alert        `json:"alerts,omitempty"`
@@ -193,6 +195,17 @@ func (c *Collector) pollOne(ctx context.Context, p Point) {
 	c.mu.Unlock()
 }
 
+type hotOffersResp struct {
+	Algo   string `json:"algo"`
+	Offers []struct {
+		HotOffer
+		Reasons []struct {
+			RiskBatch
+			WorkingHoursLeft float64 `json:"working_hours_left"`
+		} `json:"reasons"`
+	} `json:"offers"`
+}
+
 type httpStatusError struct{ code int }
 
 func (e httpStatusError) Error() string { return fmt.Sprintf("http status %d", e.code) }
@@ -277,19 +290,28 @@ func (c *Collector) fetch(ctx context.Context, p Point) (PointState, error) {
 	if err := c.get(ctx, p, "/api/stop-list", nil, &stop); err != nil {
 		return st, err
 	}
-	var offers struct {
-		Offers []struct {
-			HotOffer
-			Reasons []struct {
-				RiskBatch
-				WorkingHoursLeft float64 `json:"working_hours_left"`
-			} `json:"reasons"`
-		} `json:"offers"`
-	}
+	var offers hotOffersResp
 	if err := c.get(ctx, p, "/api/hot-offers", nil, &offers); err != nil {
 		return st, err
 	}
-
+	// at_risk у алгоритма a — сумма остатков партий до опорной, а не остаток одной партии. Для подсказок о
+	// перемещении нужен алгоритм b, где at_risk относится к одной партии: при другом алгоритме читаем его отдельно.
+	riskOffers := offers
+	if offers.Algo != "b" {
+		riskOffers = hotOffersResp{}
+		if err := c.get(ctx, p, "/api/hot-offers", url.Values{"algo": {"b"}}, &riskOffers); err != nil {
+			riskOffers = hotOffersResp{} // подсказок по этой точке не будет, сводка остаётся
+		}
+	}
+	// Цены каталога точки — только для подсказок; нет маршрута или ошибка — цены не известны.
+	var fc struct {
+		Products []struct {
+			ProductID  string `json:"product_id"`
+			AtRisk     Qty    `json:"at_risk"`
+			TotalMinor int64  `json:"total_minor"`
+		} `json:"products"`
+	}
+	_ = c.get(ctx, p, "/api/forecast/writeoffs", nil, &fc)
 	// Расход нужен только подсказкам о перемещении: точка без этого маршрута не должна пропадать из сводки.
 	var sugg []struct {
 		Demand
@@ -342,12 +364,20 @@ func (c *Collector) fetch(ctx context.Context, p Point) (PointState, error) {
 		st.TopHotOffer = &o
 	}
 	seen := map[int64]bool{}
-	for _, o := range offers.Offers {
+	for _, o := range riskOffers.Offers {
 		for _, r := range o.Reasons {
 			if r.AtRisk.Qty > 0 && !seen[r.BatchID] {
 				seen[r.BatchID] = true
 				st.RiskBatches = append(st.RiskBatches, r.RiskBatch)
 			}
+		}
+	}
+	for _, f := range fc.Products {
+		if f.AtRisk.Qty > 0 && f.TotalMinor > 0 {
+			if st.Prices == nil {
+				st.Prices = map[string]int64{}
+			}
+			st.Prices[f.ProductID] = f.TotalMinor * 1000 / f.AtRisk.Qty
 		}
 	}
 	for _, d := range sugg {

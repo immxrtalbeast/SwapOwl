@@ -186,3 +186,77 @@ func TestTransferConfig(t *testing.T) {
 		t.Errorf("fmt: %s", got)
 	}
 }
+
+// algoPoint — точка A: по умолчанию отвечает алгоритмом a (at_risk суммарный, 1200 г в «партии 17»), с ?algo=b — честно 700 г.
+func algoPoint(t *testing.T, algo string, withForecast bool) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	j := func(body string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer "+goodKey {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(body))
+		}
+	}
+	offers := func(algo string, atRisk int) string {
+		return `{"algo":"` + algo + `","offers":[{"dish_id":"steak","dish_name":"Стейк","reasons":[{"product_id":"salmon","product_name":"Лосось",` +
+			`"batch_id":17,"at_risk":{"qty":` + itoa(atRisk) + `,"unit":"g"},"expires_at":"2026-10-09T20:00:00+03:00"}]}]}`
+	}
+	mux.HandleFunc("/api/clock", j(`{"now":"2026-10-09T12:00:00+03:00","timezone":"Europe/Moscow"}`))
+	mux.HandleFunc("/api/alerts", j(`[]`))
+	mux.HandleFunc("/api/stop-list", j(`[]`))
+	mux.HandleFunc("/api/hot-offers", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("algo") == "b" {
+			j(offers("b", 700))(w, r)
+			return
+		}
+		j(offers(algo, 1200))(w, r)
+	})
+	mux.HandleFunc("/api/analytics/writeoffs", j(`{"total_minor":0}`))
+	mux.HandleFunc("/api/supply-suggestions", j(suggA))
+	if withForecast {
+		// 700 г под риском на 1400 ₽ → 2000 ₽/кг.
+		mux.HandleFunc("/api/forecast/writeoffs", j(`{"total_minor":140000,"products":[{"product_id":"salmon","at_risk":{"qty":700,"unit":"g"},"total_minor":140000}]}`))
+	}
+	s := httptest.NewServer(mux)
+	t.Cleanup(s.Close)
+	return s
+}
+
+func itoa(n int) string { b, _ := json.Marshal(n); return string(b) }
+
+func TestTransferAlgoAUsesPerBatchRisk(t *testing.T) {
+	a := algoPoint(t, "a", false)
+	b := transferPoint(t, `{"offers":[]}`, suggB)
+	col := NewCollector(Config{Points: []Point{
+		{ID: "a", Name: "Арбат", URL: a.URL, APIKey: goodKey},
+		{ID: "b", Name: "Тверская", URL: b.URL, APIKey: goodKey},
+	}}, 2*time.Second, nil)
+	col.PollAll(context.Background())
+	got := col.Transfers()
+	if len(got) != 1 || got[0].Qty.Qty != 700 {
+		t.Fatalf("algo a must not inflate the batch: %+v", got)
+	}
+}
+
+func TestTransferPriceFromForecast(t *testing.T) {
+	a := algoPoint(t, "b", true)
+	b := transferPoint(t, `{"offers":[]}`, suggB)
+	col := NewCollector(Config{Points: []Point{
+		{ID: "a", Name: "Арбат", URL: a.URL, APIKey: goodKey},
+		{ID: "b", Name: "Тверская", URL: b.URL, APIKey: goodKey},
+	}}, 2*time.Second, nil)
+	col.PollAll(context.Background())
+	// HUB_PRICES пуст: цена берётся из каталога точки A. Объём ограничен ёмкостью B (1100 г) → 2200 ₽.
+	got := col.Transfers()
+	if len(got) != 1 || got[0].SavesMinor == nil || *got[0].SavesMinor != 220000 {
+		t.Fatalf("saves from forecast: %+v", got)
+	}
+	// HUB_PRICES — только запасной вариант: цена точки главнее.
+	col.SetTransfers(2, map[string]int64{"salmon": 1})
+	if got = col.Transfers(); *got[0].SavesMinor != 220000 {
+		t.Errorf("point price must win: %+v", got[0])
+	}
+}
