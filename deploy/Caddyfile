@@ -3,7 +3,7 @@
 	email {$ACME_EMAIL:}
 }
 
-{$SITE_DOMAIN:localhost} {
+(site) {
 	encode zstd gzip
 
 	header {
@@ -42,4 +42,13 @@
 	handle {
 		reverse_proxy web:80
 	}
+}
+
+# Боевой домен / localhost (HTTPS, редирект с HTTP). Отдельный http://localhost — локальный запуск без редиректа.
+{$SITE_DOMAIN:localhost} {
+	import site
+}
+
+http://localhost {
+	import site
 }

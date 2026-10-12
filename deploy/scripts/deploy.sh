@@ -5,7 +5,6 @@ set -euo pipefail
 
 TAG="${1:?использование: deploy.sh <tag>}"
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/swapowl}"
-HEALTH_URL="${HEALTH_URL:-http://localhost/healthz}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-60}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$SCRIPT_DIR/../docker-compose.prod.yml}"
@@ -15,10 +14,11 @@ LAST_GOOD="$DEPLOY_DIR/.last_good"
 die() { echo "ошибка: $*" >&2; exit 1; }
 dc() { IMAGE_TAG="$1" docker compose -p swapowl -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "${@:2}"; }
 
+# Проверяем сам API внутри сети compose (в обход Caddy: прокси отвечает и при упавшем API).
 wait_health() {
   local i
   for ((i = 0; i < HEALTH_TIMEOUT; i += 2)); do
-    if curl -fsS -m 3 -o /dev/null "$HEALTH_URL"; then return 0; fi
+    if dc "$1" exec -T api wget -q -T 3 -O /dev/null http://127.0.0.1:8080/healthz 2>/dev/null; then return 0; fi
     sleep 2
   done
   return 1
@@ -41,7 +41,7 @@ echo "выкатываю $TAG (прошлый: ${prev:-нет})"
 dc "$TAG" pull
 dc "$TAG" up -d --remove-orphans
 
-if wait_health; then
+if wait_health "$TAG"; then
   echo "$TAG" > "$LAST_GOOD"
   echo "готово: $TAG"
   exit 0
@@ -52,6 +52,6 @@ dc "$TAG" logs --tail=50 api >&2 || true
 if [ -n "$prev" ] && [ "$prev" != "$TAG" ]; then
   echo "возвращаю $prev" >&2
   dc "$prev" up -d --remove-orphans || true
-  wait_health && echo "откат на $prev выполнен" >&2 || echo "после отката /healthz тоже не отвечает" >&2
+  wait_health "$prev" && echo "откат на $prev выполнен" >&2 || echo "после отката /healthz тоже не отвечает" >&2
 fi
 exit 1

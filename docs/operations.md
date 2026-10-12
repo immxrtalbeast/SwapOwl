@@ -51,7 +51,7 @@ deploy/scripts/backup.sh instances/cafe-lenina
 1. **DNS.** A-запись `SITE_DOMAIN` на IP сервера. Без неё Let's Encrypt не выдаст сертификат.
 2. **Секреты GitHub** (Settings → Secrets → Actions): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (закрытый ключ пользователя с доступом к docker).
 3. **Сервер:** `scp deploy/scripts/server-init.sh root@host:/tmp/ && ssh root@host bash /tmp/server-init.sh` — swap-файл 2 ГБ (если нет), ufw 22/80/443, каталог `/opt/swapowl`. Скрипт можно запускать повторно.
-4. **`.env`:** `cp deploy/.env.prod.example /opt/swapowl/.env`, `chmod 600`, заполнить `SITE_DOMAIN`, `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, `DEMO_TOKEN`, `METRICS_TOKEN`. `ADAPTER_API_KEY` и `NOTIFIER_API_KEY` — ключи интеграции из API (выпускаются после первого запуска, затем `deploy.sh` повторно); пока они пусты, `iiko-adapter` и `notifier` перезапускаются — это нормально.
+4. **`.env`:** `cp deploy/.env.prod.example /opt/swapowl/.env`, `chmod 600`, заполнить `SITE_DOMAIN`, `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, `DEMO_TOKEN`, `METRICS_TOKEN`, `IIKO_PASSWORD` (общий для fake-iiko и адаптера, должен быть непустым). `ADAPTER_API_KEY` и `NOTIFIER_API_KEY` — ключи интеграции из API (выпускаются после первого запуска, затем `deploy.sh` повторно); пока они пусты, `iiko-adapter` и `notifier` перезапускаются — это нормально.
 5. **Первый деплой вручную:** Actions → Deploy → Run workflow, `tag` = sha коммита из `main`, для которого собраны образы (образы собирает запуск после зелёного CI на push в `main`; если их ещё нет, дождитесь первого такого запуска). Дальше выкатка идёт сама.
 6. Проверка: `curl -fsS https://<SITE_DOMAIN>/healthz`.
 
