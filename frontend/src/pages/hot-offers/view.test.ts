@@ -3,7 +3,7 @@ import type { HotOffer } from "../../api/types";
 import { filterByProduct, formatUntil, handNote, portionsWord } from "./view";
 
 const offer = (id: string, products: string[]): HotOffer => ({
-  dish_id: id, dish_name: id, priority: 1, target_portions: 0, usual_portions: 0, sell_until: "", explanation: "",
+  dish_id: id, dish_name: id, priority: 1, target_portions: 0, target_today: 0, usual_portions: 0, sell_until: "", explanation: "",
   reasons: products.map((p) => ({ product_id: p, product_name: p, batch_id: 1, at_risk: { qty: 1, unit: "g" }, expires_at: "", working_hours_left: 1 })),
 });
 

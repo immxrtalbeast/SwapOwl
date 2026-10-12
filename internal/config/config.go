@@ -38,6 +38,7 @@ type Config struct {
 	HotWMinHours  float64
 	HotCoverHours float64
 	HotMaxIter    int
+	HotHorizon    float64
 
 	DemoMode     bool
 	DemoToken    string
@@ -78,6 +79,7 @@ func Load(getenv func(string) string) (Config, error) {
 		HotWMinHours:      p.float("HOT_W_MIN_HOURS", 0.5),
 		HotCoverHours:     p.float("HOT_COVER_HOURS", 12),
 		HotMaxIter:        p.int("HOT_MAX_ITER", 200),
+		HotHorizon:        p.float("HOT_HORIZON_HOURS", 24),
 		DemoMode:          p.bool("DEMO_MODE", false),
 		DemoToken:         getenv("DEMO_TOKEN"),
 		SeedOnEmpty:       p.bool("SEED_ON_EMPTY", true),
@@ -139,7 +141,7 @@ func (c *Config) validate() []error {
 	if c.HotOffersAlgo != "a" && c.HotOffersAlgo != "b" {
 		bad("HOTOFFERS_ALGO must be a or b, got %q", c.HotOffersAlgo)
 	}
-	if c.HotTopN <= 0 || c.HotMaxIter <= 0 || c.HotWMinHours < 0 || c.HotCoverHours < 0 {
+	if c.HotTopN <= 0 || c.HotMaxIter <= 0 || c.HotWMinHours < 0 || c.HotCoverHours < 0 || c.HotHorizon < 0 {
 		bad("HOT_*: TOP_N and MAX_ITER must be > 0, hours must be >= 0")
 	}
 	if !c.SeedOnEmpty && c.DemoMode {

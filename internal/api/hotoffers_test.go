@@ -169,3 +169,26 @@ func TestRussianFormatting(t *testing.T) {
 		t.Error("portions plural")
 	}
 }
+
+func TestHotOffersTargetTodayWithinTarget(t *testing.T) {
+	// 10:00, закрытие 23:00 → W_today=13; срок через 5 ч → W=5 ≤ W_today, цель на сегодня = вся цель.
+	_, out, body := getHot(t, hotRouter(hotSnap(), "b"), "/api/hot-offers")
+	o := out.Offers[0]
+	if o.TargetPortions <= 0 || o.TargetToday != o.TargetPortions {
+		t.Fatalf("near expiry: %s", body)
+	}
+	// срок через 26 ч (W=13+... ) — часть цели на сегодня меньше цели
+	snap := hotSnap()
+	snap.RateHour = map[string]float64{"salmon": 50, "beef": 57.6}
+	snap.Batches[0].ExpiresAt = hotNow.Add(30 * time.Hour) // завтра 16:00 → W=13+6=19
+	rt := NewRouter(Deps{HotOffers: fakeSnap{snap}, Now: func() time.Time { return hotNow },
+		HotConfig: HotOffersConfig{DefaultAlgo: "b", Rank: hotoffers.Config{TopN: 3, WMin: 0.5, CoverHours: 12, MaxIter: 200}}})
+	_, out, body = getHot(t, rt, "/api/hot-offers")
+	if len(out.Offers) == 0 {
+		t.Fatal(body)
+	}
+	o = out.Offers[0]
+	if o.TargetToday <= 0 || o.TargetToday > o.TargetPortions {
+		t.Fatalf("today must be in (0, target]: %d/%d", o.TargetToday, o.TargetPortions)
+	}
+}

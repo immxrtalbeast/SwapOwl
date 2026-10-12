@@ -1249,6 +1249,7 @@ components:
               dish_name: {type: string}
               priority: {type: number}
               target_portions: {type: integer, description: У алгоритма `a` равен 0}
+              target_today: {type: integer, description: "Сколько из цели продать до закрытия сегодня: ceil(target × min(W_today, W(now, срок)) / W(now, срок)); ≤ target_portions"}
               usual_portions: {type: integer}
               sell_until: {type: string, format: date-time}
               reasons:
