@@ -62,3 +62,24 @@ describe("NetworkView", () => {
     expect(d).toContain("Открыть точку");
   });
 });
+
+describe("NetworkView: перемещения", () => {
+  const transfers = [{
+    product_id: "salmon", product_name: "Лосось", batch_id: 17, qty: { qty: 1200, unit: "g" as const }, from_id: "arbat", from_name: "Арбат",
+    to_id: "tver", to_name: "Тверская", expires_at: "2026-10-12T20:00:00Z", saves_minor: 240000, text: "", invoice: "Накладная",
+  }];
+  it("блок с подсказкой, ₽ и кнопкой накладной", () => {
+    const out = html(<NetworkView summary={summary} cache={cache} nowMs={NOW} selected={null} onSelect={() => {}} detail={null} transfers={transfers} />);
+    expect(out).toContain("Перемещения");
+    expect(out).toContain("Лосось");
+    expect(out).toContain("Арбат → Тверская");
+    expect(out).toContain(formatRub(240000));
+    expect(out).toContain("Скопировать накладную перемещения");
+  });
+  it("пустой список — пояснение, без transfers блока нет", () => {
+    const empty = html(<NetworkView summary={summary} cache={cache} nowMs={NOW} selected={null} onSelect={() => {}} detail={null} transfers={[]} />);
+    expect(empty).toContain("Перемещать нечего");
+    const none = html(<NetworkView summary={summary} cache={cache} nowMs={NOW} selected={null} onSelect={() => {}} detail={null} />);
+    expect(none).not.toContain("Перемещения");
+  });
+});

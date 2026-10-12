@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { network } from "../../api/network";
-import type { HubPoint, HubSummary } from "../../api/network";
+import type { HubPoint, HubSummary, HubTransfer } from "../../api/network";
 import { AB_POLL_MS, POLL_MS, abRunning, updateCache } from "./model";
 import type { Cache } from "./model";
 
 export type NetworkState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; summary: HubSummary; cache: Cache; detail: HubPoint | null; at: number };
+  | { kind: "ready"; summary: HubSummary; cache: Cache; detail: HubPoint | null; transfers: HubTransfer[]; at: number };
 
 /**
  * Сводка по сети: опрос раз в 60 с (раз в 2,5 с, пока идёт A/B-прогон) без перезагрузки страницы. Данные последнего успешного опроса точки
@@ -26,6 +26,13 @@ export function useNetwork(selected: string | null): [NetworkState, () => Promis
       const summary = await network.summary();
       cache.current = updateCache(cache.current, summary.points);
       fast.current = abRunning(summary.points);
+      // Подсказки о перемещении необязательны: старый hub без маршрута не ломает экран.
+      let transfers: HubTransfer[] = [];
+      try {
+        transfers = await network.transfers();
+      } catch {
+        transfers = [];
+      }
       const id = sel.current;
       if (id) {
         try {
@@ -38,7 +45,7 @@ export function useNetwork(selected: string | null): [NetworkState, () => Promis
       // Выбор мог смениться, пока шёл опрос: подробности берём для текущего выбора, а не для начатого.
       const cur = sel.current;
       setState({
-        kind: "ready", summary, cache: cache.current,
+        kind: "ready", summary, cache: cache.current, transfers,
         detail: cur ? detailCache.current[cur] ?? null : null, at: Date.now(),
       });
     } catch (e) {

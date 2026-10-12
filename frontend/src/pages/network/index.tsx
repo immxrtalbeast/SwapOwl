@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { HubPoint, HubSummary } from "../../api/network";
+import type { HubPoint, HubSummary, HubTransfer } from "../../api/network";
 import { Card, DataTable, EmptyState, ErrorState, LoadingState, ScreenTitle, UrgencyBadge } from "../../components";
 import type { Column } from "../../components";
 import { BATCH_STATES, DISH_STATES, batchState } from "../../lib/urgency";
@@ -7,6 +7,7 @@ import type { UrgencyDef } from "../../lib/urgency";
 import { formatRub, formatQty } from "../../lib/format";
 import { formatTimeLeft } from "../stock/format";
 import { AbCompare } from "./AbCompare";
+import { Transfers } from "./Transfers";
 import { abPair, buildRows, clockText, networkTotals, stopListText } from "./model";
 import type { Cache, PointRow } from "./model";
 import { useNetwork } from "./useNetwork";
@@ -142,10 +143,12 @@ interface ViewProps {
   selected: string | null;
   onSelect: (id: string) => void;
   detail: HubPoint | null;
+  /** Подсказки о перемещении партий между точками; без них блок «Перемещения» не показывается. */
+  transfers?: HubTransfer[];
 }
 
 /** Таблица точек, итог по сети и подробности выбранной точки. Без запросов — их делает NetworkPage. */
-export function NetworkView({ summary, cache, nowMs, selected, onSelect, detail }: ViewProps) {
+export function NetworkView({ summary, cache, nowMs, selected, onSelect, detail, transfers }: ViewProps) {
   const rows = buildRows(summary.points, cache, nowMs);
   const totals = networkTotals(summary);
   const chosen = rows.find((r) => r.point.id === selected) ?? null;
@@ -174,6 +177,7 @@ export function NetworkView({ summary, cache, nowMs, selected, onSelect, detail 
           <span>За 7 дней: {formatRub(totals.writeoffs7dMinor)}</span>
         </div>
       </Card>
+      {transfers && <Transfers transfers={transfers} />}
       {chosen ? <Detail row={chosen} detail={detail} /> : <p style={{ margin: 0, color: "var(--text-muted)" }}>Выберите точку в таблице — откроются ленты предупреждений и стоп-листа.</p>}
     </div>
   );
@@ -198,6 +202,7 @@ export function NetworkPage() {
           selected={selected}
           onSelect={setSelected}
           detail={state.detail}
+          transfers={state.transfers}
         />
       )}
     </section>

@@ -21,6 +21,7 @@ func NewServer(c *Collector, token string) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/network/summary", s.auth(s.summary))
+	mux.HandleFunc("GET /api/network/transfers", s.auth(s.transfers))
 	mux.HandleFunc("GET /api/network/points/{id}", s.auth(s.point))
 	return mux
 }
@@ -43,6 +44,10 @@ func (s *Server) summary(w http.ResponseWriter, _ *http.Request) {
 		states[i].Alerts, states[i].StopList = nil, nil
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"points": states, "totals": Summarize(states)})
+}
+
+func (s *Server) transfers(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"transfers": s.c.Transfers()})
 }
 
 func (s *Server) point(w http.ResponseWriter, r *http.Request) {
