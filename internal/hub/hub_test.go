@@ -378,3 +378,49 @@ func TestABNextDayRestartStartsNewRun(t *testing.T) {
 		t.Fatalf("новый прогон должен начаться с %v: %+v", day2, r)
 	}
 }
+
+// «Дворник» списывает просрочку после окна опоздания и датирует движение моментом expires_at — уже закрытым
+// часом. Hub перечитывает последние закрытые часы, иначе такой час остался бы нулевым навсегда.
+func TestABLateWriteoffInClosedHour(t *testing.T) {
+	base := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	var mu sync.Mutex
+	now, late := base, false
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/clock", func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{"now": now, "timezone": "UTC", "simulator_running": true})
+	})
+	mux.HandleFunc("/api/analytics/writeoffs", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		from, _ := time.Parse(time.RFC3339, r.URL.Query().Get("from"))
+		to, _ := time.Parse(time.RFC3339, r.URL.Query().Get("to"))
+		at := base.Add(90 * time.Minute) // списание датировано 13:30
+		total := 0
+		if late && !at.Before(from) && at.Before(to) {
+			total = 5000
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"total_minor": total})
+	})
+	for path, body := range map[string]string{"/api/alerts": `[]`, "/api/stop-list": `[]`, "/api/hot-offers": `{"offers":[]}`} {
+		body := body
+		mux.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) })
+	}
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	col := NewCollector(Config{Points: []Point{{ID: "a", Name: "A", Group: GroupAB, URL: srv.URL, APIKey: goodKey}}}, 2*time.Second, nil)
+	ctx := context.Background()
+	col.PollAll(ctx)
+	set := func(t time.Time, l bool) { mu.Lock(); now, late = t, l; mu.Unlock() }
+
+	col.PollAB(ctx) // 12:00 — прогон начат
+	set(base.Add(2*time.Hour+10*time.Minute), false)
+	col.PollAB(ctx) // 14:10 — часы 12–13 и 13–14 закрыты и прочитаны: 0
+	set(base.Add(2*time.Hour+20*time.Minute), true)
+	col.PollAB(ctx) // 14:20 — «дворник» записал списание задним числом в 13:30
+	r := col.Snapshot()[0].Run
+	if r == nil || r.TotalMinor != 5000 || r.Series[2].CostMinor != 5000 {
+		t.Fatalf("позднее списание в закрытом часе потеряно: %+v", r)
+	}
+}
