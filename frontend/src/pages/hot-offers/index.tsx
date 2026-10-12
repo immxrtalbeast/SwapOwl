@@ -27,11 +27,15 @@ function OfferCard({ offer, note }: { offer: HotOffer; note?: string }) {
       {hasTarget && (
         <p style={{ margin: 0, display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "2px 12px" }}>
           <span style={{ font: "var(--type-kpi)", fontSize: 32, lineHeight: 1.1, color: "var(--primary)" }}>
-            {offer.target_today} <span style={{ font: "var(--type-label)", color: "var(--text)" }}>{portionsWord(offer.target_today)} сегодня</span>
+            {offer.target_today > 0 ? offer.target_today : offer.target_portions}{" "}
+            <span style={{ font: "var(--type-label)", color: "var(--text)" }}>
+              {portionsWord(offer.target_today > 0 ? offer.target_today : offer.target_portions)}
+              {offer.target_today > 0 ? " сегодня" : " в ближайшую смену"}
+            </span>
           </span>
           {note && <span style={{ font: "var(--type-label)", color: "var(--danger, var(--text))" }}>{note}</span>}
           <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>
-            всего {offer.target_portions} <span title={new Date(offer.sell_until).toLocaleString("ru-RU")}>{formatUntil(offer.sell_until)}</span> · обычно {offer.usual_portions}
+            {offer.target_today > 0 && <>всего {offer.target_portions} </>}<span title={new Date(offer.sell_until).toLocaleString("ru-RU")}>{formatUntil(offer.sell_until)}</span> · обычно {offer.usual_portions}
           </span>
         </p>
       )}

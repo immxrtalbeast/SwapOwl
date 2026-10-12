@@ -161,13 +161,7 @@ func targetToday(target int64, sellUntil time.Time, snap store.Snapshot) int64 {
 	if target <= 0 || sellUntil.IsZero() {
 		return 0
 	}
-	loc := snap.Schedule.Location
-	if loc == nil {
-		loc = time.UTC
-	}
-	n := snap.Now.In(loc)
-	y, m, d := n.Date()
-	closeToday := time.Date(y, m, d, 0, 0, 0, 0, loc).Add(snap.Schedule.CloseAt)
+	closeToday := domain.ShiftEnd(snap.Now, snap.Schedule)
 	wAll := domain.WorkingHours(snap.Now, sellUntil, snap.Schedule)
 	if wAll <= 0 {
 		return target

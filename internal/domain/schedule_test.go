@@ -122,3 +122,24 @@ func TestParseSchedule(t *testing.T) {
 		}
 	}
 }
+
+func TestShiftEnd(t *testing.T) {
+	days := map[time.Weekday][]Interval{
+		time.Friday:   {{Open: 11 * time.Hour, Close: 26 * time.Hour}},
+		time.Saturday: {{Open: 11 * time.Hour, Close: 26 * time.Hour}},
+	}
+	sch := Schedule{Location: time.UTC, OpenAt: 10 * time.Hour, CloseAt: 23 * time.Hour, Days: days}
+	d := func(day, h int) time.Time { return time.Date(2026, 10, day, h, 0, 0, 0, time.UTC) }
+	cases := []struct{ now, want time.Time }{
+		{d(9, 22), d(10, 2)}, // пятница, в смене
+		{d(10, 1), d(10, 2)}, // суббота 01:00 — пятничная смена
+		{d(9, 9), d(10, 2)},  // до открытия: последняя смена дня
+		{d(10, 3), d(11, 2)}, // между сменами: суббота ещё впереди
+		{d(11, 3), d(11, 3)}, // воскресенье — выходной
+	}
+	for _, c := range cases {
+		if got := ShiftEnd(c.now, sch); !got.Equal(c.want) {
+			t.Errorf("now=%v: got %v want %v", c.now, got, c.want)
+		}
+	}
+}

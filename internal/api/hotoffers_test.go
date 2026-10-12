@@ -192,3 +192,22 @@ func TestHotOffersTargetTodayWithinTarget(t *testing.T) {
 		t.Fatalf("today must be in (0, target]: %d/%d", o.TargetToday, o.TargetPortions)
 	}
 }
+
+func TestTargetTodayRespectsScheduleDaysAcrossMidnight(t *testing.T) {
+	days := map[time.Weekday][]domain.Interval{
+		time.Friday:   {{Open: 11 * time.Hour, Close: 26 * time.Hour}},
+		time.Saturday: {{Open: 11 * time.Hour, Close: 26 * time.Hour}},
+	}
+	sch := domain.Schedule{Location: time.UTC, OpenAt: 10 * time.Hour, CloseAt: 23 * time.Hour, Days: days}
+	until := time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC) // суббота
+	// пятница 22:00: W_today=4 (до 02:00), W=8 → 40
+	snap := store.Snapshot{Now: time.Date(2026, 10, 9, 22, 0, 0, 0, time.UTC), Schedule: sch}
+	if got := targetToday(80, until, snap); got != 40 {
+		t.Fatalf("fri 22:00: target_today = %d, want 40", got)
+	}
+	// суббота 01:00 — ещё пятничная смена: W_today=1, W=1+4=5 → 16
+	snap.Now = time.Date(2026, 10, 10, 1, 0, 0, 0, time.UTC)
+	if got := targetToday(80, until, snap); got != 16 {
+		t.Fatalf("sat 01:00: target_today = %d, want 16", got)
+	}
+}
