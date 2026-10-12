@@ -161,7 +161,8 @@ export function TodayPage() {
                 {offers.map((o) => {
                   const real = realisticTarget(o);
                   const portions = real ? real.real : o.target_today > 0 ? o.target_today : o.target_portions;
-                  const saved = offerSaved(o, prices);
+                  // Урезанная цель спасает только проданную часть: остаток считает RealisticBlock рядом.
+                  const saved = real ? Math.round((offerSaved(o, prices) * real.real) / real.target) : offerSaved(o, prices);
                   return (
                     <li key={o.dish_id} className={cls(`h${o.dish_id}`)} style={row}>
                       <a href={hotOffersUrl(o.reasons[0]?.product_id ?? "")} style={{ font: "var(--type-body-strong)", color: "var(--brand-ink)" }}>{o.dish_name}</a>
