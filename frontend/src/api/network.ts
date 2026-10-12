@@ -86,6 +86,24 @@ export interface HubSummary {
   totals: HubTotals;
 }
 
+/** Подсказка о перемещении партии между точками (только подсказка, docs/network.md). */
+export interface HubTransfer {
+  product_id: string;
+  product_name: string;
+  batch_id: number;
+  qty: Qty;
+  from_id: string;
+  from_name: string;
+  to_id: string;
+  to_name: string;
+  expires_at: string;
+  /** Копейки; null, если у hub не заданы цены (HUB_PRICES). */
+  saves_minor: number | null;
+  text: string;
+  /** Текст накладной для ручного оформления. */
+  invoice: string;
+}
+
 type Env = Record<string, string | undefined>;
 const env = (): Env => ((import.meta as unknown as { env?: Env }).env ?? {});
 
@@ -107,6 +125,7 @@ async function hubGet<T>(path: string): Promise<T> {
 
 export const network = {
   summary: () => hubGet<HubSummary>("/api/network/summary"),
+  transfers: async () => (await hubGet<{ transfers: HubTransfer[] }>("/api/network/transfers")).transfers ?? [],
   point: (id: string) => hubGet<HubPoint>(`/api/network/points/${encodeURIComponent(id)}`),
   /** Hub доступен: ответ на сводку — JSON с массивом точек (HTML-заглушка или 404 основного API — нет). */
   available: async (): Promise<boolean> => {

@@ -49,6 +49,12 @@ type PointState struct {
 	// Только для точек группы ab (ab.go): прогон генератора и списания в ₽ по часам стенда с его начала.
 	Run *Run `json:"run,omitempty"`
 
+	// Для подсказок о перемещении (transfers.go); наружу не отдаются.
+	RiskBatches []RiskBatch `json:"-"`
+	// Prices — цена продукта по каталогу точки, копейки за 1000 базовых единиц (из /api/forecast/writeoffs).
+	Prices map[string]int64 `json:"-"`
+	Demand []Demand         `json:"-"`
+
 	// Ленты для /api/network/points/{id}.
 	Alerts   []Alert        `json:"alerts,omitempty"`
 	StopList []StopListItem `json:"stop_list,omitempty"`
@@ -96,6 +102,31 @@ type Collector struct {
 	mu     sync.RWMutex
 	states map[string]PointState
 	runs   map[string]*abRun // состояние A/B-прогона по id точки группы ab
+
+	transferHours float64
+	prices        map[string]int64 // product_id -> копейки за 1000 базовых единиц (HUB_PRICES)
+}
+
+// SetTransfers задаёт запас времени на перевозку (часы) и цены продуктов для подсказок о перемещении.
+func (c *Collector) SetTransfers(hours float64, prices map[string]int64) {
+	c.mu.Lock()
+	c.transferHours, c.prices = hours, prices
+	c.mu.Unlock()
+}
+
+// Transfers — подсказки «переместить партию в другую точку» по последним снимкам (не больше MaxTransfers).
+func (c *Collector) Transfers() []Transfer {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	states := make([]PointState, 0, len(c.points))
+	for _, p := range c.points {
+		states = append(states, c.states[p.ID])
+	}
+	out := SuggestTransfers(states, c.transferHours, c.prices)
+	if out == nil {
+		out = []Transfer{}
+	}
+	return out
 }
 
 // NewCollector создаёт сборщик; timeout — на весь опрос одной точки.
@@ -104,7 +135,8 @@ func NewCollector(cfg Config, timeout time.Duration, now func() time.Time) *Coll
 		now = time.Now
 	}
 	c := &Collector{points: cfg.Points, timeout: timeout, now: now,
-		client: &http.Client{}, states: map[string]PointState{}, runs: map[string]*abRun{}}
+		client: &http.Client{}, states: map[string]PointState{}, runs: map[string]*abRun{},
+		transferHours: DefaultTransferHours}
 	for _, p := range cfg.Points {
 		c.states[p.ID] = PointState{ID: p.ID, Name: p.Name, Label: p.Label, Group: p.Group, Status: StatusUnreachable,
 			StopListNames: []string{}}
@@ -161,6 +193,17 @@ func (c *Collector) pollOne(ctx context.Context, p Point) {
 	c.mu.Lock()
 	c.states[p.ID] = st
 	c.mu.Unlock()
+}
+
+type hotOffersResp struct {
+	Algo   string `json:"algo"`
+	Offers []struct {
+		HotOffer
+		Reasons []struct {
+			RiskBatch
+			WorkingHoursLeft float64 `json:"working_hours_left"`
+		} `json:"reasons"`
+	} `json:"offers"`
 }
 
 type httpStatusError struct{ code int }
@@ -247,11 +290,39 @@ func (c *Collector) fetch(ctx context.Context, p Point) (PointState, error) {
 	if err := c.get(ctx, p, "/api/stop-list", nil, &stop); err != nil {
 		return st, err
 	}
-	var offers struct {
-		Offers []HotOffer `json:"offers"`
-	}
+	var offers hotOffersResp
 	if err := c.get(ctx, p, "/api/hot-offers", nil, &offers); err != nil {
 		return st, err
+	}
+	// at_risk у алгоритма a — сумма остатков партий до опорной, а не остаток одной партии. Для подсказок о
+	// перемещении нужен алгоритм b, где at_risk относится к одной партии: при другом алгоритме читаем его отдельно.
+	riskOffers := offers
+	if offers.Algo != "b" {
+		riskOffers = hotOffersResp{}
+		if err := c.get(ctx, p, "/api/hot-offers", url.Values{"algo": {"b"}}, &riskOffers); err != nil {
+			riskOffers = hotOffersResp{} // подсказок по этой точке не будет, сводка остаётся
+		}
+	}
+	// Цены каталога точки — только для подсказок; нет маршрута или ошибка — цены не известны.
+	var fc struct {
+		Products []struct {
+			ProductID  string `json:"product_id"`
+			AtRisk     Qty    `json:"at_risk"`
+			TotalMinor int64  `json:"total_minor"`
+		} `json:"products"`
+	}
+	_ = c.get(ctx, p, "/api/forecast/writeoffs", nil, &fc)
+	// Расход нужен только подсказкам о перемещении: точка без этого маршрута не должна пропадать из сводки.
+	var sugg []struct {
+		Demand
+	}
+	if err := c.get(ctx, p, "/api/supply-suggestions", nil, &sugg); err != nil {
+		var he httpStatusError
+		if errors.As(err, &he) && he.code != http.StatusUnauthorized && he.code != http.StatusForbidden {
+			sugg = nil
+		} else {
+			return st, err
+		}
 	}
 
 	loc, err := time.LoadLocation(clock.Timezone)
@@ -289,8 +360,28 @@ func (c *Collector) fetch(ctx context.Context, p Point) (PointState, error) {
 	}
 	st.WriteoffsTodayMinor, st.Writeoffs7dMinor = wToday.TotalMinor, w7.TotalMinor
 	if len(offers.Offers) > 0 {
-		o := offers.Offers[0]
+		o := offers.Offers[0].HotOffer
 		st.TopHotOffer = &o
+	}
+	seen := map[int64]bool{}
+	for _, o := range riskOffers.Offers {
+		for _, r := range o.Reasons {
+			if r.AtRisk.Qty > 0 && !seen[r.BatchID] {
+				seen[r.BatchID] = true
+				st.RiskBatches = append(st.RiskBatches, r.RiskBatch)
+			}
+		}
+	}
+	for _, f := range fc.Products {
+		if f.AtRisk.Qty > 0 && f.TotalMinor > 0 {
+			if st.Prices == nil {
+				st.Prices = map[string]int64{}
+			}
+			st.Prices[f.ProductID] = f.TotalMinor * 1000 / f.AtRisk.Qty
+		}
+	}
+	for _, d := range sugg {
+		st.Demand = append(st.Demand, d.Demand)
 	}
 	return st, nil
 }

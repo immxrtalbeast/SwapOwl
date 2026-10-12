@@ -37,6 +37,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	hours, err := hub.TransferHours(os.Getenv("HUB_TRANSFER_HOURS"))
+	if err != nil {
+		return err
+	}
+	prices, err := hub.ParsePrices(os.Getenv("HUB_PRICES"))
+	if err != nil {
+		return err
+	}
 	addr := os.Getenv("HUB_ADDR")
 	if addr == "" {
 		addr = ":8090"
@@ -46,6 +54,7 @@ func run() error {
 		timeout = 10 * time.Second
 	}
 	col := hub.NewCollector(cfg, timeout, nil)
+	col.SetTransfers(hours, prices)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

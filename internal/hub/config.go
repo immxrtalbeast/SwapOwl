@@ -179,3 +179,20 @@ func parseInterval(s string, def time.Duration, name string) (time.Duration, err
 	}
 	return d, nil
 }
+
+// ParsePrices разбирает HUB_PRICES — JSON-объект {"product_id": копейки за 1000 базовых единиц}; пусто — цен нет.
+func ParsePrices(s string) (map[string]int64, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	var m map[string]int64
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		return nil, errors.New("hub: bad HUB_PRICES: expected JSON object product_id -> integer")
+	}
+	for id, v := range m {
+		if v < 0 {
+			return nil, fmt.Errorf("hub: bad HUB_PRICES: negative price for %q", id)
+		}
+	}
+	return m, nil
+}
