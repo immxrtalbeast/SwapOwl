@@ -276,3 +276,21 @@ export interface HotOffersResponse {
   offers: HotOffer[];
   excluded: HotExcluded[];
 }
+
+// POST /api/supply-orders и GET /api/supply-orders/{id} (FS-121): заказ поставщику через outbox.
+export type SupplyOrderStatus = "sent" | "delivered" | "error";
+
+export interface SupplyOrder {
+  id: string;
+  status: SupplyOrderStatus;
+  created_at: string;
+  items: { product_id: string; product_name?: string; qty: number; unit?: string }[];
+  attempts: number;
+  last_error: string | null;
+  replayed: boolean;
+}
+
+export interface SupplyOrderInput {
+  id: string;
+  items: { product_id: string; qty: number }[];
+}

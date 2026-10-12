@@ -56,3 +56,90 @@ func TestSupplySuggestionsEmptyIsArray(t *testing.T) {
 		t.Fatalf("body %q", rec.Body)
 	}
 }
+
+type fakeSupplyOrders struct {
+	byID map[string]store.SupplyOrder
+	err  error
+}
+
+func (f *fakeSupplyOrders) EnqueueSupplyOrder(_ context.Context, id string, items []store.SupplyOrderItem, now time.Time) (store.SupplyOrder, error) {
+	if f.err != nil {
+		return store.SupplyOrder{}, f.err
+	}
+	if o, ok := f.byID[id]; ok {
+		o.Replayed = true
+		return o, nil
+	}
+	o := store.SupplyOrder{ID: id, Status: store.SupplyOrderSent, CreatedAt: now, Items: items}
+	f.byID[id] = o
+	return o, nil
+}
+
+func (f *fakeSupplyOrders) GetSupplyOrder(_ context.Context, id string) (store.SupplyOrder, error) {
+	if o, ok := f.byID[id]; ok {
+		return o, nil
+	}
+	return store.SupplyOrder{}, store.ErrSupplyOrderNotFound
+}
+
+func postSupplyOrder(h http.Handler, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/supply-orders", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestSupplyOrderEndpoint(t *testing.T) {
+	f := &fakeSupplyOrders{byID: map[string]store.SupplyOrder{}}
+	h := NewRouter(Deps{Now: func() time.Time { return standTime }, SupplyOrders: f}).Handler()
+	const id = "5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e"
+	body := `{"id":"` + id + `","items":[{"product_id":"salmon","qty":2000}]}`
+
+	if rec := postSupplyOrder(h, body); rec.Code != 201 || !strings.Contains(rec.Body.String(), `"status":"sent"`) {
+		t.Fatalf("первая отправка: %d %s", rec.Code, rec.Body)
+	}
+	if rec := postSupplyOrder(h, body); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"replayed":true`) {
+		t.Fatalf("повтор: %d %s", rec.Code, rec.Body)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/supply-orders/"+id, nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"id":"`+id+`"`) {
+		t.Fatalf("статус: %d %s", rec.Code, rec.Body)
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/supply-orders/nope", nil))
+	if rec.Code != 404 {
+		t.Fatalf("нет заказа: %d", rec.Code)
+	}
+}
+
+func TestSupplyOrderValidationAndErrors(t *testing.T) {
+	const id = "5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e"
+	f := &fakeSupplyOrders{byID: map[string]store.SupplyOrder{}}
+	h := NewRouter(Deps{Now: func() time.Time { return standTime }, SupplyOrders: f}).Handler()
+	for name, body := range map[string]string{
+		"не UUID":     `{"id":"x","items":[{"product_id":"a","qty":1}]}`,
+		"нет позиций": `{"id":"` + id + `","items":[]}`,
+		"нулевое qty": `{"id":"` + id + `","items":[{"product_id":"a","qty":0}]}`,
+		"qty > 10^12": `{"id":"` + id + `","items":[{"product_id":"a","qty":1000000000001}]}`,
+		"пустой id":   `{"id":"` + id + `","items":[{"product_id":"","qty":1}]}`,
+		"дробное qty": `{"id":"` + id + `","items":[{"product_id":"a","qty":1.5}]}`,
+		"лишнее поле": `{"id":"` + id + `","items":[{"product_id":"a","qty":1}],"x":1}`,
+		"qty строкой": `{"id":"` + id + `","items":[{"product_id":"a","qty":"5"}]}`,
+		"не JSON":     `nope`,
+	} {
+		if rec := postSupplyOrder(h, body); rec.Code != 400 {
+			t.Errorf("%s: %d %s", name, rec.Code, rec.Body)
+		}
+	}
+	good := `{"id":"` + id + `","items":[{"product_id":"a","qty":1}]}`
+	f.err = store.ErrSupplyOrderConflict
+	if rec := postSupplyOrder(h, good); rec.Code != 409 || !strings.Contains(rec.Body.String(), "order_conflict") {
+		t.Errorf("конфликт: %d %s", rec.Code, rec.Body)
+	}
+	f.err = store.ErrSupplyOrderProduct
+	if rec := postSupplyOrder(h, good); rec.Code != 400 || !strings.Contains(rec.Body.String(), "unknown_product") {
+		t.Errorf("продукт: %d %s", rec.Code, rec.Body)
+	}
+}

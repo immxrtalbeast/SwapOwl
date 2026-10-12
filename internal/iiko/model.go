@@ -12,6 +12,8 @@ const (
 	PathProducts        = "/resto/api/v2/entities/products/list"
 	PathAssemblyCharts  = "/resto/api/v2/assemblyCharts/getAll"
 	PathIncomingInvoice = "/resto/api/documents/export/incomingInvoice"
+	PathPurchaseImport  = "/resto/api/documents/import/purchaseOrder" // [ПРЕДПОЛОЖЕНО]
+	PathPurchaseExport  = "/resto/api/documents/export/purchaseOrder" // [ПРЕДПОЛОЖЕНО]: чтение в фейке для проверки
 	PathOLAP            = "/resto/api/v2/reports/olap"
 	PathBalanceStores   = "/resto/api/v2/reports/balance/stores"
 	PathStopLists       = "/resto/api/v2/stopLists"
@@ -148,4 +150,38 @@ type StopItem struct {
 // StopListResponse — ответ чтения стоп-листа.
 type StopListResponse struct {
 	Items []StopItem `json:"items"`
+}
+
+// PurchaseOrder — документ «Заказ поставщику» (XML импорта). [ПРЕДПОЛОЖЕНО]: путь и поля не сверены
+// с документацией iikoServer; форма заимствована у приходной накладной. Id документа — id нашего заказа,
+// повторный импорт с тем же id заменяет документ, а не создаёт второй.
+type PurchaseOrder struct {
+	XMLName        xml.Name            `xml:"document"`
+	ID             string              `xml:"id"`
+	DocumentNumber string              `xml:"documentNumber"`
+	DateIncoming   string              `xml:"dateIncoming"`
+	Supplier       string              `xml:"supplier"`
+	DefaultStore   string              `xml:"defaultStore"`
+	Items          []PurchaseOrderItem `xml:"items>item"`
+}
+
+// PurchaseOrderItem — позиция заказа поставщику; Amount в основной единице продукта.
+type PurchaseOrderItem struct {
+	Num     int     `xml:"num"`
+	Product string  `xml:"product"`
+	Amount  float64 `xml:"amount"`
+}
+
+// PurchaseOrders — корень XML чтения заказов поставщику.
+type PurchaseOrders struct {
+	XMLName   xml.Name        `xml:"purchaseOrderDtoes"`
+	Documents []PurchaseOrder `xml:"document"`
+}
+
+// DocumentValidationResult — ответ импорта документа.
+type DocumentValidationResult struct {
+	XMLName        xml.Name `xml:"documentValidationResult"`
+	Valid          bool     `xml:"valid"`
+	DocumentNumber string   `xml:"documentNumber"`
+	ErrorMessage   string   `xml:"errorMessage,omitempty"`
 }

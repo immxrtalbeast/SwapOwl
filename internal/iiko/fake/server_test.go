@@ -217,3 +217,51 @@ func TestPieceProductPrice(t *testing.T) {
 		t.Fatal("нет проверяемых позиций")
 	}
 }
+
+func postXML(t *testing.T, u string, doc iiko.PurchaseOrder) (int, iiko.DocumentValidationResult) {
+	t.Helper()
+	b, _ := xml.Marshal(doc)
+	resp, err := http.Post(u, "application/xml", bytes.NewReader(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var res iiko.DocumentValidationResult
+	_ = xml.Unmarshal(body, &res)
+	return resp.StatusCode, res
+}
+
+// Заказ поставщику: импорт принимается, повтор с тем же id заменяет документ, а не дублирует.
+func TestPurchaseOrderImportIdempotent(t *testing.T) {
+	ts, tok := newTS(t)
+	imp := ts.URL + iiko.PathPurchaseImport + "?key=" + tok
+	exp := ts.URL + iiko.PathPurchaseExport + "?key=" + tok
+	doc := iiko.PurchaseOrder{ID: "o-1", DocumentNumber: "1", DateIncoming: "2026-01-02T10:00:00", Supplier: SupplierID, DefaultStore: StoreID,
+		Items: []iiko.PurchaseOrderItem{{Num: 1, Product: "salmon", Amount: 4}}}
+	for i := 0; i < 2; i++ {
+		if c, res := postXML(t, imp, doc); c != 200 || !res.Valid {
+			t.Fatalf("импорт #%d: %d %+v", i, c, res)
+		}
+	}
+	doc.Items[0].Amount = 6 // тот же id с другим составом — замена
+	if c, res := postXML(t, imp, doc); c != 200 || !res.Valid {
+		t.Fatalf("замена: %d %+v", c, res)
+	}
+	c, b := get(t, exp)
+	var out iiko.PurchaseOrders
+	if c != 200 || xml.Unmarshal(b, &out) != nil || len(out.Documents) != 1 || out.Documents[0].Items[0].Amount != 6 {
+		t.Fatalf("чтение: %d %s", c, b)
+	}
+	if c, b = get(t, exp+"&id=other"); c != 200 || bytes.Contains(b, []byte("<document>")) {
+		t.Fatalf("фильтр по id: %d %s", c, b)
+	}
+	bad := doc
+	bad.ID, bad.Items = "o-2", []iiko.PurchaseOrderItem{{Num: 1, Product: "no-such", Amount: 1}}
+	if _, res := postXML(t, imp, bad); res.Valid || res.ErrorMessage == "" {
+		t.Fatalf("неизвестный продукт принят: %+v", res)
+	}
+	if c, _ := get(t, ts.URL+iiko.PathPurchaseExport); c != 401 {
+		t.Fatalf("без токена: %d", c)
+	}
+}

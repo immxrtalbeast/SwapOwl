@@ -671,3 +671,94 @@ func TestLateDeliveriesCounted(t *testing.T) {
 		t.Fatal("накладные за окном не посчитаны")
 	}
 }
+
+func supplyMsg(id int64, orderID string) outboxEntry {
+	p, _ := json.Marshal(map[string]any{
+		"id": orderID, "created_at": "2026-01-04T09:00:00Z",
+		"items": []map[string]any{{"product_id": seed.Products()[0].ID, "qty": 4500, "unit": "g"}, {"product_id": seed.Products()[1].ID, "qty": 3, "unit": "pcs"}},
+	})
+	return outboxEntry{ID: id, Kind: kindSupplyOrder, Payload: p, CreatedAt: time.Date(2026, 1, 4, 9, 0, 0, 0, time.UTC)}
+}
+
+// Боевой режим: заказ уходит документом в iiko (граммы → кг), ack ok; повторная доставка того же
+// заказа (ack потерян) не создаёт второй документ.
+func TestSupplyOrderLiveDeliversWithoutDuplicates(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, ic := setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
+	a.supplierID, a.storeID = fake.SupplierID, fake.StoreID
+	const oid = "5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e"
+	stub.outbox = []outboxEntry{supplyMsg(7, oid)}
+	if err := a.processOutbox(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	docs, err := ic.PurchaseOrders(context.Background(), "")
+	if err != nil || len(docs) != 1 || docs[0].ID != oid || len(docs[0].Items) != 2 || docs[0].Items[0].Amount != 4.5 || docs[0].Items[1].Amount != 3 {
+		t.Fatalf("в iiko: %v %+v", err, docs)
+	}
+	if got := stub.acks[7]; len(got) != 1 || !got[0].OK || len(stub.outbox) != 0 {
+		t.Fatalf("ack: %+v", got)
+	}
+	stub.outbox = []outboxEntry{supplyMsg(8, oid)} // тот же заказ ещё раз
+	if err := a.processOutbox(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if docs, _ = ic.PurchaseOrders(context.Background(), ""); len(docs) != 1 {
+		t.Fatalf("дубль в iiko: %d документов", len(docs))
+	}
+}
+
+// Теневой режим: в iiko ничего не уходит (адрес недоступен), в журнале «отправил бы», сообщение подтверждено.
+func TestSupplyOrderShadowOnlyLogs(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, _ := setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
+	var buf bytes.Buffer
+	a.log = log.New(&buf, "", 0)
+	a.mode = modeShadow
+	a.iiko = client.NewWithOptions("http://127.0.0.1:1", "u", "p", &http.Client{Timeout: time.Second}, client.Options{Retries: -1})
+	stub.outbox = []outboxEntry{supplyMsg(3, "o-shadow")}
+	if err := a.processOutbox(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "отправил бы") || !strings.Contains(buf.String(), "o-shadow") {
+		t.Fatalf("журнал: %q", buf.String())
+	}
+	if got := stub.acks[3]; len(got) != 1 || !got[0].OK {
+		t.Fatalf("ack: %+v", got)
+	}
+}
+
+// Ошибка iiko: ack с ошибкой, пауза с удвоением; когда iiko вернулся — доставлено; стоп-лист не страдает.
+func TestSupplyOrderRetriesAndMissingConfig(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	now := time.Date(2026, 1, 4, 12, 0, 0, 0, loc)
+	a, stub, ic := setup(t, now)
+	a.now = func() time.Time { return now }
+	a.supplierID, a.storeID = fake.SupplierID, fake.StoreID
+	good := a.iiko
+	a.iiko = client.NewWithOptions("http://127.0.0.1:1", "u", "p", &http.Client{Timeout: time.Second}, client.Options{Retries: -1})
+	a.bootstrapped = true // стоп-лист здесь не при чём
+	stub.outbox = []outboxEntry{supplyMsg(5, "o-retry")}
+	if err := a.processOutbox(context.Background()); err == nil {
+		t.Fatal("ждали ошибку iiko")
+	}
+	if got := stub.acks[5]; len(got) != 1 || got[0].OK || got[0].Error == "" {
+		t.Fatalf("ack с ошибкой: %+v", got)
+	}
+	if err := a.processOutbox(context.Background()); err != nil || len(stub.acks[5]) != 1 {
+		t.Fatalf("во время паузы: %v %+v", err, stub.acks[5])
+	}
+	a.iiko = good
+	now = now.Add(time.Second)
+	if err := a.processOutbox(context.Background()); err != nil || len(stub.outbox) != 0 {
+		t.Fatalf("после возврата iiko: %v %+v", err, stub.outbox)
+	}
+	if docs, _ := ic.PurchaseOrders(context.Background(), "o-retry"); len(docs) != 1 {
+		t.Fatalf("документ не доставлен: %+v", docs)
+	}
+	// Без поставщика и склада — ошибка доставки с понятным текстом, а не молчаливая потеря.
+	a.supplierID = ""
+	stub.outbox = []outboxEntry{supplyMsg(6, "o-noconf")}
+	if err := a.processOutbox(context.Background()); err == nil || !strings.Contains(stub.acks[6][0].Error, "ADAPTER_SUPPLIER_ID") {
+		t.Fatalf("без настроек: %v %+v", err, stub.acks[6])
+	}
+}

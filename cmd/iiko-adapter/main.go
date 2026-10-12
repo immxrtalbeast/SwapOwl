@@ -130,6 +130,8 @@ func run(args []string) error {
 		retryBase:  retryBase,
 		retryMax:   retryMax,
 		retryAt:    map[int64]time.Time{},
+		supplierID: os.Getenv("ADAPTER_SUPPLIER_ID"),
+		storeID:    os.Getenv("ADAPTER_STORE_ID"),
 	}
 	a.log.Printf("режим: %s", mode)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

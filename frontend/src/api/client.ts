@@ -1,6 +1,6 @@
 import type { Role } from "../auth/roles";
 import { ApiError } from "./types";
-import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock } from "./types";
+import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
@@ -46,6 +46,9 @@ export const api = {
   alerts: () => request<Alert[]>("/api/alerts"),
   hotOffers: (algo?: HotAlgo) => request<HotOffersResponse>(`/api/hot-offers${algo ? `?algo=${algo}` : ""}`),
   supplySuggestions: () => request<SupplySuggestion[]>("/api/supply-suggestions"),
+  createSupplyOrder: (o: SupplyOrderInput) =>
+    request<SupplyOrder>("/api/supply-orders", { method: "POST", body: JSON.stringify(o) }),
+  supplyOrder: (id: string) => request<SupplyOrder>(`/api/supply-orders/${encodeURIComponent(id)}`),
   writeoffs: (from: string, to: string) => request<MoneyReport>(`/api/analytics/writeoffs?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   shortfalls: (from: string, to: string) => request<MoneyReport>(`/api/analytics/shortfalls?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   shortages: (from: string, to: string) => request<ShortagesReport>(`/api/analytics/shortages?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),

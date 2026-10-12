@@ -229,6 +229,71 @@ paths:
             application/json:
               schema: {type: array, items: {$ref: '#/components/schemas/SupplySuggestion'}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/supply-orders:
+    post:
+      tags: [menu]
+      summary: Заказ поставщику в iiko одной кнопкой — кладётся в outbox (operator)
+      description: |
+        Сообщение `supply_order` попадает в outbox той же транзакцией; адаптер доставляет в iiko документ
+        «Заказ поставщику» и подтверждает доставку. `id` — UUID от клиента, идемпотентность по нему:
+        повтор с тем же составом — `200` и тот же заказ, другой состав — `409 order_conflict`.
+        Количество — целое в базовой единице продукта (`g`, `ml`, `pcs`), 1…10^12.
+        В теневом режиме адаптера заказ в iiko не уходит, а пишется в его журнал.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, items]
+              properties:
+                id: {type: string, format: uuid}
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    type: object
+                    required: [product_id, qty]
+                    properties:
+                      product_id: {type: string}
+                      qty: {type: integer, minimum: 1, maximum: 1000000000000}
+            example:
+              id: 5b0c0c3e-8a51-4d0e-9d0b-1f2a3b4c5d6e
+              items: [{product_id: salmon, qty: 4000}]
+      responses:
+        '201':
+          description: Заказ принят и поставлен в очередь
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SupplyOrder'}
+        '200':
+          description: Повтор того же id и состава — тот же заказ, `replayed=true`
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SupplyOrder'}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409':
+          description: Тот же id, другой состав (`order_conflict`)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/supply-orders/{id}:
+    get:
+      tags: [menu]
+      summary: Статус заказа поставщику по подтверждению outbox (viewer)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Заказ и статус
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SupplyOrder'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/dishes:
     get:
       tags: [menu]
@@ -1126,6 +1191,27 @@ components:
         blocks_dishes: {type: integer}
         urgency: {type: string, enum: [now, soon, planned]}
         explanation: {type: string}
+    SupplyOrder:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        status:
+          type: string
+          enum: [sent, delivered, error]
+          description: sent — в очереди; delivered — адаптер подтвердил доставку в iiko; error — последняя попытка не удалась, адаптер повторит
+        created_at: {type: string, format: date-time}
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              product_id: {type: string}
+              product_name: {type: string}
+              qty: {type: integer}
+              unit: {type: string, enum: [g, ml, pcs]}
+        attempts: {type: integer}
+        last_error: {type: [string, 'null']}
+        replayed: {type: boolean}
     DishAvailability:
       type: object
       properties:
