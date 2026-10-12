@@ -14,11 +14,13 @@ func TestCalibration(t *testing.T) {
 	pct := func(i int) float64 {
 		return mean(i, func(r result) float64 { return 100 * float64(r.Writeoff) / float64(r.COGS) })
 	}
-	if p := pct(0); p < 4 || p > 10 {
-		t.Errorf("списания «без системы» %.1f %% себестоимости, нужен коридор 4–10 %%", p)
+	// режимы: 0 — «как придётся», 1 — LIFO, 2 — FIFO, 3 — FEFO
+	if p := pct(1); p < 4 || p > 10 {
+		t.Errorf("списания в худшем случае (LIFO) %.1f %% себестоимости, нужен коридор 4–10 %%", p)
 	}
-	if !(pct(0) > pct(1) && pct(1) > pct(2)) {
-		t.Errorf("ожидали LIFO > FIFO > FEFO, получили %.2f / %.2f / %.2f", pct(0), pct(1), pct(2))
+	// «как придётся» может быть и ниже FIFO (смесь иногда берёт короткую партию раньше), поэтому порядок с ним не фиксируем
+	if !(pct(1) > pct(0) && pct(1) > pct(2) && pct(0) > pct(3) && pct(2) > pct(3)) {
+		t.Errorf("ожидали LIFO > {как придётся, FIFO} > FEFO, получили %.2f / %.2f / %.2f / %.2f", pct(1), pct(0), pct(2), pct(3))
 	}
 	for i := range rep.Variants {
 		share := mean(i, func(r result) float64 { return 100 * float64(r.COGS) / float64(r.Revenue) })
