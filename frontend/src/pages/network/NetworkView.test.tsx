@@ -3,6 +3,7 @@ import { MantineProvider } from "@mantine/core";
 import { describe, expect, it } from "vitest";
 import { theme } from "../../theme/theme";
 import type { HubPoint, HubSummary } from "../../api/network";
+import { formatRub } from "../../lib/format";
 import { NetworkView } from ".";
 import { updateCache } from "./model";
 import { pt } from "./fixtures";
@@ -34,7 +35,7 @@ describe("NetworkView", () => {
     expect(out).toContain('data-offline="true"');
     expect(out).toContain("Нет связи 12 мин");
     expect(out).toContain("данные последнего опроса");
-    expect(out).toContain("1000\u00a0₽"); // истекающее из кэша, ₽
+    expect(out).toContain(formatRub(100000)); // истекающее из кэша, ₽
   });
   it("стоп-лист, горячее предложение и итог по сети", () => {
     expect(out).toContain("1: Паста");
