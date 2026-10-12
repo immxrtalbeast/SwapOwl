@@ -88,6 +88,8 @@ func run() error {
 	var (
 		now  func() time.Time = clock.Real{}.Now
 		accl *clock.Accelerated
+		// clockDone закрывается после финального сохранения часов; nil — часы не ускоренные.
+		clockDone chan struct{}
 	)
 	if cfg.ClockMode == "simulated" {
 		last, err := db.LastEventTime(ctx)
@@ -100,7 +102,11 @@ func run() error {
 			return fmt.Errorf("clock: %w", err)
 		}
 		now = accl.Now
-		go accl.Run(ctx, 5*time.Second) // сохранение раз в 5 с (2.4)
+		clockDone = make(chan struct{})
+		go func() { // сохранение раз в 5 с и финальное при остановке (2.4)
+			defer close(clockDone)
+			accl.Run(ctx, 5*time.Second)
+		}()
 	}
 	db.LateEvents = time.Duration(cfg.LateEventsHours) * time.Hour // до «дворника» и роутера (2.4а)
 	gate := &stand.Gate{}
@@ -176,9 +182,19 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("shutdown: %w", err)
+		err = fmt.Errorf("shutdown: %w", err)
+	} else {
+		err = nil
 	}
-	return nil
+	// Финальное сохранение часов — до закрытия пула БД (defer db.Close).
+	if clockDone != nil {
+		select {
+		case <-clockDone:
+		case <-time.After(10 * time.Second):
+			log.Warn("clock: final persist timed out")
+		}
+	}
+	return err
 }
 
 func newLogger(level string) *slog.Logger {

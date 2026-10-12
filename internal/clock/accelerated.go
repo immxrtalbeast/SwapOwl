@@ -129,13 +129,21 @@ func (c *Accelerated) Persist(ctx context.Context) error {
 	return c.store.Save(ctx, st)
 }
 
-// Run периодически сохраняет время, пока ctx не отменён.
+// finalPersistTimeout ограничивает последнее сохранение при остановке.
+const finalPersistTimeout = 5 * time.Second
+
+// Run периодически сохраняет время, пока ctx не отменён. При отмене делает последнее
+// сохранение с отдельным контекстом и таймаутом (исходный уже отменён), чтобы после рестарта
+// время стенда не откатывалось к последнему тику.
 func (c *Accelerated) Run(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
+			fctx, cancel := context.WithTimeout(context.Background(), finalPersistTimeout)
+			_ = c.Persist(fctx)
+			cancel()
 			return
 		case <-t.C:
 			_ = c.Persist(ctx)

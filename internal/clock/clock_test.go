@@ -153,3 +153,25 @@ func TestMonotonicConcurrent(t *testing.T) {
 	default:
 	}
 }
+
+func TestRunPersistsOnCancel(t *testing.T) {
+	st := &MemStore{}
+	c, err := NewAccelerated(context.Background(), st, t0, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetSpeed(context.Background(), 600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { c.Run(ctx, time.Hour); close(done) }() // тик не успеет сработать
+	time.Sleep(30 * time.Millisecond)
+	cancelAt := c.Now()
+	cancel()
+	<-done
+	got, ok, _ := st.Load(context.Background())
+	if !ok || got.SimTime.Before(cancelAt) {
+		t.Fatalf("сохранено %v, раньше момента отмены %v", got.SimTime, cancelAt)
+	}
+}
