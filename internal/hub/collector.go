@@ -24,6 +24,8 @@ const (
 type PointState struct {
 	ID            string     `json:"id"`
 	Name          string     `json:"name"`
+	Label         string     `json:"label,omitempty"`
+	Group         string     `json:"group,omitempty"`
 	Status        string     `json:"status"`
 	LastAttemptAt *time.Time `json:"last_attempt_at"`
 	LastSuccessAt *time.Time `json:"last_success_at"`
@@ -43,6 +45,9 @@ type PointState struct {
 	Writeoffs7dMinor    int64 `json:"writeoffs_7d_minor"`
 
 	TopHotOffer *HotOffer `json:"top_hot_offer"`
+
+	// Только для точек группы ab (ab.go): прогон генератора и списания в ₽ по часам стенда с его начала.
+	Run *Run `json:"run,omitempty"`
 
 	// Ленты для /api/network/points/{id}.
 	Alerts   []Alert        `json:"alerts,omitempty"`
@@ -90,6 +95,7 @@ type Collector struct {
 
 	mu     sync.RWMutex
 	states map[string]PointState
+	runs   map[string]*abRun // состояние A/B-прогона по id точки группы ab
 }
 
 // NewCollector создаёт сборщик; timeout — на весь опрос одной точки.
@@ -98,9 +104,9 @@ func NewCollector(cfg Config, timeout time.Duration, now func() time.Time) *Coll
 		now = time.Now
 	}
 	c := &Collector{points: cfg.Points, timeout: timeout, now: now,
-		client: &http.Client{}, states: map[string]PointState{}}
+		client: &http.Client{}, states: map[string]PointState{}, runs: map[string]*abRun{}}
 	for _, p := range cfg.Points {
-		c.states[p.ID] = PointState{ID: p.ID, Name: p.Name, Status: StatusUnreachable,
+		c.states[p.ID] = PointState{ID: p.ID, Name: p.Name, Label: p.Label, Group: p.Group, Status: StatusUnreachable,
 			StopListNames: []string{}}
 	}
 	return c
@@ -143,11 +149,11 @@ func (c *Collector) pollOne(ctx context.Context, p Point) {
 	c.mu.RUnlock()
 
 	st, err := c.fetch(ctx, p)
-	st.ID, st.Name = p.ID, p.Name
+	st.ID, st.Name, st.Label, st.Group = p.ID, p.Name, p.Label, p.Group
 	st.LastAttemptAt = &at
 	if err != nil {
 		// Данных нет: прошлые цифры не показываем как свежие, оставляем только время успеха.
-		st = PointState{ID: p.ID, Name: p.Name, LastAttemptAt: &at, LastSuccessAt: prev.LastSuccessAt,
+		st = PointState{ID: p.ID, Name: p.Name, Label: p.Label, Group: p.Group, LastAttemptAt: &at, LastSuccessAt: prev.LastSuccessAt,
 			StopListNames: []string{}, Status: classify(err), Error: scrub(err, p)}
 	} else {
 		st.Status, st.LastSuccessAt = StatusOK, &at
@@ -295,7 +301,7 @@ func (c *Collector) Snapshot() []PointState {
 	defer c.mu.RUnlock()
 	out := make([]PointState, 0, len(c.points))
 	for _, p := range c.points {
-		out = append(out, c.states[p.ID])
+		out = append(out, c.withRun(c.states[p.ID]))
 	}
 	return out
 }
@@ -305,7 +311,7 @@ func (c *Collector) Point(id string) (PointState, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	st, ok := c.states[id]
-	return st, ok
+	return c.withRun(st), ok
 }
 
 // Totals — итог по сети.

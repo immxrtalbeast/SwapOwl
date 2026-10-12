@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -194,5 +195,161 @@ func TestParseConfig(t *testing.T) {
 	}
 	if d, err := PollInterval("30"); err != nil || d != 30*time.Second {
 		t.Error("seconds poll")
+	}
+}
+
+// abPoint — точка с управляемыми часами стенда и списаниями «1 ₽ за каждую минуту стенда после 12:00».
+type abPoint struct {
+	srv     *httptest.Server
+	mu      sync.Mutex
+	now     time.Time
+	running bool
+}
+
+func (a *abPoint) set(now time.Time, running bool) {
+	a.mu.Lock()
+	a.now, a.running = now, running
+	a.mu.Unlock()
+}
+
+func newABPoint(t *testing.T, perMinute int64) *abPoint {
+	t.Helper()
+	a := &abPoint{now: time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/clock", func(w http.ResponseWriter, _ *http.Request) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{"now": a.now, "timezone": "UTC", "simulator_running": a.running})
+	})
+	mux.HandleFunc("/api/analytics/writeoffs", func(w http.ResponseWriter, r *http.Request) {
+		base := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+		from, e1 := time.Parse(time.RFC3339, r.URL.Query().Get("from"))
+		to, e2 := time.Parse(time.RFC3339, r.URL.Query().Get("to"))
+		if e1 != nil || e2 != nil { // сутки: не интересуют
+			_, _ = w.Write([]byte(`{"total_minor":0}`))
+			return
+		}
+		if from.Before(base) {
+			from = base
+		}
+		min := int64(0)
+		if to.After(from) {
+			min = int64(to.Sub(from) / time.Minute)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"total_minor": min * perMinute})
+	})
+	empty := func(body string) http.HandlerFunc {
+		return func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }
+	}
+	mux.HandleFunc("/api/alerts", empty(`[]`))
+	mux.HandleFunc("/api/stop-list", empty(`[]`))
+	mux.HandleFunc("/api/hot-offers", empty(`{"offers":[]}`))
+	a.srv = httptest.NewServer(mux)
+	t.Cleanup(a.srv.Close)
+	return a
+}
+
+func TestParseConfigGroupAndLabel(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`points:
+  - id: with
+    url: http://a
+    api_key: k
+    label: "Со SwapOwl"
+    group: AB
+  - id: without
+    url: http://b
+    api_key: k
+    label: Без подсказок
+    group: ab
+  - id: other
+    url: http://c
+    api_key: k
+`), func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := cfg.Points
+	if p[0].Label != "Со SwapOwl" || p[0].Group != GroupAB || p[1].Label != "Без подсказок" || p[2].Group != "" {
+		t.Errorf("points: %+v", p)
+	}
+	_, err = ParseConfig([]byte(`[{"id":"a","url":"http://a","api_key":"k","group":"ab"},{"id":"b","url":"http://b","api_key":"k","group":"ab"},{"id":"c","url":"http://c","api_key":"k","group":"ab"}]`), nil)
+	if err == nil {
+		t.Error("три точки в группе ab должны быть отвергнуты")
+	}
+}
+
+func TestABSeriesGroupingAndReset(t *testing.T) {
+	with, without := newABPoint(t, 100), newABPoint(t, 300)
+	other := fakePoint(t, `[]`, 0)
+	cfg := Config{Points: []Point{
+		{ID: "with", Name: "A", Label: "Со SwapOwl", Group: GroupAB, URL: with.srv.URL, APIKey: goodKey},
+		{ID: "without", Name: "B", Label: "Без подсказок", Group: GroupAB, URL: without.srv.URL, APIKey: goodKey},
+		{ID: "other", Name: "C", URL: other.URL, APIKey: goodKey},
+	}}
+	col := NewCollector(cfg, 2*time.Second, nil)
+	ctx := context.Background()
+	col.PollAll(ctx)
+	col.PollAB(ctx)
+	for _, s := range col.Snapshot() {
+		if s.Run != nil {
+			t.Fatalf("%s: прогон без запущенного генератора: %+v", s.ID, s.Run)
+		}
+	}
+
+	// Генератор запущен, прошло 2 ч 30 мин стенда.
+	t0 := time.Date(2026, 10, 9, 12, 20, 0, 0, time.UTC) // прогон начнётся с 12:00 (час стенда)
+	with.set(t0, true)
+	without.set(t0, true)
+	col.PollAB(ctx)
+	with.set(t0.Add(2*time.Hour+10*time.Minute), true)
+	without.set(t0.Add(2*time.Hour+10*time.Minute), true)
+	col.PollAB(ctx)
+
+	snap := col.Snapshot()
+	if snap[0].Label != "Со SwapOwl" || snap[0].Group != GroupAB || snap[1].Label != "Без подсказок" || snap[2].Group != "" {
+		t.Errorf("label/group: %+v %+v %+v", snap[0].Label, snap[1].Label, snap[2].Group)
+	}
+	if snap[2].Run != nil {
+		t.Error("точка вне группы ab не получает ряд")
+	}
+	a, b := snap[0].Run, snap[1].Run
+	if a == nil || b == nil || !a.Running {
+		t.Fatalf("run: %+v %+v", a, b)
+	}
+	// 12:00 → 14:30 = 150 мин стенда.
+	if a.TotalMinor != 150*100 || b.TotalMinor != 150*300 {
+		t.Errorf("totals: %d %d", a.TotalMinor, b.TotalMinor)
+	}
+	want := []SeriesPoint{{0, 0}, {1, 6000}, {2, 12000}, {2.5, 15000}}
+	if len(a.Series) != len(want) {
+		t.Fatalf("series: %+v", a.Series)
+	}
+	for i, sp := range want {
+		if a.Series[i] != sp {
+			t.Errorf("series[%d] = %+v, want %+v", i, a.Series[i], sp)
+		}
+	}
+	if b.Series[len(b.Series)-1].CostMinor != 45000 || a.Series[1].Hour != b.Series[1].Hour {
+		t.Errorf("оси двух точек должны совпадать: %+v %+v", a.Series, b.Series)
+	}
+
+	// В сводке и в JSON ряд есть.
+	rr := do(NewServer(col, "t"), "/api/network/summary", "t")
+	if !strings.Contains(rr.Body.String(), `"series"`) || !strings.Contains(rr.Body.String(), `"label":"Со SwapOwl"`) {
+		t.Errorf("summary: %s", rr.Body.String())
+	}
+
+	// Пауза: генератор выключен, ряд остаётся.
+	with.set(with.now, false)
+	col.PollAB(ctx)
+	if r := col.Snapshot()[0].Run; r == nil || r.Running || r.TotalMinor != 15000 {
+		t.Errorf("после паузы: %+v", r)
+	}
+
+	// Сброс: часы назад, генератор остановлен — прогона нет.
+	with.set(time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC), false)
+	col.PollAB(ctx)
+	if r := col.Snapshot()[0].Run; r != nil {
+		t.Errorf("после сброса прогон должен исчезнуть: %+v", r)
 	}
 }

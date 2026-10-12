@@ -1,7 +1,10 @@
-import type { HubPoint, HubSummary } from "../../api/network";
+import type { HubPoint, HubSeriesPoint, HubSummary } from "../../api/network";
+import { formatRub } from "../../lib/format";
 
 /** Период опроса hub экраном, мс. */
 export const POLL_MS = 60_000;
+/** Период опроса, пока идёт A/B-прогон, мс. */
+export const AB_POLL_MS = 2_500;
 
 /** Последние успешные данные по точкам: недоступная точка показывается ими, а не пустыми цифрами. */
 export type Cache = Record<string, HubPoint>;
@@ -95,4 +98,63 @@ export function clockText(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Пара точек группы ab; null, если группы нет или в ней не две точки. */
+export function abPair(points: readonly HubPoint[]): [HubPoint, HubPoint] | null {
+  const g = points.filter((p) => p.group === "ab");
+  return g.length === 2 ? [g[0], g[1]] : null;
+}
+
+/** Идёт ли прогон хотя бы на одной точке пары: тогда экран обновляется часто. */
+export function abRunning(points: readonly HubPoint[]): boolean {
+  const pair = abPair(points);
+  return pair !== null && pair.some((p) => p.run?.running === true);
+}
+
+export interface AbSide {
+  point: HubPoint;
+  label: string;
+  /** Списано с начала прогона, копейки; null — прогона ещё нет. */
+  totalMinor: number | null;
+  series: HubSeriesPoint[];
+}
+
+export interface AbComparison {
+  /** Точка со SwapOwl и точка-сравнение («Без подсказок»). */
+  ours: AbSide;
+  base: AbSide;
+  /** Разница ours − base, копейки; отрицательная — SwapOwl сэкономил. null, пока нет данных у обеих. */
+  diffMinor: number | null;
+  /** Разница в процентах от списаний базовой точки; null, если база ещё не списала ничего. */
+  diffPct: number | null;
+  running: boolean;
+}
+
+const side = (point: HubPoint, fallback: string): AbSide => ({
+  point,
+  label: point.label?.trim() || fallback,
+  totalMinor: point.run ? point.run.total_minor : null,
+  series: point.run?.series ?? [],
+});
+
+/** Базовая точка — та, чья подпись начинается с «Без»; иначе вторая в конфиге. */
+export function compareAb(pair: readonly [HubPoint, HubPoint]): AbComparison {
+  const baseFirst = /^\s*без/i.test(pair[0].label ?? "") && !/^\s*без/i.test(pair[1].label ?? "");
+  const [o, b] = baseFirst ? [pair[1], pair[0]] : pair;
+  const ours = side(o, "Со SwapOwl");
+  const base = side(b, "Без подсказок");
+  const diffMinor = ours.totalMinor !== null && base.totalMinor !== null ? ours.totalMinor - base.totalMinor : null;
+  const diffPct = diffMinor !== null && base.totalMinor ? (diffMinor / base.totalMinor) * 100 : null;
+  return { ours, base, diffMinor, diffPct, running: pair.some((p) => p.run?.running === true) };
+}
+
+/** «−12 400 ₽ (−18,3 %)»; «—», пока данных нет. */
+export function diffText(c: Pick<AbComparison, "diffMinor" | "diffPct">): string {
+  if (c.diffMinor === null) return "—";
+  const rub = c.diffMinor > 0 ? `+${formatRub(c.diffMinor)}` : formatRub(c.diffMinor);
+  if (c.diffPct === null) return rub;
+  const abs = Math.abs(c.diffPct).toFixed(1).replace(".", ",");
+  const sign = c.diffPct > 0 ? "+" : c.diffPct < 0 ? "−" : "";
+  return `${rub} (${sign}${abs}\u00a0%)`;
 }

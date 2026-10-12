@@ -33,6 +33,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	abPoll, err := hub.ABPollInterval(os.Getenv("HUB_AB_POLL"))
+	if err != nil {
+		return err
+	}
 	addr := os.Getenv("HUB_ADDR")
 	if addr == "" {
 		addr = ":8090"
@@ -46,6 +50,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go col.Run(ctx, poll)
+	go col.RunAB(ctx, abPoll) // точки группы ab — часто, ради живого сравнения
 
 	srv := &http.Server{Addr: addr, Handler: hub.NewServer(col, token), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
