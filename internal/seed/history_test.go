@@ -160,3 +160,16 @@ func TestHistoryWriteoffsPlausible(t *testing.T) {
 		t.Fatalf("списания недели %.1f %% себестоимости проданного, ожидалось 4–10 %%", pct)
 	}
 }
+
+// Поставка без позиций через API не создаётся, в истории её быть не должно.
+func TestHistoryDeliveriesNotEmpty(t *testing.T) {
+	h, err := buildHistory(testT0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range h.deliveries {
+		if len(d.Resp.Batches) == 0 {
+			t.Errorf("поставка %s без партий", d.ID)
+		}
+	}
+}

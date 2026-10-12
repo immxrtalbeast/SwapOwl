@@ -144,6 +144,9 @@ func buildHistory(t0 time.Time) (*history, error) {
 			if !seeded {
 				d = h.procure(d, at, prods)
 			}
+			if len(d.Items) == 0 {
+				continue // закупать нечего — поставки не было
+			}
 			err = h.addDelivery(d, at, prods, seeded)
 		case generator.KindOrder:
 			err = h.addOrder(e.Order, at, prods, recipes)
