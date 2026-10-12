@@ -6,6 +6,11 @@
 #   fleet.sh status                        тег и здоровье каждой точки
 #   fleet.sh hub-key <slug>                сохранить viewer-ключ точки для hub (из stdin) и обновить hub
 #   fleet.sh edge                          пересобрать Caddyfile/hub.yml и перезапустить общие сервисы
+#   fleet.sh ab-set <slug> "<подпись>"     включить точку в группу ab (живое A/B на экране «Сеть»), подпись — «Со SwapOwl» / «Без подсказок»
+#   fleet.sh ab-unset <slug>               убрать точку из группы ab
+#   fleet.sh ab-start [часов]              A/B: сброс обеих точек, одна скорость (AB_SPEED, по умолчанию 600), одновременный
+#                                          старт генератора, через [часов] (по умолчанию 24) времени стенда — пауза
+#   fleet.sh ab-stop                       пауза обеих точек сейчас (генератор выключен, часы стенда остановлены)
 # Каталог: FLEET_ROOT (по умолчанию /opt/swapowl): points/<slug>/{.env,hub.key,compose.override.yml,.last_good}, edge/{.env,Caddyfile,hub.yml}.
 # Одиночный режим (deploy.sh, проект swapowl) не затрагивается.
 set -euo pipefail
@@ -94,7 +99,7 @@ backup() { COMPOSE_FILE="$PROD_COMPOSE" "$SCRIPT_DIR/backup.sh" "$POINTS/$1"; }
 
 # Caddyfile (маршрут <slug>.<SITE_DOMAIN>) и конфиг hub по списку точек.
 gen_edge() {
-  local domain scheme="" slug key
+  local domain scheme="" slug key label group
   domain="$(envval "$EDGE_DIR/.env" SITE_DOMAIN)"; domain="${domain:-localhost}"
   [ "$domain" = localhost ] && scheme="http://"
   {
@@ -146,6 +151,9 @@ CF
       key="$(cat "$POINTS/$slug/hub.key" 2>/dev/null || true)"
       [ -n "$key" ] || continue
       printf '  - id: %s\n    name: %s\n    url: http://api-%s:8080\n    api_key: %s\n' "$slug" "$slug" "$slug" "$key"
+      label="$(envval "$POINTS/$slug/.env" HUB_LABEL)"; group="$(envval "$POINTS/$slug/.env" HUB_GROUP)"
+      [ -z "$label" ] || printf '    label: "%s"\n' "$label"
+      [ -z "$group" ] || printf '    group: %s\n' "$group"
     done
   } > "$EDGE_DIR/hub.yml"
   # hub работает от uid 10001: отдаём ему файл с ключами, иначе читаемым для всех.
@@ -248,12 +256,126 @@ cmd_hub_key() {
   edge_up
 }
 
+# setenv <slug> <KEY> <значение|""> — записать (или убрать при пустом) переменную в .env точки.
+setenv() {
+  local f="$POINTS/$1/.env" tmp
+  tmp="$(mktemp)"
+  grep -v "^$2=" "$f" > "$tmp" || true
+  [ -z "$3" ] || printf '%s=%s\n' "$2" "$3" >> "$tmp"
+  cat "$tmp" > "$f"; rm -f "$tmp"
+}
+
+cmd_ab_set() {
+  local slug="${1:-}" label="${2:-}" n=0 s
+  check_slug "$slug"
+  [ -f "$POINTS/$slug/.env" ] || die "нет точки $slug"
+  label="${label//\"/}"; label="${label//$'\n'/ }"
+  for s in $(ab_slugs); do [ "$s" = "$slug" ] || n=$((n + 1)); done
+  [ "$n" -lt 2 ] || die "в группе ab уже две другие точки: $(ab_slugs | tr '\n' ' ')"
+  setenv "$slug" HUB_GROUP ab
+  setenv "$slug" HUB_LABEL "$label"
+  edge_up
+  echo "точка $slug в группе ab${label:+ («$label»)}"
+}
+
+cmd_ab_unset() {
+  local slug="${1:-}"
+  check_slug "$slug"
+  [ -f "$POINTS/$slug/.env" ] || die "нет точки $slug"
+  setenv "$slug" HUB_GROUP ""
+  setenv "$slug" HUB_LABEL ""
+  edge_up
+}
+
+ab_slugs() { local s; for s in $(slugs); do [ "$(envval "$POINTS/$s/.env" HUB_GROUP)" = ab ] && echo "$s"; done; return 0; }
+
+# Адрес API точки снаружи (через общий Caddy): https://<slug>.<SITE_DOMAIN>; для localhost — http. Переопределение: AB_URL_<SLUG_В_ВЕРХНЕМ_РЕГИСТРЕ_С_ПОДЧЁРКИВАНИЯМИ>.
+ab_url() {
+  local slug="$1" var domain
+  var="AB_URL_$(echo "$slug" | tr 'a-z-' 'A-Z_')"
+  if [ -n "${!var:-}" ]; then echo "${!var%/}"; return; fi
+  domain="$(envval "$EDGE_DIR/.env" SITE_DOMAIN)"; domain="${domain:-localhost}"
+  if [ "$domain" = localhost ]; then echo "http://$slug.$domain"; else echo "https://$slug.$domain"; fi
+}
+
+# ab_post <slug> <путь> <тело> [токен]: POST к API точки; код != 2xx — ошибка (тело ответа не печатаем: там могут быть данные).
+ab_post() {
+  local slug="$1" path="$2" body="$3" tok="${4:-}" code
+  local -a auth=()
+  [ -z "$tok" ] || auth=(-H "Authorization: Bearer $tok")
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST -H 'Content-Type: application/json' ${auth[@]+"${auth[@]}"} -d "$body" "$(ab_url "$slug")$path" || true)"
+  [[ "$code" =~ ^2 ]] || { echo "$slug: POST $path -> ${code:-нет ответа}" >&2; return 1; }
+}
+
+AB_PID="$EDGE_DIR/ab.pid"
+
+ab_pause() {
+  local slug
+  for slug in "$@"; do
+    ab_post "$slug" /api/demo/simulator '{"running":false}' "${AB_SIM_KEY:-}" || true
+    ab_post "$slug" /api/demo/clock/speed '{"speed":0}' "$(envval "$POINTS/$slug/.env" DEMO_TOKEN)" || true
+  done
+}
+
+cmd_ab_start() {
+  local hours="${1:-24}" speed="${AB_SPEED:-600}" pts slug tok t0 t1 wait_s pids=() p
+  [[ "$hours" =~ ^[0-9]+$ ]] && [ "$hours" -ge 1 ] || die "использование: fleet.sh ab-start [часов стенда, целое >= 1]"
+  [[ "$speed" =~ ^[0-9]+$ ]] && [ "$speed" -ge 1 ] && [ "$speed" -le 3600 ] || die "AB_SPEED: целое 1..3600"
+  mapfile -t pts < <(ab_slugs)
+  [ "${#pts[@]}" -eq 2 ] || die "в группе ab нужно ровно две точки (сейчас ${#pts[@]}): fleet.sh ab-set <slug> \"подпись\""
+  cmd_ab_stop_watcher
+  for slug in "${pts[@]}"; do
+    tok="$(envval "$POINTS/$slug/.env" DEMO_TOKEN)"
+    [ -n "$tok" ] || die "$slug: в .env нет DEMO_TOKEN"
+    ab_post "$slug" /api/demo/simulator '{"running":false}' "${AB_SIM_KEY:-}" || die "$slug: не удалось остановить генератор (при AUTH_REQUIRED=true нужен ключ operator: AB_SIM_KEY)"
+    ab_post "$slug" /api/demo/reset '{}' "$tok" || die "$slug: сброс не удался"
+    ab_post "$slug" /api/demo/clock/speed "{\"speed\":$speed}" "$tok" || die "$slug: не удалось задать скорость"
+  done
+  # Одновременный старт: оба запроса уходят параллельно, разница моментов окончания замеряется.
+  t0="$(date +%s%N)"
+  for slug in "${pts[@]}"; do
+    ( ab_post "$slug" /api/demo/simulator '{"running":true}' "${AB_SIM_KEY:-}" && date +%s%N > "$EDGE_DIR/.ab-start.$slug" ) &
+    pids+=($!)
+  done
+  for p in "${pids[@]}"; do wait "$p" || { ab_pause "${pts[@]}"; die "старт генератора не удался, точки поставлены на паузу"; }; done
+  t1="$(( ($(cat "$EDGE_DIR/.ab-start.${pts[0]}") - $(cat "$EDGE_DIR/.ab-start.${pts[1]}")) / 1000000 ))"
+  rm -f "$EDGE_DIR/.ab-start."*
+  t1="${t1#-}"
+  echo "старт: ${pts[*]}; скорость ×$speed; разница стартов ${t1} мс"
+  [ "$t1" -lt 1000 ] || echo "предупреждение: разница стартов больше 1 с" >&2
+  wait_s=$(( hours * 3600 / speed ))
+  echo "пауза через $hours ч стенда (≈ ${wait_s} с реального времени); остановить раньше: fleet.sh ab-stop"
+  ( sleep "$wait_s"; ab_pause "${pts[@]}"; rm -f "$AB_PID" ) >/dev/null 2>&1 &
+  echo $! > "$AB_PID"
+  disown 2>/dev/null || true
+}
+
+cmd_ab_stop_watcher() {
+  local pid
+  pid="$(cat "$AB_PID" 2>/dev/null || true)"
+  [ -z "$pid" ] || { pkill -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true; }
+  rm -f "$AB_PID"
+}
+
+cmd_ab_stop() {
+  local pts
+  cmd_ab_stop_watcher
+  mapfile -t pts < <(ab_slugs)
+  [ "${#pts[@]}" -gt 0 ] || die "в группе ab нет точек"
+  ab_pause "${pts[@]}"
+  echo "пауза: ${pts[*]}"
+}
+
 case "${1:-}" in
+  ab-set) shift; cmd_ab_set "$@" ;;
+  ab-unset) shift; cmd_ab_unset "$@" ;;
+  ab-start) shift; cmd_ab_start "$@" ;;
+  ab-stop) cmd_ab_stop ;;
   list) cmd_list ;;
   up) shift; cmd_up "$@" ;;
   deploy) shift; cmd_deploy "$@" ;;
   status) cmd_status ;;
   hub-key) shift; cmd_hub_key "$@" ;;
   edge) ensure_edge; edge_up ;;
-  *) sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 2 ;;
+  *) sed -n '2,16p' "${BASH_SOURCE[0]}"; exit 2 ;;
 esac

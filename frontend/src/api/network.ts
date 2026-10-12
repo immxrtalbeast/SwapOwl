@@ -26,11 +26,31 @@ export interface HubHotOffer {
   explanation?: string;
 }
 
+/** Накопленные списания (копейки) с начала прогона на момент `hour` — часов стенда с его начала. */
+export interface HubSeriesPoint {
+  hour: number;
+  cost_minor: number;
+}
+
+/** Прогон точки группы ab: генератор идёт или на паузе, списания в ₽ по часам стенда. */
+export interface HubRun {
+  running: boolean;
+  started_at: string;
+  stand_time: string;
+  total_minor: number;
+  series: HubSeriesPoint[];
+}
+
 export type HubStatus = "ok" | "unreachable" | "unauthorized" | "error";
 
 export interface HubPoint {
   id: string;
   name: string;
+  /** Подпись в сравнении («Со SwapOwl», «Без подсказок»), из конфига hub. */
+  label?: string;
+  /** Группа точек; «ab» — пара для живого сравнения. */
+  group?: string;
+  run?: HubRun;
   /** Адрес точки для ссылки «Открыть точку»; hub отдаёт его, если он настроен. */
   url?: string;
   status: HubStatus;

@@ -6,7 +6,8 @@ import { BATCH_STATES, DISH_STATES, batchState } from "../../lib/urgency";
 import type { UrgencyDef } from "../../lib/urgency";
 import { formatRub, formatQty } from "../../lib/format";
 import { formatTimeLeft } from "../stock/format";
-import { buildRows, clockText, networkTotals, stopListText } from "./model";
+import { AbCompare } from "./AbCompare";
+import { abPair, buildRows, clockText, networkTotals, stopListText } from "./model";
 import type { Cache, PointRow } from "./model";
 import { useNetwork } from "./useNetwork";
 
@@ -149,8 +150,10 @@ export function NetworkView({ summary, cache, nowMs, selected, onSelect, detail 
   const totals = networkTotals(summary);
   const chosen = rows.find((r) => r.point.id === selected) ?? null;
   const cols = columns(onSelect, selected);
+  const ab = abPair(summary.points);
   return (
     <div style={{ display: "grid", gap: 24 }}>
+      {ab && <AbCompare pair={ab} />}
       <Card flush title="Точки сети">
         <DataTable
           caption="Точки сети по риску"

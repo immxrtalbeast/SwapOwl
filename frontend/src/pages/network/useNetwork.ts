@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { network } from "../../api/network";
 import type { HubPoint, HubSummary } from "../../api/network";
-import { POLL_MS, updateCache } from "./model";
+import { AB_POLL_MS, POLL_MS, abRunning, updateCache } from "./model";
 import type { Cache } from "./model";
 
 export type NetworkState =
@@ -10,13 +10,14 @@ export type NetworkState =
   | { kind: "ready"; summary: HubSummary; cache: Cache; detail: HubPoint | null; at: number };
 
 /**
- * Сводка по сети: опрос раз в 60 с без перезагрузки страницы. Данные последнего успешного опроса точки
+ * Сводка по сети: опрос раз в 60 с (раз в 2,5 с, пока идёт A/B-прогон) без перезагрузки страницы. Данные последнего успешного опроса точки
  * держим в памяти, чтобы недоступную точку показывать ими. Ошибка hub после первого успеха не стирает экран.
  */
 export function useNetwork(selected: string | null): [NetworkState, () => Promise<void>] {
   const [state, setState] = useState<NetworkState>({ kind: "loading" });
   const cache = useRef<Cache>({});
   const detailCache = useRef<Record<string, HubPoint>>({});
+  const fast = useRef(false); // идёт A/B-прогон: опрос чаще
   const sel = useRef(selected);
   sel.current = selected;
 
@@ -24,6 +25,7 @@ export function useNetwork(selected: string | null): [NetworkState, () => Promis
     try {
       const summary = await network.summary();
       cache.current = updateCache(cache.current, summary.points);
+      fast.current = abRunning(summary.points);
       const id = sel.current;
       if (id) {
         try {
@@ -45,9 +47,17 @@ export function useNetwork(selected: string | null): [NetworkState, () => Promis
   }, []);
 
   useEffect(() => {
-    void load();
-    const t = setInterval(() => void load(), POLL_MS);
-    return () => clearInterval(t);
+    let stopped = false;
+    let t: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      await load();
+      if (!stopped) t = setTimeout(() => void tick(), fast.current ? AB_POLL_MS : POLL_MS);
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      clearTimeout(t);
+    };
   }, [load]);
 
   // Смена выбранной точки — сразу перечитываем подробности.
