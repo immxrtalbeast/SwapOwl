@@ -224,6 +224,12 @@ export interface MoneyReport {
   by_day: MoneyDay[];
 }
 
+// GET /api/forecast/writeoffs: под угрозой за период, стоимость по продуктам.
+export interface ForecastReport {
+  total_minor: number;
+  products: { product_id: string; product_name: string; at_risk: Qty; total_minor: number }[];
+}
+
 // GET /api/analytics/shortages (7.4): продукты, которых не хватило отклонённым заказам.
 export interface ShortageRow {
   product_id: string;

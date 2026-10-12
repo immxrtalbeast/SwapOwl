@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { atRiskFromAlerts, restaurantDay, todayMinor, qtyCostMinor, unitPricesFromWriteoffs } from "./today";
+import { atRiskFromAlerts, restaurantDay, todayMinor, qtyCostMinor, unitPricesFromForecast, unitPricesFromWriteoffs } from "./today";
 import type { Alert, MoneyReport } from "./types";
 
 const report = {
@@ -21,6 +21,11 @@ describe("today model", () => {
     expect(p).toEqual({ milk: 8 });
     expect(qtyCostMinor("milk", { qty: 500, unit: "ml" }, p)).toBe(4000);
     expect(qtyCostMinor("nope", { qty: 1, unit: "g" }, p)).toBeNull();
+  });
+  it("цена у продукта без истории списаний — из прогноза", () => {
+    const p = unitPricesFromForecast({ total_minor: 1600, products: [{ product_id: "salmon", product_name: "Лосось", at_risk: { qty: 800, unit: "g" }, total_minor: 1600 }] });
+    expect(p).toEqual({ salmon: 2 });
+    expect(atRiskFromAlerts([alert("salmon", "expiring", 500)], p)).toEqual({ totalMinor: 1000, unpriced: 0 });
   });
   it("считает только истекающие, без цены — отдельно", () => {
     const r = atRiskFromAlerts([alert("milk", "expiring", 500), alert("milk", "expired", 900), alert("nope", "expiring", 1)], { milk: 8 });

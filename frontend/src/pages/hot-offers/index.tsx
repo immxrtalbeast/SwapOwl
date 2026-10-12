@@ -3,7 +3,11 @@ import type { HotAlgo, HotOffer } from "../../api/types";
 import { Card, ErrorState, LoadingState, EmptyState, ScreenTitle, SecondaryButton } from "../../components";
 import { formatQty } from "../stock/format";
 import { productIdFromHash } from "./query";
+import { RealisticBlock } from "./RealisticBlock";
+import { realisticTarget } from "./realistic";
 import { useHotOffers } from "./useHotOffers";
+import { useUnitPrices } from "./useUnitPrices";
+import type { UnitPrices } from "../../api/today";
 import { filterByProduct, formatUntil, handNote, portionsWord } from "./view";
 
 function useProductFilter(): string | null {
@@ -16,15 +20,16 @@ function useProductFilter(): string | null {
   return id;
 }
 
-function OfferCard({ offer, note }: { offer: HotOffer; note?: string }) {
+function OfferCard({ offer, note, prices }: { offer: HotOffer; note?: string; prices: UnitPrices }) {
   const hasTarget = offer.target_portions > 0;
+  const capped = realisticTarget(offer) !== null;
   return (
     <article
       data-testid="hot-offer"
       style={{ display: "grid", gap: 8, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-sm)", padding: "var(--card-pad)", minWidth: 0 }}
     >
       <h2 style={{ margin: 0, font: "var(--type-h3)" }}>{offer.dish_name}</h2>
-      {hasTarget && (
+      {hasTarget && !capped && (
         <p style={{ margin: 0, display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "2px 12px" }}>
           <span style={{ font: "var(--type-kpi)", fontSize: 32, lineHeight: 1.1, color: "var(--primary)" }}>
             {offer.target_today > 0 ? offer.target_today : offer.target_portions}{" "}
@@ -39,6 +44,7 @@ function OfferCard({ offer, note }: { offer: HotOffer; note?: string }) {
           </span>
         </p>
       )}
+      {capped && <RealisticBlock offer={offer} prices={prices} />}
       {!hasTarget && (
         <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
           <span title={new Date(offer.sell_until).toLocaleString("ru-RU")}>{formatUntil(offer.sell_until)}</span>
@@ -92,6 +98,7 @@ function productName(offers: HotOffer[], id: string): string {
 }
 
 function Body({ state, productId }: { state: Extract<ReturnType<typeof useHotOffers>[0], { kind: "ready" }>; productId: string | null }) {
+  const prices = useUnitPrices();
   const offers = filterByProduct(state.data.offers, productId);
   const excluded = productId ? state.data.excluded.filter((e) => e.product_id === productId) : state.data.excluded;
   return (
@@ -104,7 +111,7 @@ function Body({ state, productId }: { state: Extract<ReturnType<typeof useHotOff
       )}
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
         {offers.map((o, i) => (
-          <OfferCard key={o.dish_id} offer={o} note={i === 0 ? handNote(o) : undefined} />
+          <OfferCard key={o.dish_id} offer={o} note={i === 0 ? handNote(o) : undefined} prices={prices} />
         ))}
       </div>
       {excluded.length > 0 && (
