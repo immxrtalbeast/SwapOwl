@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -106,4 +107,42 @@ func (t *Telegram) ForceReply(ctx context.Context, text string) error {
 	return t.call(ctx, "sendMessage", map[string]any{
 		"chat_id": t.ChatID, "text": text, "reply_markup": map[string]any{"force_reply": true},
 	}, nil)
+}
+
+// SendPhoto отправляет PNG с подписью (multipart sendPhoto).
+func (t *Telegram) SendPhoto(ctx context.Context, img []byte, caption string) error {
+	base := t.Base
+	if base == "" {
+		base = "https://api.telegram.org"
+	}
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	_ = mw.WriteField("chat_id", t.ChatID)
+	_ = mw.WriteField("caption", caption)
+	fw, err := mw.CreateFormFile("photo", "week.png")
+	if err != nil {
+		return err
+	}
+	_, _ = fw.Write(img)
+	_ = mw.Close()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		strings.TrimRight(base, "/")+"/bot"+t.Token+"/sendPhoto", &body)
+	if err != nil {
+		return errors.New("telegram: " + t.redact(err.Error()))
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := t.HC.Do(req)
+	if err != nil {
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err
+		}
+		return errors.New("telegram: " + t.redact(err.Error()))
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("telegram: статус %d: %s", resp.StatusCode, t.redact(strings.TrimSpace(string(b))))
+	}
+	return nil
 }

@@ -60,10 +60,19 @@ func run() error {
 		DigestAt: digestAt,
 		Logf:     lg.Printf,
 	}
+	if owner := os.Getenv("NOTIFY_OWNER_CHAT"); owner != "" {
+		weeklyAt := env("NOTIFY_WEEKLY_AT", "09:00")
+		if _, err := time.Parse("15:04", weeklyAt); err != nil {
+			return fmt.Errorf("NOTIFY_WEEKLY_AT: нужен формат ЧЧ:ММ")
+		}
+		otg := &notify.Telegram{Base: tg.Base, Token: tg.Token, ChatID: owner, HC: tg.HC}
+		n.Weekly = &notify.WeeklyConfig{At: weeklyAt, Text: otg, Photo: otg, StandURL: os.Getenv("NOTIFY_STAND_URL")}
+	}
 	bot := &notify.Bot{N: n, TG: tg, ChatID: chatID, Logf: lg.Printf}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	n.MarkDigestStartup(ctx)
+	n.MarkWeeklyStartup(ctx)
 	n.SeedSent(ctx)
 	go bot.Run(ctx, 5*time.Second)
 	go func() {
