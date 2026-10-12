@@ -21,6 +21,7 @@ const CodeUnitConflict = "unit_conflict"
 // Catalog — то, что нужно импорту справочников от хранилища (8.3 п. 5).
 type Catalog interface {
 	ProductUnits(ctx context.Context, ids []string) (map[string]domain.Unit, error)
+	ProductPacking(ctx context.Context, ids []string) (map[string]store.Packing, error)
 	ImportCatalog(ctx context.Context, in store.CatalogInput, dryRun bool) (store.CatalogDiff, error)
 }
 
@@ -42,6 +43,11 @@ type catalogProductIn struct {
 	LeadDays          *int   `json:"lead_days"`
 	PackSize          *int64 `json:"pack_size"`
 	ShelfLifeHours    *int   `json:"shelf_life_hours"`
+	// PieceWeight — g или ml в одной штуке (только unit=pcs), PieceWeightUnit — g (по умолчанию) или ml.
+	PieceWeight     *int64 `json:"piece_weight"`
+	PieceWeightUnit string `json:"piece_weight_unit"`
+	// PackUnit — метка упаковки; pack_size тогда — содержимое упаковки в базовых единицах.
+	PackUnit *string `json:"pack_unit"`
 }
 
 // catalogRecipeIn — строка техкарты: сырьё {product_id, gross | net [+ loss_pct] | quantity}
@@ -117,6 +123,7 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 
 	out := store.CatalogInput{}
 	importUnit := map[string]domain.Unit{}
+	importPiece := map[string]pieceWeight{}
 	for i, p := range in.Products {
 		field := func(f string) string { return fmt.Sprintf("products[%d].%s", i, f) }
 		var msg, bad string
@@ -135,6 +142,16 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 			bad, msg = "pack_size", "pack_size is required, an integer >= 1"
 		case p.ShelfLifeHours != nil && (*p.ShelfLifeHours < 1 || *p.ShelfLifeHours > maxShelfHours):
 			bad, msg = "shelf_life_hours", fmt.Sprintf("shelf_life_hours must be an integer in 1..%d", maxShelfHours)
+		case p.PieceWeight == nil && p.PieceWeightUnit != "":
+			bad, msg = "piece_weight_unit", "piece_weight_unit needs piece_weight"
+		case p.PieceWeight != nil && p.Unit != "pcs":
+			bad, msg = "piece_weight", "piece_weight is allowed only for unit pcs"
+		case p.PieceWeight != nil && (*p.PieceWeight < 1 || *p.PieceWeight > maxPackSize):
+			bad, msg = "piece_weight", "piece_weight must be an integer >= 1 (g or ml per piece)"
+		case p.PieceWeightUnit != "" && p.PieceWeightUnit != "g" && p.PieceWeightUnit != "ml":
+			bad, msg = "piece_weight_unit", "piece_weight_unit must be g or ml"
+		case p.PackUnit != nil && (!validLabel(*p.PackUnit) || len(*p.PackUnit) > 32):
+			bad, msg = "pack_unit", "pack_unit must be 1..32 characters without control characters or edge spaces"
 		}
 		if _, dup := importUnit[p.ID]; dup && msg == "" {
 			bad, msg = "id", fmt.Sprintf("duplicate product id %q", p.ID)
@@ -144,8 +161,17 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		importUnit[p.ID] = domain.Unit(p.Unit)
-		out.Products = append(out.Products, store.CatalogProduct{ID: p.ID, Name: p.Name, Unit: domain.Unit(p.Unit),
-			PriceMinorPer1000: *p.PriceMinorPer1000, LeadDays: *p.LeadDays, PackSize: *p.PackSize, ShelfLifeHours: p.ShelfLifeHours})
+		cp := store.CatalogProduct{ID: p.ID, Name: p.Name, Unit: domain.Unit(p.Unit),
+			PriceMinorPer1000: *p.PriceMinorPer1000, LeadDays: *p.LeadDays, PackSize: *p.PackSize, ShelfLifeHours: p.ShelfLifeHours,
+			PieceWeight: p.PieceWeight, PackUnit: p.PackUnit}
+		if p.PieceWeight != nil {
+			cp.PieceWeightUnit = domain.UnitG
+			if p.PieceWeightUnit == "ml" {
+				cp.PieceWeightUnit = domain.UnitMl
+			}
+			importPiece[p.ID] = pieceWeight{*p.PieceWeight, cp.PieceWeightUnit}
+		}
+		out.Products = append(out.Products, cp)
 	}
 
 	// Продукты рецептов, которых нет в теле, берём из БД: нужны их единицы для разбора количества.
@@ -164,12 +190,33 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 		collect(pr.Recipe)
 	}
 	known := map[string]domain.Unit{}
+	knownPiece := map[string]pieceWeight{}
 	if len(external) > 0 {
 		var err error
 		if known, err = rt.deps.Catalog.ProductUnits(r.Context(), external); err != nil {
 			rt.internalError(w, r, err)
 			return
 		}
+		packing, err := rt.deps.Catalog.ProductPacking(r.Context(), external)
+		if err != nil {
+			rt.internalError(w, r, err)
+			return
+		}
+		for id, pk := range packing {
+			if pk.PieceWeight > 0 {
+				knownPiece[id] = pieceWeight{pk.PieceWeight, pk.PieceWeightUnit}
+			}
+		}
+	}
+	pieceOf := func(id string) (pieceWeight, bool) {
+		if pw, ok := importPiece[id]; ok {
+			return pw, true
+		}
+		if _, inBody := importUnit[id]; inBody {
+			return pieceWeight{}, false // продукт из тела: вес штуки берём только из тела
+		}
+		pw, ok := knownPiece[id]
+		return pw, ok
 	}
 	rawUnit := func(id string) (domain.Unit, bool) {
 		if u, ok := importUnit[id]; ok {
@@ -219,7 +266,7 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 		prepUnit[pr.ID] = domain.Unit(unit)
 	}
 	for i, pr := range in.Preps {
-		lines, bad, msg := parseTechLines(pr.Recipe, fmt.Sprintf("preps[%d].recipe", i), rawUnit, prepUnit)
+		lines, bad, msg := parseTechLines(pr.Recipe, fmt.Sprintf("preps[%d].recipe", i), rawUnit, pieceOf, prepUnit)
 		if msg != "" {
 			rt.techcardError(w, bad, msg, pr.ID)
 			return
@@ -261,7 +308,7 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 		}
 		seenDish[d.ID] = true
 		dish := store.CatalogDish{ID: d.ID, Name: d.Name, PriceMinor: *d.PriceMinor, PriorDaily: *d.PriorDaily}
-		lines, bad, msg := parseTechLines(d.Recipe, fmt.Sprintf("dishes[%d].recipe", i), rawUnit, prepUnit)
+		lines, bad, msg := parseTechLines(d.Recipe, fmt.Sprintf("dishes[%d].recipe", i), rawUnit, pieceOf, prepUnit)
 		if msg != "" {
 			rt.techcardError(w, bad, msg, d.ID)
 			return
@@ -330,7 +377,7 @@ func techcardMessage(err error) string {
 }
 
 // parseTechLines разбирает строки техкарты в базовые единицы. При ошибке возвращает поле и текст.
-func parseTechLines(items []catalogRecipeIn, prefix string, rawUnit func(string) (domain.Unit, bool), prepUnit map[string]domain.Unit) ([]domain.TechLine, string, string) {
+func parseTechLines(items []catalogRecipeIn, prefix string, rawUnit func(string) (domain.Unit, bool), pieceOf func(string) (pieceWeight, bool), prepUnit map[string]domain.Unit) ([]domain.TechLine, string, string) {
 	if len(items) == 0 || len(items) > maxRecipeItems {
 		return nil, prefix, fmt.Sprintf("recipe must contain 1..%d items", maxRecipeItems)
 	}
@@ -400,6 +447,15 @@ func parseTechLines(items []catalogRecipeIn, prefix string, rawUnit func(string)
 			unit = string(base)
 		}
 		q, err := units.Parse(qty, unit, units.Unit(base))
+		if errors.Is(err, units.ErrDimension) && it.PrepID == "" && base == domain.UnitPcs {
+			// Штучный продукт с нормой в g/ml: пересчёт по весу штуки (docs/catalog.md, «Штучные продукты»).
+			if pw, ok := pieceOf(it.ProductID); ok {
+				q, err = piecesFromWeight(qty, unit, pw, line.LossBP)
+				if err == nil {
+					line.LossBP = 0 // потери уже учтены в граммах
+				}
+			}
+		}
 		if err != nil {
 			return nil, rf + field, quantityMessage(err, field)
 		}
@@ -407,4 +463,31 @@ func parseTechLines(items []catalogRecipeIn, prefix string, rawUnit func(string)
 		lines = append(lines, line)
 	}
 	return lines, "", ""
+}
+
+// pieceWeight — вес одной штуки продукта в g или ml.
+type pieceWeight struct {
+	Weight int64
+	Unit   domain.Unit
+}
+
+// piecesFromWeight переводит норму в g/ml в штуки: потери net → gross считаются в весе, затем
+// результат делится на вес штуки с округлением вверх до целой штуки на порцию. Целочисленно.
+func piecesFromWeight(qty, unit string, pw pieceWeight, lossBP int) (units.Qty, error) {
+	w, err := units.Parse(qty, unit, units.Unit(pw.Unit))
+	if err != nil {
+		return 0, err
+	}
+	if lossBP > 0 {
+		den := int64(10000 - lossBP)
+		if int64(w) > math.MaxInt64/10000 {
+			return 0, units.ErrOverflow
+		}
+		w = units.Qty((int64(w)*10000 + den - 1) / den)
+	}
+	pcs := (int64(w) + pw.Weight - 1) / pw.Weight
+	if pcs > int64(units.Limit) {
+		return 0, units.ErrLimit
+	}
+	return units.Qty(pcs), nil
 }

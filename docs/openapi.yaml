@@ -1046,7 +1046,10 @@ components:
               product_id: {type: string}
               name: {type: string}
               quantity: {$ref: '#/components/schemas/QtyInput'}
-              unit: {$ref: '#/components/schemas/Unit'}
+              unit:
+                description: Единица ввода. `pack` — целое число упаковок, только у продукта с `pack_unit`; в базовых единицах это число × `pack_size`.
+                type: string
+                enum: [g, kg, ml, l, pcs, pack]
               shelf_life_hours: {type: integer, minimum: 1, maximum: 87600}
               expires_on: {type: string, format: date}
     DeliveryResponse:
@@ -1246,6 +1249,15 @@ components:
               lead_days: {type: integer}
               pack_size: {type: integer}
               shelf_life_hours: {type: integer, minimum: 1, maximum: 87600}
+              piece_weight:
+                type: integer
+                minimum: 1
+                description: g или ml в одной штуке; только при `unit: pcs`. Норма техкарты в g/kg/ml/l пересчитывается в штуки с округлением вверх на порцию (docs/catalog.md).
+              piece_weight_unit: {type: string, enum: [g, ml], default: g}
+              pack_unit:
+                type: string
+                maxLength: 32
+                description: Метка упаковки («уп»). С ней `pack_size` — содержимое упаковки в базовых единицах, а позиции поставки можно вводить с `unit: pack`.
         dishes:
           type: array
           items:

@@ -34,6 +34,17 @@ type Product struct {
 	Deleted  bool    `json:"deleted"`
 	// ShelfLifeHours — срок хранения по умолчанию. [ПРЕДПОЛОЖЕНО]: в iiko такого поля нет.
 	ShelfLifeHours int `json:"shelfLifeHours,omitempty"`
+	// UnitWeight — вес одной штуки в кг (у продуктов в «шт»). [ПРЕДПОЛОЖЕНО]: имя поля не сверено с документацией iiko.
+	UnitWeight float64 `json:"unitWeight,omitempty"`
+	// Containers — фасовки продукта. [ПРЕДПОЛОЖЕНО]: имена полей не сверены с документацией iiko.
+	Containers []Container `json:"containers,omitempty"`
+}
+
+// Container — фасовка продукта: Count основных единиц (кг, л, шт) в одной упаковке.
+type Container struct {
+	Name    string  `json:"name"`
+	Count   float64 `json:"count"`
+	Deleted bool    `json:"deleted"`
 }
 
 // AssemblyChart — техкарта блюда (assemblyCharts/getAll, элемент assemblyCharts).

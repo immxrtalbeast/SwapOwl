@@ -62,6 +62,9 @@ type CatalogProduct struct {
 	LeadDays          int    `json:"lead_days"`
 	PackSize          int64  `json:"pack_size"`
 	ShelfLifeHours    int    `json:"shelf_life_hours,omitempty"`
+	PieceWeight       int64  `json:"piece_weight,omitempty"`
+	PieceWeightUnit   string `json:"piece_weight_unit,omitempty"`
+	PackUnit          string `json:"pack_unit,omitempty"`
 }
 
 // CatalogDish — блюдо каталога.
@@ -100,10 +103,12 @@ func BuildCatalog(products []iiko.Product, charts []iiko.AssemblyChart, prices m
 		if pr, ok := prices[p.ID]; ok && pr > 0 {
 			price = int64(math.Round(pr * 100 * 1000 / float64(u.Factor)))
 		}
-		cat.Products = append(cat.Products, CatalogProduct{
+		cp := CatalogProduct{
 			ID: p.ID, Name: p.Name, Unit: u.Base, PriceMinorPer1000: price,
 			LeadDays: d.LeadDays, PackSize: d.PackSize, ShelfLifeHours: p.ShelfLifeHours,
-		})
+		}
+		applyPiecesAndPacks(&cp, p, u)
+		cat.Products = append(cat.Products, cp)
 	}
 	chartOf := map[string]iiko.AssemblyChart{}
 	for _, c := range charts {

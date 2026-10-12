@@ -186,3 +186,61 @@ func TestDeliveryWithoutAnyShelfLifeIsRejected(t *testing.T) {
 		t.Fatal("auto-created product survived rollback")
 	}
 }
+
+func i64p(v int64) *int64   { return &v }
+func strp(v string) *string { return &v }
+
+func TestImportCatalogPiecesAndPacks(t *testing.T) {
+	db, _ := stockDB(t)
+	ctx := context.Background()
+	egg := CatalogProduct{ID: "egg", Name: "Яйцо", Unit: domain.UnitPcs, PriceMinorPer1000: 1, LeadDays: 1, PackSize: 30,
+		PieceWeight: i64p(55), PieceWeightUnit: domain.UnitG}
+	cream := CatalogProduct{ID: "cream2", Name: "Сливки 0,5 л", Unit: domain.UnitMl, PriceMinorPer1000: 1, LeadDays: 1, PackSize: 500, PackUnit: strp("уп")}
+	in := CatalogInput{Products: []CatalogProduct{egg, cream, rice()}}
+	if diff, err := db.ImportCatalog(ctx, in, false); err != nil || diff.Products[0].Action != CatalogCreated {
+		t.Fatalf("create: %v %+v", err, diff)
+	}
+	got, err := db.ProductPacking(ctx, []string{"egg", "cream2", "rice", "ghost"})
+	if err != nil || len(got) != 3 {
+		t.Fatalf("packing: %v %+v", err, got)
+	}
+	if e := got["egg"]; e.Unit != domain.UnitPcs || e.PieceWeight != 55 || e.PieceWeightUnit != domain.UnitG || e.PackUnit != "" {
+		t.Errorf("egg: %+v", e)
+	}
+	if c := got["cream2"]; c.PackSize != 500 || c.PackUnit != "уп" || c.PieceWeight != 0 {
+		t.Errorf("cream: %+v", c)
+	}
+	// Продукт без новых полей — как раньше.
+	if r := got["rice"]; r.PieceWeight != 0 || r.PackUnit != "" || r.PackSize != 1000 {
+		t.Errorf("rice: %+v", r)
+	}
+
+	// Повтор — без изменений; поля, не переданные в теле, остаются прежними.
+	if diff, err := db.ImportCatalog(ctx, in, false); err != nil || diff.Products[0].Action != CatalogUnchanged || diff.Products[1].Action != CatalogUnchanged {
+		t.Fatalf("repeat: %v %+v", err, diff)
+	}
+	bare := egg
+	bare.PieceWeight, bare.PieceWeightUnit = nil, ""
+	if diff, err := db.ImportCatalog(ctx, CatalogInput{Products: []CatalogProduct{bare}}, false); err != nil || diff.Products[0].Action != CatalogUnchanged {
+		t.Fatalf("bare repeat: %v %+v", err, diff)
+	}
+	// Смена веса — обновление с полем piece_weight.
+	egg.PieceWeight = i64p(60)
+	diff, err := db.ImportCatalog(ctx, CatalogInput{Products: []CatalogProduct{egg}}, false)
+	if err != nil || diff.Products[0].Action != CatalogUpdated || len(diff.Products[0].Fields) != 1 || diff.Products[0].Fields[0] != "piece_weight" {
+		t.Fatalf("update: %v %+v", err, diff)
+	}
+	if got, _ = db.ProductPacking(ctx, []string{"egg"}); got["egg"].PieceWeight != 60 {
+		t.Fatalf("weight not stored: %+v", got)
+	}
+}
+
+// Вес штуки допустим только у штучных продуктов — это держит схема.
+func TestPieceWeightOnlyForPcs(t *testing.T) {
+	db, _ := stockDB(t)
+	bad := rice()
+	bad.PieceWeight, bad.PieceWeightUnit = i64p(5), domain.UnitG
+	if _, err := db.ImportCatalog(context.Background(), CatalogInput{Products: []CatalogProduct{bad}}, false); err == nil {
+		t.Fatal("piece_weight on a gram product must be rejected")
+	}
+}
