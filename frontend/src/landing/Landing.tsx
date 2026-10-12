@@ -150,7 +150,7 @@ export function Landing() {
       <Numbers />
       <Bench bench={bench} />
       <footer className="ld-foot">
-        <div className="ld-wrap">Концепт для линейки Swap «Флагмана»</div>
+        <div className="ld-wrap">Сделано по кейсу «Флагмана» · UMIRHack 2026</div>
       </footer>
     </div>
   );

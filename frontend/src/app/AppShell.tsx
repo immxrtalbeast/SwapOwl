@@ -18,6 +18,7 @@ import { NetworkPage } from "../pages/network";
 import { useHubAvailable } from "../pages/network/useHubAvailable";
 import { OfflineBanner } from "../components/ScreenStates";
 import { events } from "../api/events";
+import { api } from "../api/client";
 import { AppHeader } from "./AppHeader";
 import { AppNav } from "./AppNav";
 import { BadgesProvider } from "./BadgesContext";
@@ -72,6 +73,11 @@ export function AppShell() {
     return () => window.removeEventListener("hashchange", on);
   }, []);
 
+  // Прогрев: первый клик по экрану не ждёт холодный старт (на стенде первый ответ ~7 с).
+  useEffect(() => {
+    void Promise.allSettled([api.products(), api.hotOffers(), api.alerts()]);
+  }, []);
+
   const { state } = useAuth();
   const role = state.kind === "user" ? state.role : null;
   const hub = useHubAvailable();
@@ -91,7 +97,7 @@ export function AppShell() {
                 {labelId !== null ? <LabelPage batchId={labelId} /> : <ScreenView id={screen} />}
               </main>
               <footer style={{ padding: "12px var(--gutter)", font: "var(--type-small)", color: "var(--text-muted)" }}>
-                SwapOwl · Концепт для линейки Swap «Флагмана»
+                SwapOwl · Сделано по кейсу «Флагмана» · UMIRHack 2026
               </footer>
             </div>
           </div>

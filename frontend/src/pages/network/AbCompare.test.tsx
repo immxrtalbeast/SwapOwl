@@ -63,9 +63,17 @@ describe("сравнение A/B", () => {
     const o = html(<AbCompare pair={[pt({ id: "b", label: "Без подсказок", group: "ab", run: run(100) }), pt({ id: "a", label: "Со SwapOwl", group: "ab", run: run(300) })]} />);
     expect(o).not.toContain("столько не ушло");
   });
-  it("до запуска — ожидание, без падения", () => {
+  it("до запуска — понятная заглушка без прочерков", () => {
     const o = html(<AbCompare pair={[pt({ id: "a", group: "ab" }), pt({ id: "b", group: "ab" })]} />);
-    expect(o).toContain("Ждём запуска");
+    expect(o).toContain("Сравнение ещё не запускали");
+    expect(o).toContain("ab-demo.sh start");
+    expect(o).not.toContain("—");
+  });
+  it("в покое показывает последний прогон без времени стенда точек", () => {
+    const o = html(<AbCompare pair={[{ ...without, run: run(1_000_000, false) }, { ...withOwl, run: run(820_000, false) }]} />);
+    expect(o).toContain("Последний прогон, 4 ч стенда");
+    expect(o).toContain(formatRub(820_000));
+    expect(o).not.toContain("время стенда:");
   });
   it("экран «Сеть» показывает блок только при группе ab", () => {
     const sum = (points: HubPoint[]): HubSummary => ({ points, totals: { points: points.length, ok: points.length, unavailable: 0, expiring_batches: 0, stop_list_count: 0, writeoffs_today_minor: 0, writeoffs_7d_minor: 0 } });

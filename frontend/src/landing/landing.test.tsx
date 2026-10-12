@@ -34,7 +34,7 @@ describe("лендинг", () => {
     expect(out).toContain("iiko — пример");
     expect(out).toContain("7,6 → 0,1%");
     expect(out).toContain("Симулятор, 20 прогонов, допущения — в документации.");
-    expect(out).toContain("Концепт для линейки Swap «Флагмана»");
+    expect(out).toContain("Сделано по кейсу «Флагмана» · UMIRHack 2026");
     expect(out).not.toContain("ld-bench");
   });
   it("первая истекающая партия и продукт с ближайшим сроком", () => {

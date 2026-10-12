@@ -2,20 +2,20 @@ import { describe, expect, it } from "vitest";
 import { SCREENS, screenFromHash } from "./screens";
 
 describe("screenFromHash", () => {
-  it("находит экран по адресу, неизвестное ведёт на склад", () => {
+  it("находит экран по адресу, неизвестное ведёт на «Сегодня»", () => {
     expect(screenFromHash("#/orders")).toBe("orders");
     expect(screenFromHash("#hot-offers")).toBe("hot-offers");
     expect(screenFromHash("#/hot-offers?product_id=milk")).toBe("hot-offers");
-    expect(screenFromHash("")).toBe("stock");
-    expect(screenFromHash("#/nope")).toBe("stock");
+    expect(screenFromHash("")).toBe("today");
+    expect(screenFromHash("#/nope")).toBe("today");
   });
 });
 
 describe("SCREENS", () => {
-  it("«Сегодня» — первый пункт меню, но стартовый экран — склад", () => {
+  it("«Сегодня» — первый пункт меню и стартовый экран", () => {
     expect(SCREENS[0].id).toBe("today");
     expect(screenFromHash("#/today")).toBe("today");
-    expect(screenFromHash("")).toBe("stock");
+    expect(screenFromHash("")).toBe("today");
   });
   it("есть экран приёмки", () => {
     expect(SCREENS.find((s) => s.id === "receiving")?.title).toBe("Приёмка");
