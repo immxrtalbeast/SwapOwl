@@ -131,10 +131,10 @@ func (d *DB) Snapshot(ctx context.Context, now time.Time, p SnapshotParams) (Sna
 
 	// История спроса: порции в принятых и отклонённых заказах (2.6).
 	var history []domain.OrderedDish
-	if err := query(`SELECT o.at, i.dish_id, i.portions FROM orders o JOIN order_items i ON i.order_id = o.id
+	if err := query(`SELECT o.at, i.dish_id, i.portions, o.status = 'rejected' FROM orders o JOIN order_items i ON i.order_id = o.id
 		WHERE o.at <= $1 ORDER BY o.at, o.id, i.dish_id`, []any{now}, func(r pgx.Rows) error {
 		var o domain.OrderedDish
-		if err := r.Scan(&o.At, &o.DishID, &o.Portions); err != nil {
+		if err := r.Scan(&o.At, &o.DishID, &o.Portions, &o.Rejected); err != nil {
 			return err
 		}
 		history = append(history, o)

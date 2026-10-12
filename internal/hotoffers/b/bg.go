@@ -12,14 +12,16 @@ import (
 
 // productState — состояние продукта в цикле жадного распределения.
 type productState struct {
-	id      string
-	rate    float64
-	stock   domain.Qty // остаток по всем доступным партиям, включая обречённые
-	risk    domain.Qty // количество под риском по необречённым партиям
-	batch   *domain.Batch
-	batchAt domain.Qty // риск опорной партии e*
-	expires time.Time  // e*: срок первой необречённой партии с риском
-	hours   float64    // W(now, e*)
+	id          string
+	rate        float64
+	stock       domain.Qty // остаток по всем доступным партиям, включая обречённые
+	risk        domain.Qty // количество под риском по необречённым партиям
+	riskBatches int        // сколько партий дают risk
+	riskTotal   domain.Qty // risk до цикла: его показывает причина, у всех блюд одно число
+	batch       *domain.Batch
+	batchAt     domain.Qty // риск опорной партии e*
+	expires     time.Time  // e*: срок первой необречённой партии с риском
+	hours       float64    // W(now, e*)
 }
 
 // norm — агрегированная норма продукта в блюде.
@@ -166,6 +168,8 @@ func buildStates(in hotoffers.Input) map[string]*productState {
 			used += use
 			if risk > 0 {
 				s.risk += risk
+				s.riskTotal += risk
+				s.riskBatches++
 				if s.batch == nil {
 					s.batch = &bs[i]
 					s.batchAt = risk
@@ -232,7 +236,8 @@ func buildReasons(norms []norm, states map[string]*productState, in hotoffers.In
 		rs = append(rs, hotoffers.Reason{
 			ProductID:        n.product,
 			BatchID:          s.batch.ID,
-			AtRisk:           s.batchAt,
+			AtRisk:           s.riskTotal, // весь риск продукта до распределения: цель набирается по нему, у всех блюд одно число
+			Batches:          s.riskBatches,
 			ExpiresAt:        s.expires,
 			WorkingHoursLeft: s.hours,
 		})

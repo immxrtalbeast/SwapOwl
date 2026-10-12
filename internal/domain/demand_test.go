@@ -137,3 +137,29 @@ func TestRatePerHourWithSchedule(t *testing.T) {
 		t.Fatalf("13 ч каждый день: %v", got)
 	}
 }
+
+// FS-153: отклонённый заказ на 9999 порций входит в спрос не больше чем DefaultRejectedCap порциями,
+// принятый — целиком.
+func TestDishDemandRejectedCapped(t *testing.T) {
+	now := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+	base := DemandInput{Now: now, WindowDays: 14, PriorDays: 7, Priors: map[string]float64{"burger": 10}}
+	at := now.Add(-time.Hour)
+	rej := base
+	rej.History = []OrderedDish{{At: at, DishID: "burger", Portions: 9999, Rejected: true}}
+	capped := base
+	capped.History = []OrderedDish{{At: at, DishID: "burger", Portions: DefaultRejectedCap}}
+	acc := base
+	acc.History = []OrderedDish{{At: at, DishID: "burger", Portions: 9999}}
+	got, err := DishDemand(rej)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := DishDemand(capped)
+	all, _ := DishDemand(acc)
+	if got["burger"] != want["burger"] {
+		t.Fatalf("отклонённый 9999: λ = %v, ожидалось как у %d порций: %v", got["burger"], DefaultRejectedCap, want["burger"])
+	}
+	if all["burger"] <= got["burger"] {
+		t.Fatalf("принятый заказ не должен ограничиваться: %v ≤ %v", all["burger"], got["burger"])
+	}
+}

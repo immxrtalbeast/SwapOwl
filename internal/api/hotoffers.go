@@ -46,6 +46,7 @@ type HotReasonJSON struct {
 	ProductName      string        `json:"product_name"`
 	BatchID          int64         `json:"batch_id"`
 	AtRisk           store.QtyJSON `json:"at_risk"`
+	RiskBatches      int           `json:"risk_batches,omitempty"` // Bg: партий под риском; batch_id — ближайшая
 	ExpiresAt        time.Time     `json:"expires_at"`
 	WorkingHoursLeft float64       `json:"working_hours_left"`
 }
@@ -121,7 +122,7 @@ func buildHotOffers(snap store.Snapshot, algo string, cfg hotoffers.Config) HotO
 		for _, rs := range o.Reasons {
 			p := snap.Products[rs.ProductID]
 			row.Reasons = append(row.Reasons, HotReasonJSON{ProductID: rs.ProductID, ProductName: p.Name,
-				BatchID: rs.BatchID, AtRisk: store.QtyJSON{Qty: int64(rs.AtRisk), Unit: p.Unit},
+				BatchID: rs.BatchID, AtRisk: store.QtyJSON{Qty: int64(rs.AtRisk), Unit: p.Unit}, RiskBatches: rs.Batches,
 				ExpiresAt: rs.ExpiresAt.In(loc), WorkingHoursLeft: rs.WorkingHoursLeft})
 			if row.SellUntil.IsZero() || rs.ExpiresAt.Before(row.SellUntil) {
 				row.SellUntil = rs.ExpiresAt.In(loc)
@@ -179,8 +180,13 @@ func explainOffer(o OfferJSON, algo string) string {
 	parts := make([]string, 0, len(o.Reasons)+1)
 	for _, r := range o.Reasons {
 		if algo == "b" {
-			parts = append(parts, fmt.Sprintf("%s, партия №%d: %s не успеет разойтись за %s.",
-				r.ProductName, r.BatchID, formatQty(r.AtRisk.Qty, r.AtRisk.Unit), workingHours(r.WorkingHoursLeft)))
+			if r.RiskBatches > 1 {
+				parts = append(parts, fmt.Sprintf("%s: %s в %d партиях не успеет разойтись (ближайшая — №%d, за %s).",
+					r.ProductName, formatQty(r.AtRisk.Qty, r.AtRisk.Unit), r.RiskBatches, r.BatchID, workingHours(r.WorkingHoursLeft)))
+			} else {
+				parts = append(parts, fmt.Sprintf("%s, партия №%d: %s не успеет разойтись за %s.",
+					r.ProductName, r.BatchID, formatQty(r.AtRisk.Qty, r.AtRisk.Unit), workingHours(r.WorkingHoursLeft)))
+			}
 		} else {
 			parts = append(parts, fmt.Sprintf("%s, партия №%d: в запасе %s, срок через %s.",
 				r.ProductName, r.BatchID, formatQty(r.AtRisk.Qty, r.AtRisk.Unit), workingHours(r.WorkingHoursLeft)))

@@ -18,7 +18,14 @@ type OrderedDish struct {
 	At       time.Time
 	DishID   string
 	Portions int64
+	Rejected bool // заказ отклонён: в спрос входит не больше RejectedCap порций
 }
+
+// DefaultRejectedCap — сколько порций блюда из одного отклонённого заказа входит в оценку спроса (2.6).
+// Отклонённый заказ — сигнал неудовлетворённого спроса, но не мерило его величины: столик редко
+// заказывает больше пяти одинаковых блюд, а заказ на 9999 порций иначе раздувал λ и предложение
+// поставок до сотен килограммов (FS-153). Принятые заказы не ограничиваются.
+const DefaultRejectedCap = 5
 
 // DemandInput — вход DishDemand. Все параметры приходят аргументами.
 type DemandInput struct {
@@ -29,6 +36,8 @@ type DemandInput struct {
 	Priors     map[string]float64
 	History    []OrderedDish
 	Jumps      []TimeJump
+	// RejectedCap — вклад одного отклонённого заказа по блюду, порций; 0 — DefaultRejectedCap.
+	RejectedCap int64
 }
 
 // activeWindow возвращает начало окна и число активных суток в нём. Окно идёт назад
@@ -83,6 +92,7 @@ func activeWindow(now, since time.Time, windowDays float64, jumps []TimeJump) (t
 }
 
 // DishDemand — λ_d, порций в день: (prior_d·n0 + запрошено_d) / (n0 + активные_дни).
+// Отклонённый заказ входит в запрошено_d не больше чем RejectedCap порциями блюда.
 // Возвращает оценку для каждого блюда из Priors. История вне окна и блюда без
 // априора игнорируются.
 func DishDemand(in DemandInput) (map[string]float64, error) {
@@ -93,10 +103,18 @@ func DishDemand(in DemandInput) (map[string]float64, error) {
 		return nil, fmt.Errorf("%w: window must be > 0", ErrValidation)
 	}
 	start, activeDays := activeWindow(in.Now, in.Since, in.WindowDays, in.Jumps)
+	rejectedCap := in.RejectedCap
+	if rejectedCap <= 0 {
+		rejectedCap = DefaultRejectedCap
+	}
 	requested := make(map[string]int64, len(in.Priors))
 	for _, o := range in.History {
 		if o.At.After(start) && !o.At.After(in.Now) && o.Portions > 0 {
-			requested[o.DishID] += o.Portions
+			p := o.Portions
+			if o.Rejected && p > rejectedCap {
+				p = rejectedCap
+			}
+			requested[o.DishID] += p
 		}
 	}
 	out := make(map[string]float64, len(in.Priors))
