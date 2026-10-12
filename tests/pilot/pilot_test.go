@@ -29,8 +29,9 @@ import (
 //
 // Суточный цикл (время ресторана, Europe/Moscow):
 //
-//	00:30  проход адаптера: продажи закрытого вчерашнего дня; сверка с iiko за вчера
+//	00:30  проход адаптера; сверка с iiko за вчера
 //	09:30  проход адаптера: накладные дня (пришли в 08:00, опоздание 1,5 ч), стоп-лист
+//	11:00–21:30  проходы адаптера каждые 1,5 ч: продажи кассы по чекам со временем события
 //	14:00  заказы через API, отмена заказа, брак
 //	22:30  инвентаризация одного продукта с небольшим расхождением
 //	23:30  проход адаптера (стоп-лист), проверки дня
@@ -144,7 +145,7 @@ func TestPilotThirtyDays(t *testing.T) {
 	p := &pilot{t: t, iiko: ik, adapter: adapterBin, rng: rand.New(rand.NewSource(7)),
 		nowFile: nowFile, delta: map[string]int64{}, gain: map[string]int64{}, units: map[string]string{}}
 
-	p.s = newStand(t, startOpts{Phase1: p.loadCatalog, Env: []string{"LATE_EVENTS_HOURS=2"}})
+	p.s = newStand(t, startOpts{Phase1: p.loadCatalog, Env: []string{"LATE_EVENTS_HOURS=4"}})
 	p.s.demo("/api/demo/clock/speed", map[string]any{"speed": 0})
 
 	p.origin = origin
@@ -194,10 +195,23 @@ func TestPilotThirtyDays(t *testing.T) {
 			p.jumpTo(at(day, 9, 30))
 			p.pass(at(day, 9, 30)) // накладные 08:00 приходят с опозданием 1,5 ч
 		}
+		// Продажи кассы идут в API по чекам со временем события и принимаются не старше окна опоздания
+		// (4 ч): в рабочие часы адаптер проходит каждые 1,5 ч.
+		for _, hm := range [][2]int{{11, 0}, {12, 30}} {
+			if day > 0 || hm[0] > 11 { // в день 0 стенд уже стоит на 11:00
+				p.jumpTo(at(day, hm[0], hm[1]))
+			}
+			p.pass(at(day, hm[0], hm[1]))
+		}
 		p.jumpTo(at(day, 14, 0))
 		p.daytime(day)
+		for _, hm := range [][2]int{{15, 30}, {17, 0}, {18, 30}, {20, 0}, {21, 30}} {
+			p.jumpTo(at(day, hm[0], hm[1]))
+			p.pass(at(day, hm[0], hm[1]))
+		}
 		p.jumpTo(at(day, 22, 30))
 		p.inventory(day)
+		p.pass(at(day, 22, 30))
 		p.jumpTo(at(day, 23, 30))
 		p.pass(at(day, 23, 30))
 		p.endOfDay(day)
@@ -372,8 +386,10 @@ func (p *pilot) daytime(day int) {
 	}
 	// 3. Раз в 10 дней отменяется и вчерашний заказ кассы целиком (iiko об этом не знает — заданное расхождение).
 	if day%10 == 5 {
-		prev := time.Date(s.now().Year(), s.now().Month(), s.now().Day()-1, 12, 0, 0, 0, moscow).Format("2006-01-02")
-		p.cancel(mapping.OrderID(prev), "c-pos-"+prev)
+		prev := time.Date(s.now().Year(), s.now().Month(), s.now().Day()-1, 0, 0, 0, 0, moscow)
+		for _, id := range p.posOrders(prev) {
+			p.cancel(id, "c-pos-"+id)
+		}
 	}
 	// 4. Брак: списание с партии, которая закончится первой.
 	p.writeoff(day)
@@ -383,8 +399,8 @@ func (p *pilot) daytime(day int) {
 	}
 }
 
-// lateDelivery — накладная, принесённая с опозданием: 90 минут (в окне LATE_EVENTS_HOURS=2) принимается
-// и считается от фактического времени прихода, 3 часа — 400 validation_error, ничего не записано.
+// lateDelivery — накладная, принесённая с опозданием: 90 минут (в окне LATE_EVENTS_HOURS=4) принимается
+// и считается от фактического времени прихода, 5 часов — 400 validation_error, ничего не записано.
 func (p *pilot) lateDelivery(day int) {
 	t, s := p.t, p.s
 	now := s.now()
@@ -396,7 +412,7 @@ func (p *pilot) lateDelivery(day int) {
 		})
 	}
 	before := s.queryInt(`SELECT COUNT(*) FROM deliveries`)
-	if st, b := send(fmt.Sprintf("late-out-%d", day), 3*time.Hour); st != 400 {
+	if st, b := send(fmt.Sprintf("late-out-%d", day), 5*time.Hour); st != 400 {
 		t.Fatalf("день %d: поставка за окном опоздания: %d %s, ожидалось 400", day, st, b)
 	}
 	if s.queryInt(`SELECT COUNT(*) FROM deliveries`) != before {
@@ -415,6 +431,22 @@ func (p *pilot) lateDelivery(day int) {
 	}
 	p.apply("potato", 500)
 	p.sum.LateDeliveries++
+}
+
+// posOrders — id принятых заказов кассы (по чекам) за сутки, начинающиеся в day.
+func (p *pilot) posOrders(day time.Time) []string {
+	rows := p.s.queryRows(`SELECT id::text FROM orders WHERE source = 'pos' AND status = 'accepted' AND at >= $1 AND at < $2 ORDER BY at, id`,
+		day, day.AddDate(0, 0, 1))
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			p.t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func (p *pilot) cancel(orderID, opID string) {
@@ -647,7 +679,8 @@ func (p *pilot) checkSources(day int) {
 		want[sl.DishID] += sl.Portions
 	}
 	got := map[string]int64{}
-	rows := p.s.queryRows(`SELECT dish_id, portions FROM order_items WHERE order_id = $1`, mapping.OrderID(d.Format("2006-01-02")))
+	rows := p.s.queryRows(`SELECT oi.dish_id, SUM(oi.portions) FROM order_items oi JOIN orders o ON o.id = oi.order_id
+		WHERE o.source = 'pos' AND o.at >= $1 AND o.at < $2 GROUP BY oi.dish_id`, d, d.AddDate(0, 0, 1))
 	for rows.Next() {
 		var id string
 		var n int64

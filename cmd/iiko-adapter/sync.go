@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"umirhack/internal/iiko"
@@ -64,6 +65,9 @@ type adapter struct {
 	log       *log.Logger
 	dishes    map[string]bool // блюда, принятые в последний каталог
 
+	late     map[string]bool // id накладных и заказов, отклонённых API как старше окна опоздания (в памяти процесса)
+	lateSeen int             // сколько таких элементов отброшено с запуска (счётчик в журнале)
+
 	mode         string        // modeShadow | modeLive
 	shadowPath   string        // журнал «что было бы отправлено» теневого режима
 	retryBase    time.Duration // первая пауза после ошибки iiko; дальше удваивается
@@ -81,6 +85,25 @@ func skippable(err error) (*apiError, bool) {
 		return ae, true
 	}
 	return nil, false
+}
+
+// isLate — API отклонил событие: occurred_at старше окна LATE_EVENTS_HOURS (2.4а). Повтором не исправить.
+func isLate(ae *apiError) bool {
+	return ae.Status == http.StatusBadRequest && strings.Contains(ae.Body, "occurred_at")
+}
+
+// skipLate пишет в журнал и считает событие старше окна опоздания; каждый id считается один раз за запуск,
+// хотя сегодняшний день читается заново на каждом проходе.
+func (a *adapter) skipLate(kind, id string, ae *apiError) {
+	if a.late == nil {
+		a.late = map[string]bool{}
+	}
+	if a.late[id] {
+		return
+	}
+	a.late[id] = true
+	a.lateSeen++
+	a.log.Printf("%s %s старше окна опоздания, пропущено (всего за запуск: %d): статус %d: %s", kind, id, a.lateSeen, ae.Status, ae.Body)
 }
 
 func dayStart(t time.Time, loc *time.Location) time.Time {
@@ -185,6 +208,10 @@ func (a *adapter) syncInvoices(ctx context.Context, st *state, today time.Time, 
 			}
 			if _, err := a.api.do(ctx, http.MethodPost, "/api/deliveries", d); err != nil {
 				if ae, ok := skippable(err); ok {
+					if isLate(ae) {
+						a.skipLate("накладная", inv.ID, ae)
+						continue
+					}
 					a.log.Printf("накладная %s пропущена: статус %d: %s", inv.ID, ae.Status, ae.Body)
 					continue
 				}
@@ -198,12 +225,16 @@ func (a *adapter) syncInvoices(ctx context.Context, st *state, today time.Time, 
 	return nil
 }
 
+// syncSales передаёт продажи по чекам с временем события. Читаются и закрытые дни, и сегодняшний:
+// API принимает события не старше окна LATE_EVENTS_HOURS, поэтому ждать конца дня нельзя. Уже принятые чеки
+// приходят повторно (200), курсор стоит на сегодняшнем дне.
 func (a *adapter) syncSales(ctx context.Context, st *state, today time.Time) error {
 	from := a.cursor(st.Sales, today)
-	for from.Before(today) { // только закрытые дни
+	end := today.AddDate(0, 0, 1)
+	for from.Before(end) {
 		to := from.AddDate(0, 0, chunkDays)
-		if to.After(today) {
-			to = today
+		if to.After(end) {
+			to = end
 		}
 		sales, err := a.iiko.Sales(ctx, from, to)
 		if err != nil {
@@ -217,16 +248,24 @@ func (a *adapter) syncSales(ctx context.Context, st *state, today time.Time) err
 			}
 			kept = append(kept, s)
 		}
-		for _, o := range mapping.BuildOrders(kept) {
+		for _, o := range mapping.BuildOrders(kept, a.loc) {
 			if _, err := a.api.do(ctx, http.MethodPost, "/api/orders", o); err != nil {
 				if ae, ok := skippable(err); ok {
+					if isLate(ae) {
+						a.skipLate("заказ", o.ID, ae)
+						continue
+					}
 					a.log.Printf("заказ %s пропущен: статус %d: %s", o.ID, ae.Status, ae.Body)
 					continue
 				}
 				return fmt.Errorf("заказ %s: %w", o.ID, err)
 			}
 		}
-		st.Sales = to.Format(iiko.DateLayout)
+		cur := to
+		if cur.After(today) {
+			cur = today
+		}
+		st.Sales = cur.Format(iiko.DateLayout)
 		from = to
 	}
 	return nil

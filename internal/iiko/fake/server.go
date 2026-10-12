@@ -263,7 +263,7 @@ func (s *Server) olap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, g := range req.GroupByRowFields {
-		if g != iiko.OLAPDishID && g != iiko.OLAPDishName && g != iiko.OLAPOpenDate {
+		if g != iiko.OLAPDishID && g != iiko.OLAPDishName && g != iiko.OLAPOpenDate && g != iiko.OLAPOrderID && g != iiko.OLAPCloseTime {
 			bad(w, "неизвестное поле группировки "+g)
 			return
 		}
@@ -307,6 +307,10 @@ func (s *Server) olap(w http.ResponseWriter, r *http.Request) {
 					v = d.Name
 				case iiko.OLAPOpenDate:
 					v = e.At.In(s.loc).Format(iiko.DateLayout)
+				case iiko.OLAPOrderID:
+					v = e.Order.ID
+				case iiko.OLAPCloseTime:
+					v = e.At.In(s.loc).Format(iiko.DateTimeLayout)
 				}
 				row[g] = v
 				kp = append(kp, v)

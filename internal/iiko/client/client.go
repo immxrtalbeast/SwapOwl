@@ -145,11 +145,11 @@ func (c *Client) Invoices(ctx context.Context, from, to time.Time) ([]iiko.Incom
 	return out.Documents, xml.Unmarshal(b, &out)
 }
 
-// Sales — продажи по блюдам и дням за [from, to): конец не входит.
+// Sales — продажи по строкам чеков (блюдо, чек, время закрытия) за [from, to): конец не входит.
 func (c *Client) Sales(ctx context.Context, from, to time.Time) ([]mapping.Sale, error) {
 	req := iiko.OLAPRequest{
 		ReportType:       "SALES",
-		GroupByRowFields: []string{iiko.OLAPDishID, iiko.OLAPDishName, iiko.OLAPOpenDate},
+		GroupByRowFields: []string{iiko.OLAPDishID, iiko.OLAPDishName, iiko.OLAPOpenDate, iiko.OLAPOrderID, iiko.OLAPCloseTime},
 		AggregateFields:  []string{iiko.OLAPAmount, iiko.OLAPSum},
 		Filters: map[string]iiko.OLAPFilter{iiko.OLAPOpenDate: {
 			FilterType: "DateRange", From: from.Format(iiko.DateLayout), To: to.Format(iiko.DateLayout)}},
@@ -167,7 +167,9 @@ func (c *Client) Sales(ctx context.Context, from, to time.Time) ([]mapping.Sale,
 		id, _ := row[iiko.OLAPDishID].(string)
 		date, _ := row[iiko.OLAPOpenDate].(string)
 		amt, _ := row[iiko.OLAPAmount].(float64)
-		out = append(out, mapping.Sale{Date: date, DishID: id, Portions: int64(amt + 0.5)})
+		check, _ := row[iiko.OLAPOrderID].(string)
+		at, _ := row[iiko.OLAPCloseTime].(string)
+		out = append(out, mapping.Sale{Date: date, DishID: id, Portions: int64(amt + 0.5), CheckID: check, CloseTime: at})
 	}
 	return out, nil
 }

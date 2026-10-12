@@ -110,11 +110,13 @@ type OLAPResponse struct {
 
 // Имена полей OLAP, которые поддерживает фейк.
 const (
-	OLAPDishID   = "DishId"
-	OLAPDishName = "DishName"
-	OLAPOpenDate = "OpenDate.Typed"
-	OLAPAmount   = "DishAmountInt"
-	OLAPSum      = "DishSumInt"
+	OLAPDishID    = "DishId"
+	OLAPDishName  = "DishName"
+	OLAPOpenDate  = "OpenDate.Typed"
+	OLAPOrderID   = "UniqOrderId.Id" // id чека
+	OLAPCloseTime = "CloseTime"      // время закрытия чека, yyyy-MM-ddTHH:mm:ss (время ресторана)
+	OLAPAmount    = "DishAmountInt"
+	OLAPSum       = "DishSumInt"
 )
 
 // BalanceItem — строка остатков по складу (reports/balance/stores).
