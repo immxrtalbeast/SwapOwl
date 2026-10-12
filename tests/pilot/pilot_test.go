@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"umirhack/internal/iiko"
 	"umirhack/internal/iiko/client"
 	"umirhack/internal/iiko/fake"
 	"umirhack/internal/iiko/mapping"
@@ -38,6 +39,14 @@ import (
 const (
 	days     = 30
 	iikoSeed = 20261012
+)
+
+// Старт прогона — фиксированный момент стенда, а не часы машины: история iiko начинается с начала
+// суток runDate (Europe/Moscow), стенд — в 11:00 того же дня. Прогон не зависит от того, когда
+// и во сколько его запустили, и не пересекает полночь по часам машины.
+const (
+	runDate      = "2026-10-12"
+	runStartHour = 11
 )
 
 var moscow = func() *time.Location {
@@ -74,9 +83,26 @@ type pilot struct {
 	// отклонения могла «съесть» остановка склада iiko на нуле.
 	gain map[string]int64
 
+	// prev — состояние на прошлой сверке: расхождение iiko и заданные сценарием величины. Сверка
+	// проверяет сдвиг за сутки от остатка начала суток, а не накопленное от начала прогона.
+	prev reconcileBase
+
 	apiOrders []string // принятые заказы через API, ещё не отменённые
 	sum       summary
 	stopMsgs  int64
+}
+
+// reconcileBase — значения на момент прошлой сверки (до первой — нули).
+type reconcileBase struct {
+	diff, delta, gain, expired, short map[string]int64
+}
+
+func copyMap(m map[string]int64) map[string]int64 {
+	c := make(map[string]int64, len(m))
+	for k, v := range m {
+		c[k] = v
+	}
+	return c
 }
 
 // summary — итоговые цифры за 30 дней (docs/pilot.md).
@@ -121,9 +147,13 @@ func TestPilotThirtyDays(t *testing.T) {
 	work := t.TempDir()
 	adapterBin := buildAdapter(t, work)
 
-	// Фейковый iiko: история начинается с начала суток запуска; наш стенд стартует в 11:00 того же дня.
-	y, m, d := time.Now().In(moscow).Date()
-	origin := time.Date(y, m, d, 0, 0, 0, 0, moscow)
+	// Фейковый iiko: история начинается с начала суток runDate; наш стенд стартует в 11:00 того же дня.
+	rd, err := time.ParseInLocation("2006-01-02", runDate, moscow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := rd
+	startAt := origin.Add(runStartHour * time.Hour)
 	fk, err := fake.New(fake.Options{Seed: iikoSeed, Origin: origin, Login: "pilot", Password: "pilot"})
 	if err != nil {
 		t.Fatal(err)
@@ -145,13 +175,12 @@ func TestPilotThirtyDays(t *testing.T) {
 	p := &pilot{t: t, iiko: ik, adapter: adapterBin, rng: rand.New(rand.NewSource(7)),
 		nowFile: nowFile, delta: map[string]int64{}, gain: map[string]int64{}, units: map[string]string{}}
 
-	p.s = newStand(t, startOpts{Phase1: p.loadCatalog, Env: []string{"LATE_EVENTS_HOURS=4"}})
+	p.s = newStand(t, startOpts{Phase1: p.loadCatalog, StartAt: startAt, Env: []string{"LATE_EVENTS_HOURS=4"}})
 	p.s.demo("/api/demo/clock/speed", map[string]any{"speed": 0})
 
 	p.origin = origin
-	start := p.s.now().In(moscow)
-	if start.Day() != d {
-		t.Skipf("запуск пересёк полночь (%s): прогон надо начинать в тот же день, что и история iiko", start)
+	if start := p.s.now(); !start.Equal(startAt) {
+		t.Fatalf("часы стенда стартовали с %s, ожидалось %s", start, startAt)
 	}
 	p.env = []string{
 		"IIKO_URL=" + fakeSrv.URL, "IIKO_LOGIN=pilot", "IIKO_PASSWORD=pilot",
@@ -630,16 +659,21 @@ func (p *pilot) reconcile(day int) {
 	now := p.s.now()
 	expired := p.expiredLoss(now)
 	short := p.shortfalls()
-	seen := map[string]bool{}
+	cur := reconcileBase{diff: map[string]int64{}, delta: copyMap(p.delta), gain: copyMap(p.gain),
+		expired: expired, short: short}
 	for _, r := range rows {
-		seen[r.ProductID] = true
+		cur.diff[r.ProductID] = r.Diff
 		p.sum.ReconcileRows++
-		// D — отклонение, заданное сценарием. Продажа кассы, на которую у одной из сторон не хватает
-		// продукта, «съедает» часть отклонения: у нас это недостача (shortfalls), iiko списывает по
-		// рецепту, но не ниже нуля. Поэтому без недостач и положительных отклонений сверка обязана
-		// совпасть с D точно, а иначе — отличаться не больше чем на недостачи плюс положительные отклонения.
-		D := p.delta[r.ProductID] - expired[r.ProductID]
-		slack := short[r.ProductID] + p.gain[r.ProductID]
+		// Проверяется сдвиг расхождения за сутки: он обязан равняться тому, что сценарий задал за
+		// эти же сутки (заказы через API и отмены, брак, инвентаризация минус срок годности).
+		// Так ошибка в 1 % в день не прячется за накопленным допуском. Продажа кассы, на которую у
+		// одной из сторон не хватает продукта, «съедает» часть отклонения: у нас это недостача
+		// (shortfalls), iiko списывает по рецепту, но не ниже нуля. Допуск суток — недостачи и
+		// положительные отклонения (отмены, излишки) только за эти сутки.
+		pr := p.prev
+		D := (cur.delta[r.ProductID] - pr.delta[r.ProductID]) - (expired[r.ProductID] - pr.expired[r.ProductID])
+		slack := (short[r.ProductID] - pr.short[r.ProductID]) + (cur.gain[r.ProductID] - pr.gain[r.ProductID])
+		shift := r.Diff - pr.diff[r.ProductID]
 		if abs(r.Diff) > p.sum.ReconcileMaxAbs {
 			p.sum.ReconcileMaxAbs = abs(r.Diff)
 		}
@@ -649,10 +683,12 @@ func (p *pilot) reconcile(day int) {
 			p.sum.ReconcileBounded++
 		}
 		// Допуск 2 базовые единицы: iiko округляет остаток до 3 знаков основной единицы.
-		if abs(r.Diff-D) > slack+2 {
+		if abs(shift-D) > slack+2 {
 			t.Logf("%s: движения %s: %s", label, r.ProductID, p.movementSummary(r.ProductID))
-			t.Errorf("%s: %s: расхождение ours−iiko = %d, по сценарию ожидалось %d±%d (брак, инвентаризация, заказы API и отмены %d; истёк срок −%d; недостачи кассы %d); ours=%d iiko=%d",
-				label, r.ProductID, r.Diff, D, slack, p.delta[r.ProductID], expired[r.ProductID], short[r.ProductID], r.Ours, r.Iiko)
+			t.Errorf("%s: %s: сдвиг расхождения за сутки = %d (было %d, стало %d), по сценарию ожидалось %d±%d (за сутки: брак, инвентаризация, заказы API и отмены %d; истёк срок −%d; недостачи кассы %d); ours=%d iiko=%d",
+				label, r.ProductID, shift, pr.diff[r.ProductID], r.Diff, D, slack,
+				cur.delta[r.ProductID]-pr.delta[r.ProductID], expired[r.ProductID]-pr.expired[r.ProductID],
+				short[r.ProductID]-pr.short[r.ProductID], r.Ours, r.Iiko)
 		}
 	}
 	if len(rows) == 0 {
@@ -661,6 +697,7 @@ func (p *pilot) reconcile(day int) {
 	if t.Failed() {
 		t.FailNow()
 	}
+	p.prev = cur
 }
 
 // checkSources — то, что iiko знает о дне, дошло до нас целиком: продажи (порции по блюдам) лежат
@@ -700,10 +737,52 @@ func (p *pilot) checkSources(day int) {
 	if len(invs) == 0 {
 		t.Fatalf("%s: в iiko нет накладных за день", label)
 	}
+	products, err := p.iiko.Products(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shelf := map[string]int{}
+	for _, pr := range products {
+		shelf[pr.ID] = pr.ShelfLifeHours
+	}
 	for _, inv := range invs {
 		if p.s.queryInt(`SELECT COUNT(*) FROM deliveries WHERE id = $1`, inv.ID) != 1 {
 			t.Fatalf("%s: накладная iiko %s не принята как поставка", label, inv.ID)
 		}
+		p.checkShelfLife(label, inv, shelf)
+	}
+}
+
+// checkShelfLife — срок партии считается от даты накладной iiko (occurred_at), а не от момента, когда
+// адаптер её принял: накладная 08:00 принимается в 09:30, но received_at партий равен 08:00, а срок —
+// received_at + срок хранения продукта из iiko (если он задан).
+func (p *pilot) checkShelfLife(label string, inv iiko.IncomingInvoice, shelf map[string]int) {
+	t := p.t
+	want, err := time.ParseInLocation(iiko.DateTimeLayout, inv.DateIncoming, moscow)
+	if err != nil {
+		t.Fatalf("%s: дата накладной %s: %v", label, inv.ID, err)
+	}
+	rows := p.s.queryRows(`SELECT product_id, received_at, expires_at FROM batches WHERE delivery_id = $1 ORDER BY line_no`, inv.ID)
+	defer rows.Close()
+	n := 0
+	for rows.Next() {
+		var pid string
+		var recv, exp time.Time
+		if err := rows.Scan(&pid, &recv, &exp); err != nil {
+			t.Fatal(err)
+		}
+		n++
+		if !recv.Equal(want) {
+			t.Fatalf("%s: накладная %s, партия %s: received_at = %s, ожидалась дата накладной %s", label, inv.ID, pid, recv, want)
+		}
+		if h := shelf[pid]; h > 0 {
+			if wantExp := want.Add(time.Duration(h) * time.Hour); !exp.Equal(wantExp) {
+				t.Fatalf("%s: накладная %s, партия %s: expires_at = %s, ожидался %s (дата накладной + %d ч)", label, inv.ID, pid, exp, wantExp, h)
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatalf("%s: у накладной %s нет партий", label, inv.ID)
 	}
 }
 

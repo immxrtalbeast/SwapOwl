@@ -159,7 +159,10 @@ type startOpts struct {
 	// Phase1 вызывается на чистом экземпляре (реальные часы, без сида), когда миграции применены:
 	// здесь загружается справочник.
 	Phase1 func(s *stand)
-	Env    []string
+	// StartAt — момент стенда, с которого стартуют рабочие часы (на паузе). Нулевое значение — часы
+	// идут от времени машины. Прогон задаёт фиксированный момент, чтобы он не зависел от часов машины.
+	StartAt time.Time
+	Env     []string
 }
 
 var status5xx = regexp.MustCompile(`"status":5\d\d`)
@@ -236,6 +239,15 @@ func newStand(t testing.TB, o startOpts) *stand {
 		o.Phase1(s)
 	}
 	stop(first)
+	if !o.StartAt.IsZero() {
+		// Часы стенда читаются из clock_state при старте: кладём туда фиксированный момент на паузе.
+		if _, err := s.pool.Exec(ctx, `INSERT INTO clock_state (id, sim_base, wall_base, speed, sim_saved)
+			VALUES (true, $1, now(), 0, $1)
+			ON CONFLICT (id) DO UPDATE SET sim_base = EXCLUDED.sim_base, wall_base = EXCLUDED.wall_base,
+				speed = 0, sim_saved = EXCLUDED.sim_saved`, o.StartAt.UTC()); err != nil {
+			t.Fatalf("начальный момент часов стенда: %v", err)
+		}
+	}
 	// Запуск 2: рабочий, ускоренные часы под ручным управлением. Справочник непуст — сид не грузится.
 	cmd := spawn(append([]string{"DEMO_MODE=true", "DEMO_TOKEN=" + demoToken, "CLOCK_MODE=simulated", "SEED_ON_EMPTY=true"}, o.Env...)...)
 	t.Cleanup(func() {
