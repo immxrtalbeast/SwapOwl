@@ -5,7 +5,8 @@ import { RoleGate } from "../../auth/AuthContext";
 import { Card, DataTable, EmptyState, ErrorState, LoadingState, PrimaryButton, ScreenTitle, SecondaryButton, UrgencyBadge } from "../../components";
 import type { Column } from "../../components";
 import { SUPPLY_STATES } from "../../lib/urgency";
-import { formatQty } from "../stock/format";
+import { formatQty } from "../../lib/format";
+import { explainSupply } from "./explain";
 import { buildAcceptBody, offerKey, outcomeFromError, outcomeFromResult } from "./accept";
 import type { AcceptOutcome } from "./accept";
 import { ORDER_STATUS_TEXT, buildOrderBody, needsPolling, selectionKey } from "./order";
@@ -178,7 +179,7 @@ export function SupplyPage() {
       cell: (r) => <span title={r.stockout_at ? new Date(r.stockout_at).toLocaleString("ru-RU") : undefined}>{formatStockout(r.stockout_at, nowMs)}</span>,
     },
     { key: "urgency", header: "Срочность", cell: (r) => <UrgencyBadge def={SUPPLY_STATES[r.urgency]} /> },
-    { key: "explanation", header: "Объяснение", cell: (r) => <span style={{ font: "var(--type-small)" }}>{r.explanation}</span> },
+    { key: "explanation", header: "Объяснение", cell: (r) => <span style={{ font: "var(--type-small)" }}>{explainSupply(r.explanation, r.quantity.unit)}</span> },
     { key: "action", header: "Действие", cell: (r) => <AcceptCell row={r} pending={pendingFor(r)} onSent={setSent} /> },
   ];
   return (
