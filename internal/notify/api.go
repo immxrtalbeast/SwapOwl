@@ -3,6 +3,7 @@
 package notify
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,8 +33,9 @@ type Alert struct {
 
 // Reason — партия, ради которой блюдо в горячих предложениях.
 type Reason struct {
-	ProductID string `json:"product_id"`
-	BatchID   int64  `json:"batch_id"`
+	ProductID   string `json:"product_id"`
+	ProductName string `json:"product_name"`
+	BatchID     int64  `json:"batch_id"`
 }
 
 // Offer — блюдо из GET /api/hot-offers.
@@ -90,9 +92,88 @@ func (c *APIClient) get(ctx context.Context, path string, q url.Values, out any)
 		return err
 	}
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("api %s: статус %d: %s", path, resp.StatusCode, strings.TrimSpace(string(b)))
+		return &APIError{Path: path, Status: resp.StatusCode, Body: strings.TrimSpace(string(b))}
 	}
 	return json.Unmarshal(b, out)
+}
+
+// APIError — не-2xx ответ API.
+type APIError struct {
+	Path   string
+	Status int
+	Body   string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("api %s: статус %d: %s", e.Path, e.Status, e.Body)
+}
+
+// PatchExpiry — PATCH /api/batches/{id}/expiry; ровно одно из expiresOn («YYYY-MM-DD») и hours (>0).
+func (c *APIClient) PatchExpiry(ctx context.Context, id int64, expiresOn string, hours int) error {
+	p := map[string]any{}
+	if expiresOn != "" {
+		p["expires_on"] = expiresOn
+	} else {
+		p["shelf_life_hours"] = hours
+	}
+	body, _ := json.Marshal(p)
+	path := fmt.Sprintf("/api/batches/%d/expiry", id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, strings.TrimRight(c.Base, "/")+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Key)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HC.Do(req)
+	if err != nil {
+		return fmt.Errorf("api %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode/100 != 2 {
+		return &APIError{Path: path, Status: resp.StatusCode, Body: strings.TrimSpace(string(b))}
+	}
+	return nil
+}
+
+// ReceivingBatch — партия из GET /api/receiving (срок ещё не подтверждён).
+type ReceivingBatch struct {
+	ID             int64     `json:"id"`
+	ProductName    string    `json:"product_name"`
+	DeliveryNumber string    `json:"delivery_number"`
+	Remaining      Qty       `json:"remaining"`
+	ReceivedAt     time.Time `json:"received_at"`
+	ExpiresAt      time.Time `json:"expires_at"`
+}
+
+// Receiving — GET /api/receiving.
+func (c *APIClient) Receiving(ctx context.Context) (r []ReceivingBatch, err error) {
+	err = c.get(ctx, "/api/receiving", nil, &r)
+	return
+}
+
+// Me — GET /api/auth/me: роль ключа.
+func (c *APIClient) Me(ctx context.Context) (role string, err error) {
+	var r struct {
+		Role string `json:"role"`
+	}
+	err = c.get(ctx, "/api/auth/me", nil, &r)
+	return r.Role, err
+}
+
+// StopDish — блюдо из GET /api/stop-list с причинами.
+type StopDish struct {
+	Name    string `json:"name"`
+	Missing []struct {
+		ProductName string `json:"product_name"`
+		Missing     Qty    `json:"missing"`
+	} `json:"missing"`
+}
+
+// StopList — GET /api/stop-list.
+func (c *APIClient) StopList(ctx context.Context) (r []StopDish, err error) {
+	err = c.get(ctx, "/api/stop-list", nil, &r)
+	return
 }
 
 // Alerts — GET /api/alerts.
