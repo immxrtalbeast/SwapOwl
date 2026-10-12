@@ -26,6 +26,8 @@ type Run struct {
 	StandTime  time.Time     `json:"stand_time"`
 	TotalMinor int64         `json:"total_minor"` // списано с начала прогона, копейки
 	Series     []SeriesPoint `json:"series"`
+	// SeedProfile — профиль сида точки (/api/clock): "ab" — сценарий bench, "demo" — сид показа.
+	SeedProfile string `json:"seed_profile,omitempty"`
 }
 
 // abRun — накопленное состояние прогона. Закрытые часы не меняются, поэтому читаются один раз.
@@ -36,10 +38,11 @@ type abRun struct {
 	caught  bool      // все закрытые часы прочитаны, partial актуален
 	now     time.Time
 	running bool
+	profile string
 }
 
 func (r *abRun) snapshot() *Run {
-	out := &Run{Running: r.running, StartedAt: r.started, StandTime: r.now, Series: []SeriesPoint{{Hour: 0}}}
+	out := &Run{Running: r.running, StartedAt: r.started, StandTime: r.now, Series: []SeriesPoint{{Hour: 0}}, SeedProfile: r.profile}
 	var cum int64
 	for i, v := range r.closed {
 		cum += v
@@ -120,6 +123,7 @@ func (c *Collector) pollRun(ctx context.Context, p Point) {
 	var clk struct {
 		Now     time.Time `json:"now"`
 		Running bool      `json:"simulator_running"`
+		Profile string    `json:"seed_profile"`
 	}
 	if err := c.get(ctx, p, "/api/clock", nil, &clk); err != nil {
 		return
@@ -141,7 +145,7 @@ func (c *Collector) pollRun(ctx context.Context, p Point) {
 		c.mu.Unlock()
 		return
 	}
-	r.now, r.running = clk.Now, clk.Running
+	r.now, r.running, r.profile = clk.Now, clk.Running, clk.Profile
 
 	full := int(clk.Now.Sub(r.started) / time.Hour)
 	for n := 0; len(r.closed) < full && n < maxCatchUp; n++ {

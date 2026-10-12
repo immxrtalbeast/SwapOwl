@@ -89,6 +89,10 @@ type Simulator struct {
 	Hot       HotSource
 	FollowHot bool
 	Uplift    float64 // 0 — DefaultHotUplift
+	// Events — источник событий вместо generator.GenerateWeighted (профиль ab); nil — демо-генератор.
+	// Deliveries принимает поставки из этого источника; nil — поставки игнорируются (на демо их вносят вручную).
+	Events     func(seed int64, from, to time.Time, weights map[string]float64) ([]generator.Event, error)
+	Deliveries DeliverySink
 
 	base context.Context
 	mu   sync.Mutex
@@ -195,13 +199,23 @@ func (s *Simulator) step(ctx context.Context, skip map[string]bool, from, to tim
 			weights = HotWeights(dishes, u)
 		}
 	}
-	evs, err := generator.GenerateWeighted(s.Seed, from, to, weights)
+	gen := generator.GenerateWeighted
+	if s.Events != nil {
+		gen = s.Events
+	}
+	evs, err := gen(s.Seed, from, to, weights)
 	if err != nil {
 		return err
 	}
 	for _, e := range evs {
 		if ctx.Err() != nil {
 			return nil
+		}
+		if e.Kind == generator.KindDelivery && e.Delivery != nil && s.Deliveries != nil {
+			if err := s.Deliveries.ReceiveDelivery(ctx, *e.Delivery); err != nil && ctx.Err() == nil {
+				s.Log.Error("simulator delivery failed", slog.String("delivery_id", e.Delivery.ID), slog.String("error", err.Error()))
+			}
+			continue
 		}
 		if e.Kind != generator.KindOrder || e.Order == nil {
 			continue
@@ -225,7 +239,10 @@ func (s *Simulator) run(ctx context.Context, done chan struct{}, from time.Time)
 	}
 	t := time.NewTicker(tick)
 	defer t.Stop()
-	skip := creamDishes()
+	var skip map[string]bool // сливки не трогаем только в демо-сценарии
+	if s.Events == nil {
+		skip = creamDishes()
+	}
 	for {
 		select {
 		case <-ctx.Done():

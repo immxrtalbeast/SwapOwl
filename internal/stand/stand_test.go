@@ -23,6 +23,11 @@ var wall = time.Date(2026, 10, 10, 9, 30, 0, 0, time.UTC) // 12:30 по Моск
 
 func newStand(t *testing.T) (*Stand, *store.DB) {
 	t.Helper()
+	return newStandProfile(t, ProfileDemo)
+}
+
+func newStandProfile(t *testing.T, profile string) (*Stand, *store.DB) {
+	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -56,10 +61,10 @@ func newStand(t *testing.T) (*Stand, *store.DB) {
 	}
 	loc, _ := time.LoadLocation("Europe/Moscow")
 	t0 := T0(wall, loc)
-	if loaded, err := Load(ctx, db, t0); err != nil || !loaded {
+	if loaded, err := LoadProfile(ctx, db, t0, profile, loc); err != nil || !loaded {
 		t.Fatalf("seed on empty: %v %v", loaded, err)
 	}
-	if loaded, err := Load(ctx, db, t0); err != nil || loaded {
+	if loaded, err := LoadProfile(ctx, db, t0, profile, loc); err != nil || loaded {
 		t.Fatalf("seed must not load twice: %v %v", loaded, err)
 	}
 	clk, err := clock.NewAccelerated(ctx, db.ClockStore(), t0, time.Time{})
@@ -69,7 +74,7 @@ func newStand(t *testing.T) (*Stand, *store.DB) {
 	gate := &Gate{}
 	jan := janitor.New(GatedJanitorStore{Inner: db, Gate: gate}, clk.Now, nil)
 	return &Stand{DB: db, Clock: clk, Gate: gate, Sweep: jan, Bus: events.New(clk.Now), Loc: loc,
-		Wall: func() time.Time { return wall }}, db
+		Wall: func() time.Time { return wall }, Profile: profile}, db
 }
 
 // state — стоп-лист, горячие предложения и снимок склада на момент now.

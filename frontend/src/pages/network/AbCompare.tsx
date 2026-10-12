@@ -2,7 +2,7 @@ import type { HubSeriesPoint } from "../../api/network";
 import type { HubPoint } from "../../api/network";
 import { Card, HandNote } from "../../components";
 import { formatRub } from "../../lib/format";
-import { clockText, compareAb, diffText } from "./model";
+import { abScenarioNote, clockText, compareAb, diffText } from "./model";
 import type { AbSide } from "./model";
 
 const W = 640;
@@ -75,6 +75,7 @@ function Big({ side, tone }: { side: AbSide; tone: "ours" | "base" }) {
 /** Живое A/B: две точки группы ab, списания в ₽ рядом, разница и графики. Без запросов — их делает NetworkPage. */
 export function AbCompare({ pair }: { pair: readonly [HubPoint, HubPoint] }) {
   const c = compareAb(pair);
+  const note = abScenarioNote(pair);
   const saved = c.diffMinor !== null && c.diffMinor < 0;
   const status = c.ours.series.length === 0 && c.base.series.length === 0
     ? "Ждём запуска генератора на обеих точках (fleet.sh ab-start)."
@@ -90,6 +91,7 @@ export function AbCompare({ pair }: { pair: readonly [HubPoint, HubPoint] }) {
           {saved && <HandNote arrow={null}>столько не ушло в мусор</HandNote>}
         </div>
       </div>
+      {note && <p data-testid="ab-scenario" style={{ margin: "16px 0 0", color: "var(--text-muted)", font: "var(--type-small)" }}>{note}</p>}
       <div style={{ marginTop: 16 }}>
         <AbChart ours={c.ours} base={c.base} />
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap", color: "var(--text-muted)", font: "var(--type-small)" }}>

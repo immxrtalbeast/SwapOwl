@@ -64,3 +64,23 @@ func TestClockReportsFollowHot(t *testing.T) {
 		}
 	}
 }
+
+type profileClock struct{ fakeClock }
+
+func (profileClock) SeedProfile() string { return "ab" }
+
+func TestClockReportsSeedProfile(t *testing.T) {
+	for _, c := range []struct {
+		info ClockInfo
+		want string
+	}{{nil, "demo"}, {fakeClock{speed: 600}, "demo"}, {profileClock{fakeClock{speed: 600}}, "ab"}} {
+		rt := NewRouter(Deps{Now: func() time.Time { return standTime }, Clock: c.info})
+		var got clockOut
+		if err := json.Unmarshal(do(rt.Handler(), http.MethodGet, "/api/clock", nil).Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.SeedProfile != c.want {
+			t.Errorf("seed_profile = %q, want %q", got.SeedProfile, c.want)
+		}
+	}
+}

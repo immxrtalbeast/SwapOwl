@@ -35,23 +35,7 @@ func Load(ctx context.Context, tx pgx.Tx, t0 time.Time) error {
 		return err
 	}
 	b := &pgx.Batch{}
-	for _, p := range Products() {
-		b.Queue(`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size, shelf_after_open_hours) VALUES ($1,$2,$3,$4,$5,$6,$7)
-			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, unit = EXCLUDED.unit,
-				price_minor_per_1000 = EXCLUDED.price_minor_per_1000, lead_days = EXCLUDED.lead_days,
-				pack_size = EXCLUDED.pack_size, shelf_after_open_hours = EXCLUDED.shelf_after_open_hours, auto_created = false`,
-			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, int64(p.PackSize), nullableHours(p.ShelfAfterOpenHours))
-	}
-	for _, d := range Dishes() {
-		b.Queue(`INSERT INTO dishes (id, name, price_minor, prior_daily) VALUES ($1,$2,$3,$4)
-			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, price_minor = EXCLUDED.price_minor, prior_daily = EXCLUDED.prior_daily`,
-			d.ID, d.Name, d.PriceMinor, d.PriorDaily)
-		for _, r := range d.Recipe {
-			b.Queue(`INSERT INTO recipe_items (dish_id, product_id, quantity) VALUES ($1,$2,$3)
-				ON CONFLICT (dish_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity`,
-				d.ID, r.ProductID, int64(r.Quantity))
-		}
-	}
+	queueCatalog(b, Products(), Dishes())
 	for _, d := range h.deliveries {
 		raw, err := json.Marshal(d.Resp)
 		if err != nil {
@@ -106,4 +90,39 @@ func nullableHours(h int) *int {
 		return nil
 	}
 	return &h
+}
+
+// LoadCatalog пишет только справочники (продукты, блюда, рецепты) — для профилей стенда со своим
+// складом, например ab: без истории, поставки и заказы приходят отдельно. Идемпотентно.
+func LoadCatalog(ctx context.Context, tx pgx.Tx, products []Product, dishes []Dish) error {
+	b := &pgx.Batch{}
+	queueCatalog(b, products, dishes)
+	res := tx.SendBatch(ctx, b)
+	for i := 0; i < b.Len(); i++ {
+		if _, err := res.Exec(); err != nil {
+			_ = res.Close()
+			return fmt.Errorf("seed: справочники, запрос %d: %w", i, err)
+		}
+	}
+	return res.Close()
+}
+
+func queueCatalog(b *pgx.Batch, products []Product, dishes []Dish) {
+	for _, p := range products {
+		b.Queue(`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size, shelf_after_open_hours) VALUES ($1,$2,$3,$4,$5,$6,$7)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, unit = EXCLUDED.unit,
+				price_minor_per_1000 = EXCLUDED.price_minor_per_1000, lead_days = EXCLUDED.lead_days,
+				pack_size = EXCLUDED.pack_size, shelf_after_open_hours = EXCLUDED.shelf_after_open_hours, auto_created = false`,
+			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, int64(p.PackSize), nullableHours(p.ShelfAfterOpenHours))
+	}
+	for _, d := range dishes {
+		b.Queue(`INSERT INTO dishes (id, name, price_minor, prior_daily) VALUES ($1,$2,$3,$4)
+			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, price_minor = EXCLUDED.price_minor, prior_daily = EXCLUDED.prior_daily`,
+			d.ID, d.Name, d.PriceMinor, d.PriorDaily)
+		for _, r := range d.Recipe {
+			b.Queue(`INSERT INTO recipe_items (dish_id, product_id, quantity) VALUES ($1,$2,$3)
+				ON CONFLICT (dish_id, product_id) DO UPDATE SET quantity = EXCLUDED.quantity`,
+				d.ID, r.ProductID, int64(r.Quantity))
+		}
+	}
 }

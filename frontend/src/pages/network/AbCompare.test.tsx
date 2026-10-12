@@ -20,6 +20,12 @@ const without = pt({ id: "b", name: "B", label: "Без подсказок", gro
 const withOwl = pt({ id: "a", name: "A", label: "Со SwapOwl", group: "ab", run: run(820_000) });
 
 describe("сравнение A/B", () => {
+  it("подпись сценария — только если обе точки на профиле ab", () => {
+    const ab = (id: string, label: string) => pt({ id, name: id, label, group: "ab", run: { ...run(1000)!, seed_profile: "ab" } });
+    const text = "Сценарий: скоропорт в трёх блюдах. Гости берут рекомендованное блюдо в 1,5 раза чаще — допущение, как в bench";
+    expect(html(<AbCompare pair={[ab("a", "Со SwapOwl"), ab("b", "Без подсказок")]} />)).toContain(text);
+    expect(html(<AbCompare pair={[without, withOwl]} />)).not.toContain("Сценарий:");
+  });
   it("пара — только группа ab ровно из двух точек", () => {
     expect(abPair([without, withOwl, pt({ id: "c" })])).toEqual([without, withOwl]);
     expect(abPair([without, pt({ id: "c" })])).toBeNull();

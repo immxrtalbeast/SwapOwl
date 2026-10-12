@@ -54,8 +54,13 @@ type Stand struct {
 	// AfterChange вызывается после прыжка и сброса, уже без затвора: сверка стоп-листа
 	// (stoplist.changed) делается издателем событий, который живёт в cmd/api.
 	AfterChange func(ctx context.Context)
+	// Profile — профиль сида (SEED_PROFILE): "" и "demo" — сценарий показа, "ab" — bench perishable3.
+	Profile string
 	// Wall — реальное время (для T0 сброса); nil — time.Now. Нужен тестам.
 	Wall func() time.Time
+
+	mu     sync.Mutex
+	anchor time.Time // T0 последнего сброса: от него идут события профиля ab
 }
 
 // T0 — 11:00 по времени ресторана в календарный день момента now.
@@ -165,7 +170,7 @@ func (s *Stand) reset(ctx context.Context) error {
 		if err := store.DeleteStandData(ctx, tx); err != nil {
 			return err
 		}
-		if err := seed.Load(ctx, tx, t0); err != nil {
+		if err := s.loadSeed(ctx, tx, t0); err != nil {
 			return err
 		}
 		if s.Clock != nil {
@@ -176,14 +181,34 @@ func (s *Stand) reset(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	s.mu.Lock()
+	s.anchor = t0
+	s.mu.Unlock()
+	if s.Profile == ProfileAB {
+		if err := loadABStart(ctx, s.DB, t0, s.Loc); err != nil {
+			return err
+		}
+	}
 	if s.Clock != nil {
 		return s.Clock.Reset(ctx, t0)
 	}
 	return nil
 }
 
+func (s *Stand) loadSeed(ctx context.Context, tx pgx.Tx, t0 time.Time) error {
+	if s.Profile == ProfileAB {
+		return loadAB(ctx, tx)
+	}
+	return seed.Load(ctx, tx, t0)
+}
+
 // Load загружает сид на пустую БД (SEED_ON_EMPTY=true) и возвращает T0 и признак загрузки.
 func Load(ctx context.Context, db *store.DB, t0 time.Time) (bool, error) {
+	return LoadProfile(ctx, db, t0, ProfileDemo, time.UTC)
+}
+
+// LoadProfile — Load для профиля сида: ab кладёт справочники сценария bench и стартовую поставку.
+func LoadProfile(ctx context.Context, db *store.DB, t0 time.Time, profile string, loc *time.Location) (bool, error) {
 	loaded := false
 	err := db.InTx(ctx, func(tx pgx.Tx) error {
 		empty, err := seed.IsEmpty(ctx, tx)
@@ -191,8 +216,14 @@ func Load(ctx context.Context, db *store.DB, t0 time.Time) (bool, error) {
 			return err
 		}
 		loaded = true
+		if profile == ProfileAB {
+			return loadAB(ctx, tx)
+		}
 		return seed.Load(ctx, tx, t0)
 	})
+	if err == nil && loaded && profile == ProfileAB {
+		err = loadABStart(ctx, db, t0, loc)
+	}
 	return loaded && err == nil, err
 }
 
