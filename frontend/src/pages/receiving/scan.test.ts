@@ -17,7 +17,7 @@ describe("toDeliveryItem", () => {
   });
   it("объём из AI 315n уходит в l", () => {
     const l = lineFromScan(parseGs1("0104607001234567315100001017261020")!, p, 1);
-    expect(toDeliveryItem(l, [p])).toMatchObject({ quantity: "0.1", unit: "l" });
+    expect(toDeliveryItem(l, [p])).toMatchObject({ quantity: "1", unit: "l" });
   });
   it("без упаковки и веса — количество пусто, отправить нельзя", () => {
     const x = { id: "salt", name: "Соль", unit: "g" } as ProductStock;
