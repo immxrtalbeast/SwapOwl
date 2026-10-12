@@ -133,7 +133,7 @@ func TestPostDeliveryNoExpiryUsesProductDefault(t *testing.T) {
 func TestStockReadsUseStandClock(t *testing.T) {
 	fs := &fakeStock{}
 	rt := NewRouter(Deps{Now: func() time.Time { return standTime }, Stock: fs})
-	for _, p := range []string{"/api/products", "/api/batches?status=ok"} {
+	for _, p := range []string{"/api/products", "/api/batches?status=ok", "/api/batches?status=expiring", "/api/batches?status=expired"} {
 		rec := httptest.NewRecorder()
 		rt.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
 		var v []any

@@ -12,12 +12,12 @@ func (rt *Router) listProducts(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, items)
 }
 
-// listBatches — GET /api/batches?product_id=&status=ok|expired.
+// listBatches — GET /api/batches?product_id=&status=ok|expiring|expired.
 func (rt *Router) listBatches(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	status := q.Get("status")
-	if status != "" && status != "ok" && status != "expired" {
-		validationError(w, "status", "status must be ok or expired")
+	if status != "" && status != "ok" && status != "expiring" && status != "expired" {
+		validationError(w, "status", "status must be ok, expiring or expired")
 		return
 	}
 	items, err := rt.deps.Stock.ListBatches(r.Context(), rt.deps.Now().UTC(), q.Get("product_id"), status)
