@@ -7,5 +7,5 @@ export function benchSentence(b: BenchResult | null | undefined): string | null 
   if (!b || !b.available) return null;
   const { runs, waste_reduction_vs_random_pct: rnd, waste_reduction_vs_nearest_pct: near } = b;
   if (runs == null || rnd == null || near == null) return null;
-  return `Основной алгоритм снижает списания на ${fmt(rnd)} % против случайных и на ${fmt(near)} % против ближайшего срока, ${runs} прогонов.`;
+  return `Горячие предложения снижают списания на ${fmt(rnd)} % против случайных рекомендаций и на ${fmt(near)} % против подсказки «блюдо с ближайшим сроком». Симулятор, ${runs} прогонов.`;
 }
