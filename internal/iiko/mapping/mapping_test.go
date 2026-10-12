@@ -35,7 +35,7 @@ func TestBuildDelivery(t *testing.T) {
 	inv := iiko.IncomingInvoice{ID: "inv-1", DocumentNumber: "7", DateIncoming: "2026-01-02T09:30:00", Status: "PROCESSED",
 		Items: []iiko.InvoiceItem{{Product: "rice", Amount: 2.5}, {Product: "ghost", Amount: 1}}}
 	d, _, ok := BuildDelivery(inv, units, map[string]int{"rice": 48}, loc)
-	if !ok || d.ID != "inv-1" || len(d.Items) != 1 || d.Items[0].Quantity != "2500" || d.Items[0].ShelfLifeHours != 48 || d.CreatedAt != "2026-01-02T09:30:00+03:00" {
+	if !ok || d.ID != "inv-1" || len(d.Items) != 1 || d.Items[0].Quantity != "2500" || d.Items[0].ShelfLifeHours != 48 || d.CreatedAt != "2026-01-02T09:30:00+03:00" || d.OccurredAt != "2026-01-02T09:30:00+03:00" {
 		t.Fatalf("%+v %v", d, ok)
 	}
 	inv.Status = "NEW"
@@ -65,5 +65,55 @@ func TestQtyBaseUnits(t *testing.T) {
 		nil, Defaults{})
 	if r := cat.Dishes[0].Recipe[0]; r.Quantity != "1" {
 		t.Fatalf("минимум 1: %+v", r)
+	}
+}
+
+func TestBuildOrdersPerCheck(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	sales := []Sale{
+		{Date: "2026-01-02", DishID: "soup", Portions: 2, CheckID: "c3", OpenTime: "2026-01-02T19:40:00"},
+		{Date: "2026-01-02", DishID: "pilaf", Portions: 1, CheckID: "c1", OpenTime: "2026-01-02T12:05:00"},
+		{Date: "2026-01-02", DishID: "soup", Portions: 1, CheckID: "c1", OpenTime: "2026-01-02T12:05:00"},
+		{Date: "2026-01-02", DishID: "soup", Portions: 3, CheckID: "c2", OpenTime: "2026-01-02T15:30:00"},
+		{Date: "2026-01-02", DishID: "tea", Portions: 0, CheckID: "c2", OpenTime: "2026-01-02T15:30:00"},
+	}
+	got := BuildOrders(sales, loc)
+	if len(got) != 3 {
+		t.Fatalf("три чека — три заказа: %+v", got)
+	}
+	want := []string{"2026-01-02T12:05:00+03:00", "2026-01-02T15:30:00+03:00", "2026-01-02T19:40:00+03:00"}
+	for i, o := range got {
+		if o.OccurredAt != want[i] || o.Source != "pos" {
+			t.Fatalf("заказ %d: %+v", i, o)
+		}
+	}
+	if got[0].ID != CheckOrderID("c1") || len(got[0].Items) != 2 || got[0].Items[0].DishID != "pilaf" {
+		t.Fatalf("чек c1: %+v", got[0])
+	}
+	// Повтор синхронизации (в другом порядке строк) — те же id.
+	again := BuildOrders([]Sale{sales[3], sales[2], sales[1], sales[0]}, loc)
+	for i := range got {
+		if again[i].ID != got[i].ID {
+			t.Fatalf("id не стабильны: %s ≠ %s", again[i].ID, got[i].ID)
+		}
+	}
+}
+
+func TestBuildOrdersWithoutCheck(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	sales := []Sale{
+		{Date: "2026-01-02", DishID: "soup", Portions: 2, OpenTime: "2026-01-02T13:00:00"},
+		{Date: "2026-01-02", DishID: "soup", Portions: 1, OpenTime: "2026-01-02T14:00:00"},
+		{Date: "2026-01-02", DishID: "pilaf", Portions: 1},
+	}
+	got := BuildOrders(sales, loc)
+	if len(got) != 3 || got[0].ID == got[1].ID || got[1].ID == got[2].ID {
+		t.Fatalf("заказ на позицию: %+v", got)
+	}
+	if got[0].OccurredAt != "" { // без времени — раньше остальных и без occurred_at
+		t.Fatalf("время выдумано: %+v", got[0])
+	}
+	if got[1].OccurredAt != "2026-01-02T13:00:00+03:00" {
+		t.Fatalf("%+v", got[1])
 	}
 }

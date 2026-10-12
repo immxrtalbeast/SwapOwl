@@ -113,6 +113,8 @@ const (
 	OLAPDishID   = "DishId"
 	OLAPDishName = "DishName"
 	OLAPOpenDate = "OpenDate.Typed"
+	OLAPOrderID  = "UniqOrderId.Id" // id чека
+	OLAPOpenTime = "OpenTime"       // время открытия чека, yyyy-MM-ddTHH:mm:ss (время ресторана)
 	OLAPAmount   = "DishAmountInt"
 	OLAPSum      = "DishSumInt"
 )

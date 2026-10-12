@@ -99,6 +99,19 @@ func (s *stubAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// uniqueIDs — сколько разных id в запросах POST path.
+func (s *stubAPI) uniqueIDs(path string) int {
+	ids := map[string]bool{}
+	for _, c := range s.calls {
+		if c.Method == http.MethodPost && c.Path == path {
+			var v struct{ ID string }
+			_ = json.Unmarshal(c.Body, &v)
+			ids[v.ID] = true
+		}
+	}
+	return len(ids)
+}
+
 func (s *stubAPI) count(method, path string) (n int) {
 	for _, c := range s.calls {
 		if c.Method == method && c.Path == path {
@@ -145,8 +158,11 @@ func TestRunDay(t *testing.T) {
 		t.Fatal("каталог не передан")
 	}
 	nd, no := stub.count(http.MethodPost, "/api/deliveries"), stub.count(http.MethodPost, "/api/orders")
-	if nd == 0 || no != 3 { // закрытые дни 1, 2, 3 января
+	if nd == 0 || no < 4 { // чеки закрытых дней 1–3 января и сегодняшнего, по заказу на чек
 		t.Fatalf("поставок %d, заказов %d", nd, no)
+	}
+	if stub.uniqueIDs("/api/orders") != no {
+		t.Fatalf("заказов %d, разных id %d: чеки склеены или продублированы", no, stub.uniqueIDs("/api/orders"))
 	}
 	for _, c := range stub.calls {
 		if c.Auth != "Bearer secret" {
@@ -155,7 +171,7 @@ func TestRunDay(t *testing.T) {
 		if c.Path == "/api/orders" {
 			var o mapping.Order
 			_ = json.Unmarshal(c.Body, &o)
-			if o.Source != "pos" || len(o.ID) != 36 || len(o.Items) == 0 {
+			if o.Source != "pos" || len(o.ID) != 36 || len(o.Items) == 0 || o.OccurredAt == "" {
 				t.Fatalf("заказ: %s", c.Body)
 			}
 		}
@@ -165,25 +181,29 @@ func TestRunDay(t *testing.T) {
 		t.Fatalf("стоп-лист в iiko: %v %v", items, err)
 	}
 
-	// Повторный проход: заказы за закрытые дни не повторяются (курсор), стоп-лист меняется.
+	// Повторный проход: закрытые дни не читаются (курсор), сегодняшний читается заново с теми же id.
+	ids := stub.uniqueIDs("/api/orders")
 	stub.outbox = []outboxEntry{stopMsg(2)}
 	if err := a.runOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := stub.count(http.MethodPost, "/api/orders"); got != no {
-		t.Fatalf("заказы повторены: %d", got)
+	if got := stub.uniqueIDs("/api/orders"); got != ids {
+		t.Fatalf("повторная синхронизация дала новые заказы: было %d id, стало %d", ids, got)
+	}
+	if got := stub.count(http.MethodPost, "/api/orders"); got >= 2*no {
+		t.Fatalf("закрытые дни читаются заново: %d заказов", got)
 	}
 	if items, _ := ic.StopList(context.Background()); len(items) != 0 {
 		t.Fatalf("стоп-лист не очищен: %v", items)
 	}
-	// Накладные текущего дня читаются заново; повторы — идемпотентность API.
+	// Накладные и продажи текущего дня читаются заново; повторы — идемпотентность API.
 	if st, _ := loadState(a.statePath); st.Sales != "2026-01-04" {
 		t.Fatalf("курсор продаж: %+v", st)
 	}
 }
 
 func TestOrderIDStable(t *testing.T) {
-	if mapping.OrderID("2026-01-01") != mapping.OrderID("2026-01-01") || mapping.OrderID("2026-01-01") == mapping.OrderID("2026-01-02") {
+	if mapping.CheckOrderID("c1") != mapping.CheckOrderID("c1") || mapping.CheckOrderID("c1") == mapping.CheckOrderID("c2") {
 		t.Fatal("UUID v5 нестабилен")
 	}
 	if got := mapping.UUIDv5(mapping.Namespace, "python.org"); got != "886313e1-3b8a-5372-9b90-0c9aee199e5d" {
@@ -212,18 +232,103 @@ func (r rejectOrder) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 	r.stubAPI.ServeHTTP(w, q)
 }
 
-func TestRejectedDayDoesNotStopCursor(t *testing.T) {
+func TestRejectedOrderDoesNotStopCursor(t *testing.T) {
 	loc, _ := time.LoadLocation("Europe/Moscow")
 	a, stub, _ := setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
-	s := httptest.NewServer(rejectOrder{stub, mapping.OrderID("2026-01-02")})
+	if err := a.runOnce(context.Background()); err != nil { // сколько заказов в норме
+		t.Fatal(err)
+	}
+	all := stub.uniqueIDs("/api/orders")
+	var bad string
+	for _, c := range stub.calls {
+		if c.Path == "/api/orders" {
+			var o mapping.Order
+			_ = json.Unmarshal(c.Body, &o)
+			bad = o.ID
+			break
+		}
+	}
+	a, stub, _ = setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
+	s := httptest.NewServer(rejectOrder{stub, bad})
 	defer s.Close()
 	a.api.base = s.URL
 	if err := a.runOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	st, _ := loadState(a.statePath)
-	if n := stub.count(http.MethodPost, "/api/orders"); n != 2 || st.Sales != "2026-01-04" {
-		t.Fatalf("заказов принято %d, курсор продаж %q", n, st.Sales)
+	if n := stub.uniqueIDs("/api/orders"); n != all-1 || st.Sales != "2026-01-04" {
+		t.Fatalf("заказов принято %d из %d, курсор продаж %q", n, all, st.Sales)
+	}
+}
+
+// lateOrders отвечает 400 по occurred_at на заказы со временем до cutoff (как API за окном опоздания).
+type lateOrders struct {
+	*stubAPI
+	cutoff time.Time
+}
+
+func (l lateOrders) ServeHTTP(w http.ResponseWriter, q *http.Request) {
+	if q.URL.Path == "/api/orders" {
+		b, _ := io.ReadAll(q.Body)
+		var o mapping.Order
+		_ = json.Unmarshal(b, &o)
+		if at, err := time.Parse(time.RFC3339, o.OccurredAt); err == nil && at.Before(l.cutoff) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"code":"validation_error","message":"occurred_at must be within the window"}}`))
+			return
+		}
+		q.Body = io.NopCloser(bytes.NewReader(b))
+	}
+	l.stubAPI.ServeHTTP(w, q)
+}
+
+// Продажи старше окна API отклоняет: адаптер их пишет в счётчик один раз, не повторяет и не застревает.
+func TestLateSalesCountedNotStuck(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, _ := setup(t, time.Date(2026, 1, 4, 12, 0, 0, 0, loc))
+	s := httptest.NewServer(lateOrders{stub, time.Date(2026, 1, 3, 0, 0, 0, 0, loc)})
+	defer s.Close()
+	a.api.base = s.URL
+	if err := a.runOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if a.lateSeen == 0 {
+		t.Fatal("отклонённые окном продажи не посчитаны")
+	}
+	first := a.lateSeen
+	st, _ := loadState(a.statePath)
+	if st.Sales != "2026-01-04" {
+		t.Fatalf("курсор застрял: %q", st.Sales)
+	}
+	if err := a.runOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if a.lateSeen != first {
+		t.Fatalf("счётчик растёт на повторе: %d → %d", first, a.lateSeen)
+	}
+}
+
+// Накладная iiko от 08:00 уходит с occurred_at 08:00, а не со временем приёма.
+func TestDeliveryCarriesInvoiceTime(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, _ := setup(t, time.Date(2026, 1, 2, 9, 30, 0, 0, loc))
+	if err := a.runOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, c := range stub.calls {
+		if c.Path != "/api/deliveries" {
+			continue
+		}
+		var d mapping.Delivery
+		_ = json.Unmarshal(c.Body, &d)
+		if d.OccurredAt == "" || d.OccurredAt != d.CreatedAt || !strings.Contains(d.OccurredAt, "T08:00:00+03:00") {
+			t.Fatalf("occurred_at поставки: %s", c.Body)
+		}
+		n++
+	}
+	if n == 0 {
+		t.Fatal("поставок нет")
 	}
 }
 

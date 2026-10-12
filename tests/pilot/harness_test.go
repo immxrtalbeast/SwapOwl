@@ -401,6 +401,7 @@ func (s *stand) issueKey() {
 // pastOnly ставит перед фейковым iiko прокси, который не отдаёт накладные «из будущего».
 // Фейк выдаёт накладные за дату целиком (в том числе 08:00 при запросе в 00:30), настоящий iiko
 // знает только о проведённых документах; без фильтра адаптер получил бы поставку раньше её прихода.
+// Так же не отдаются чеки, открытые позже now(): иначе адаптер передал бы продажу из будущего.
 // now() — время стенда, которое прогон кладёт в файл перед каждым запуском адаптера.
 func pastOnly(target string, now func() time.Time, loc *time.Location) http.Handler {
 	u, err := url.Parse(target)
@@ -409,7 +410,13 @@ func pastOnly(target string, now func() time.Time, loc *time.Location) http.Hand
 	}
 	rp := httputil.NewSingleHostReverseProxy(u)
 	rp.ModifyResponse = func(resp *http.Response) error {
-		if resp.Request.URL.Path != iiko.PathIncomingInvoice || resp.StatusCode != http.StatusOK {
+		if resp.StatusCode != http.StatusOK {
+			return nil
+		}
+		if resp.Request.URL.Path == iiko.PathOLAP {
+			return hideFutureChecks(resp, now, loc)
+		}
+		if resp.Request.URL.Path != iiko.PathIncomingInvoice {
 			return nil
 		}
 		raw, err := io.ReadAll(resp.Body)
@@ -443,4 +450,34 @@ func pastOnly(target string, now func() time.Time, loc *time.Location) http.Hand
 		return nil
 	}
 	return rp
+}
+
+// hideFutureChecks убирает из ответа OLAP строки чеков, открытых после now().
+func hideFutureChecks(resp *http.Response, now func() time.Time, loc *time.Location) error {
+	raw, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return err
+	}
+	var r iiko.OLAPResponse
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return err
+	}
+	kept := r.Data[:0:0]
+	for _, row := range r.Data {
+		v, _ := row[iiko.OLAPOpenTime].(string)
+		if at, err := time.ParseInLocation(iiko.DateTimeLayout, v, loc); err == nil && at.After(now()) {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	r.Data = kept
+	out, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(out))
+	resp.ContentLength = int64(len(out))
+	resp.Header.Set("Content-Length", fmt.Sprint(len(out)))
+	return nil
 }

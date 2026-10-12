@@ -163,10 +163,11 @@ func Prices(invs []iiko.IncomingInvoice) map[string]float64 {
 
 // Delivery — тело POST /api/deliveries.
 type Delivery struct {
-	ID        string         `json:"id"`
-	Number    string         `json:"number"`
-	CreatedAt string         `json:"created_at"`
-	Items     []DeliveryItem `json:"items"`
+	ID         string         `json:"id"`
+	Number     string         `json:"number"`
+	CreatedAt  string         `json:"created_at"`
+	OccurredAt string         `json:"occurred_at"` // дата накладной iiko: от неё считается срок партии (2.4а)
+	Items      []DeliveryItem `json:"items"`
 }
 
 // DeliveryItem — позиция поставки.
@@ -188,7 +189,7 @@ func BuildDelivery(inv iiko.IncomingInvoice, units map[string]Unit, shelf map[st
 	if err != nil {
 		return d, "дата " + inv.DateIncoming, false
 	}
-	d = Delivery{ID: inv.ID, Number: inv.DocumentNumber, CreatedAt: at.Format(time.RFC3339), Items: []DeliveryItem{}}
+	d = Delivery{ID: inv.ID, Number: inv.DocumentNumber, CreatedAt: at.Format(time.RFC3339), OccurredAt: at.Format(time.RFC3339), Items: []DeliveryItem{}}
 	for _, it := range inv.Items {
 		u, known := units[it.Product]
 		if !known || it.Amount <= 0 || Qty(it.Amount, u) == "0" {
@@ -202,18 +203,21 @@ func BuildDelivery(inv iiko.IncomingInvoice, units map[string]Unit, shelf map[st
 	return d, "", true
 }
 
-// Sale — строка продаж за день: порции блюда.
+// Sale — строка продаж iiko: порции блюда в чеке.
 type Sale struct {
 	Date     string // yyyy-MM-dd
 	DishID   string
 	Portions int64
+	CheckID  string // id чека iiko; пусто, если выгрузка его не даёт
+	OpenTime string // yyyy-MM-ddTHH:mm:ss, время ресторана; пусто, если выгрузка его не даёт
 }
 
 // Order — тело POST /api/orders.
 type Order struct {
-	ID     string      `json:"id"`
-	Source string      `json:"source"`
-	Items  []OrderItem `json:"items"`
+	ID         string      `json:"id"`
+	Source     string      `json:"source"`
+	OccurredAt string      `json:"occurred_at,omitempty"` // время продажи (2.4а)
+	Items      []OrderItem `json:"items"`
 }
 
 // OrderItem — строка заказа.
@@ -222,31 +226,69 @@ type OrderItem struct {
 	Portions int64  `json:"portions"`
 }
 
-// BuildOrders собирает по одному заказу `pos` на день: id — UUID v5 от «iiko-sales:<дата>».
-// В OLAP-отчёте нет id заказов iiko, поэтому единицей идемпотентности служит день.
-func BuildOrders(sales []Sale) []Order {
-	byDate := map[string][]OrderItem{}
+// BuildOrders собирает заказы `pos`: один на чек, а без id чека — один на строку выгрузки.
+// occurred_at — время открытия чека (в поясе loc); без времени поле не передаётся.
+// id детерминированный (CheckOrderID, LineOrderID), поэтому повторная синхронизация — повтор, а не дубль.
+// Порядок — по времени, затем по id.
+func BuildOrders(sales []Sale, loc *time.Location) []Order {
+	type group struct {
+		order Order
+		at    time.Time
+		items map[string]int64
+	}
+	groups := map[string]*group{}
+	var ids []string
 	for _, s := range sales {
-		if s.Portions > 0 && s.DishID != "" {
-			byDate[s.Date] = append(byDate[s.Date], OrderItem{DishID: s.DishID, Portions: s.Portions})
+		if s.Portions <= 0 || s.DishID == "" {
+			continue
 		}
+		id := LineOrderID(s)
+		if s.CheckID != "" {
+			id = CheckOrderID(s.CheckID)
+		}
+		g := groups[id]
+		if g == nil {
+			g = &group{order: Order{ID: id, Source: "pos"}, items: map[string]int64{}}
+			groups[id] = g
+			ids = append(ids, id)
+		}
+		if at, err := time.ParseInLocation(iiko.DateTimeLayout, s.OpenTime, loc); err == nil && (g.at.IsZero() || at.Before(g.at)) {
+			g.at = at
+		}
+		g.items[s.DishID] += s.Portions
 	}
-	dates := make([]string, 0, len(byDate))
-	for d := range byDate {
-		dates = append(dates, d)
+	out := make([]Order, 0, len(ids))
+	times := map[string]time.Time{}
+	for _, id := range ids {
+		g := groups[id]
+		if !g.at.IsZero() {
+			g.order.OccurredAt = g.at.Format(time.RFC3339)
+			times[id] = g.at
+		}
+		g.order.Items = make([]OrderItem, 0, len(g.items))
+		for dish, n := range g.items {
+			g.order.Items = append(g.order.Items, OrderItem{DishID: dish, Portions: n})
+		}
+		sort.Slice(g.order.Items, func(i, j int) bool { return g.order.Items[i].DishID < g.order.Items[j].DishID })
+		out = append(out, g.order)
 	}
-	sort.Strings(dates)
-	var out []Order
-	for _, d := range dates {
-		items := byDate[d]
-		sort.Slice(items, func(i, j int) bool { return items[i].DishID < items[j].DishID })
-		out = append(out, Order{ID: OrderID(d), Source: "pos", Items: items})
-	}
+	sort.Slice(out, func(i, j int) bool {
+		ti, tj := times[out[i].ID], times[out[j].ID]
+		if !ti.Equal(tj) {
+			return ti.Before(tj)
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 
-// OrderID — id заказа за день: UUID v5.
-func OrderID(date string) string { return UUIDv5(Namespace, "iiko-sales:"+date) }
+// CheckOrderID — id заказа по чеку iiko: UUID v5 от «iiko-check:<id чека>».
+func CheckOrderID(checkID string) string { return UUIDv5(Namespace, "iiko-check:"+checkID) }
+
+// LineOrderID — id заказа по строке выгрузки без чека: UUID v5 от «iiko-line:<дата>|<время>|<блюдо>».
+func LineOrderID(s Sale) string {
+	return UUIDv5(Namespace, "iiko-line:"+s.Date+"|"+s.OpenTime+"|"+s.DishID)
+}
 
 // Namespace — пространство имён UUID v5 адаптера (фиксированная константа).
 var Namespace = [16]byte{0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}
