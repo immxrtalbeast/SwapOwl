@@ -134,3 +134,15 @@ func TestProductPricesPlausible(t *testing.T) {
 		}
 	}
 }
+
+func TestShelfAfterOpenSeed(t *testing.T) {
+	want := map[string]int{"milk": 48, "cream": 48, "parmesan": 120}
+	for _, p := range Products() {
+		if p.ShelfAfterOpenHours != want[p.ID] { // остальные продукты — 0: вскрытие срок не меняет
+			t.Errorf("%s: shelf after open %d, want %d", p.ID, p.ShelfAfterOpenHours, want[p.ID])
+		}
+		if p.ShelfAfterOpenHours > 0 && p.ShelfAfterOpenHours >= p.ShelfLifeHours {
+			t.Errorf("%s: срок после вскрытия не короче срока закрытой упаковки", p.ID)
+		}
+	}
+}

@@ -93,10 +93,12 @@ func (b *Bot) onText(ctx context.Context, text string) {
 			b.reply(ctx, b.N.ExpiringTodayText(ctx))
 		case "/summary":
 			b.reply(ctx, b.N.SummaryText(ctx))
+		case "/week":
+			b.week(ctx)
 		case "/start", "/help":
-			b.reply(ctx, "Команды: /hot, /stop, /expiring, /summary")
+			b.reply(ctx, "Команды: /hot, /stop, /expiring, /summary, /week")
 		default:
-			b.reply(ctx, "Неизвестная команда. Доступно: /hot, /stop, /expiring, /summary")
+			b.reply(ctx, "Неизвестная команда. Доступно: /hot, /stop, /expiring, /summary, /week")
 		}
 		return
 	}
@@ -382,4 +384,12 @@ func (n *Notifier) SummaryText(ctx context.Context) string {
 		return n.apiFail(err)
 	}
 	return FormatDigest(now.Format("2006-01-02"), wo, sf, alerts, n.prices(ctx))
+}
+
+// week — /week: недельный отчёт по запросу в чат, откуда пришла команда.
+func (b *Bot) week(ctx context.Context) {
+	if err := b.N.SendWeekly(ctx, b.TG, b.TG); err != nil {
+		b.logf("/week: %v", err)
+		b.reply(ctx, b.N.apiFail(err))
+	}
 }

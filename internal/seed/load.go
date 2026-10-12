@@ -36,11 +36,11 @@ func Load(ctx context.Context, tx pgx.Tx, t0 time.Time) error {
 	}
 	b := &pgx.Batch{}
 	for _, p := range Products() {
-		b.Queue(`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size) VALUES ($1,$2,$3,$4,$5,$6)
+		b.Queue(`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size, shelf_after_open_hours) VALUES ($1,$2,$3,$4,$5,$6,$7)
 			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, unit = EXCLUDED.unit,
 				price_minor_per_1000 = EXCLUDED.price_minor_per_1000, lead_days = EXCLUDED.lead_days,
-				pack_size = EXCLUDED.pack_size, auto_created = false`,
-			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, int64(p.PackSize))
+				pack_size = EXCLUDED.pack_size, shelf_after_open_hours = EXCLUDED.shelf_after_open_hours, auto_created = false`,
+			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, int64(p.PackSize), nullableHours(p.ShelfAfterOpenHours))
 	}
 	for _, d := range Dishes() {
 		b.Queue(`INSERT INTO dishes (id, name, price_minor, prior_daily) VALUES ($1,$2,$3,$4)
@@ -98,4 +98,12 @@ func Load(ctx context.Context, tx pgx.Tx, t0 time.Time) error {
 		}
 	}
 	return res.Close()
+}
+
+// nullableHours — 0 в сиде означает «не задан», в БД это null.
+func nullableHours(h int) *int {
+	if h == 0 {
+		return nil
+	}
+	return &h
 }

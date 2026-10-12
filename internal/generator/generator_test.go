@@ -185,3 +185,41 @@ func TestParseQtyTable(t *testing.T) {
 		t.Fatal("дробь мельче базовой должна отклоняться")
 	}
 }
+
+// Веса меняют только выбор блюда: заказы, их время, id и число позиций те же; без весов — как Generate.
+func TestGenerateWeightedKeepsGuestsFixed(t *testing.T) {
+	from := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+	to := from.Add(72 * time.Hour)
+	base, err := Generate(7, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	same, _ := GenerateWeighted(7, from, to, map[string]float64{})
+	if !reflect.DeepEqual(base, same) {
+		t.Fatal("пустые веса должны давать результат Generate")
+	}
+	hot := "caesar"
+	w, _ := GenerateWeighted(7, from, to, map[string]float64{hot: 5})
+	if len(w) != len(base) {
+		t.Fatalf("число событий: %d и %d", len(w), len(base))
+	}
+	count := func(evs []Event) (n int) {
+		for i, e := range evs {
+			if e.Kind != KindOrder {
+				continue
+			}
+			if e.Order.ID != base[i].Order.ID || !e.Order.At.Equal(base[i].Order.At) {
+				t.Fatalf("заказ %d изменился", i)
+			}
+			for _, it := range e.Order.Items {
+				if it.DishID == hot {
+					n++
+				}
+			}
+		}
+		return n
+	}
+	if count(w) <= count(base) {
+		t.Fatalf("блюдо с весом ×5 должно заказываться чаще: %d против %d", count(w), count(base))
+	}
+}

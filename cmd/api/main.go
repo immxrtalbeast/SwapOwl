@@ -121,6 +121,7 @@ func run() error {
 	db.Expiry = expiry
 	jan.Expiry, jan.OnExpiring = &expiry, pub.onExpiring
 	go jan.Run(ctx)
+	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt, Days: cfg.Days}
 	st := &stand.Stand{DB: db, Clock: accl, Gate: gate, Sweep: jan, Bus: bus, Loc: cfg.Location,
 		AfterChange: pub.recheckStopList}
 	orders := pubOrders{db, pub}
@@ -131,7 +132,12 @@ func run() error {
 	if cfg.DemoMode {
 		demo = st
 		// Генератор идёт в процессе через тот же путь, что POST /api/orders (2.8).
-		st.Sim = stand.NewSimulator(ctx, simSink{api.OrderPlacer{Orders: orders, Now: now, Gate: gate}}, now, simSeed, log)
+		st.Sim = stand.NewSimulator(ctx, simSink{api.OrderPlacer{Orders: orders, Now: now, Gate: gate}}, now, cfg.SimSeed, log)
+		st.Sim.FollowHot, st.Sim.Uplift = cfg.SimFollowHot, cfg.SimHotUplift
+		st.Sim.Hot = hotDishes{src: store.Snapshotter{DB: db, Params: store.SnapshotParams{
+			WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
+			algo: cfg.HotOffersAlgo, cfg: hotoffers.Config{TopN: cfg.HotTopN, WMin: cfg.HotWMinHours,
+				CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter, HorizonHours: cfg.HotHorizon}}
 		st.Sim.State = db.ClockStore()
 		if cfg.ClockMode == "simulated" {
 			if err := st.Sim.Restore(ctx); err != nil {
@@ -140,7 +146,6 @@ func run() error {
 		}
 		sim = st.Sim
 	}
-	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt, Days: cfg.Days}
 	monitor := store.Monitor{DB: db, Params: store.AlertParams{Expiry: expiry, Schedule: schedule, WMin: cfg.HotWMinHours}}
 	reg := metrics.New()
 	reg.Gauge("sse_subscribers", "Открытые SSE-подключения.", func() float64 { return float64(bus.Subscribers()) })
@@ -233,8 +238,26 @@ func clockInfo(st *stand.Stand) api.ClockInfo {
 	return st
 }
 
-// simSeed — seed генератора заказов на стенде.
-const simSeed = 2026
+// hotDishes отдаёт генератору блюда текущего списка горячих предложений: тот же расчёт, что у
+// GET /api/hot-offers, без HTTP.
+type hotDishes struct {
+	src  api.HotOffersSource
+	algo string
+	cfg  hotoffers.Config
+}
+
+func (h hotDishes) HotDishes(ctx context.Context, now time.Time) ([]string, error) {
+	snap, err := h.src.Snapshot(ctx, now.UTC())
+	if err != nil {
+		return nil, err
+	}
+	resp := api.BuildHotOffers(snap, h.algo, h.cfg)
+	out := make([]string, 0, len(resp.Offers))
+	for _, o := range resp.Offers {
+		out = append(out, o.DishID)
+	}
+	return out, nil
+}
 
 // simSink кладёт заказы генератора через OrderPlacer.
 type simSink struct{ p api.OrderPlacer }
@@ -266,6 +289,14 @@ func (c pubCorrections) WriteOffBatch(ctx context.Context, in store.WriteoffInpu
 func (c pubCorrections) Inventory(ctx context.Context, in store.InventoryInput, now func() time.Time) (store.InventoryResult, error) {
 	res, err := c.Corrections.Inventory(ctx, in, now)
 	if err == nil && !res.Replayed && (len(res.Shortage) > 0 || res.Surplus != nil) {
+		c.p.stockChanged(ctx, []string{res.ProductID})
+	}
+	return res, err
+}
+
+func (c pubCorrections) OpenBatch(ctx context.Context, in store.OpenInput, now func() time.Time) (store.OpenResult, error) {
+	res, err := c.Corrections.OpenBatch(ctx, in, now)
+	if err == nil && !res.Replayed {
 		c.p.stockChanged(ctx, []string{res.ProductID})
 	}
 	return res, err

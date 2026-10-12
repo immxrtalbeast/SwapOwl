@@ -190,6 +190,74 @@ paths:
               schema: {type: array, items: {$ref: '#/components/schemas/Batch'}}
         '400': {$ref: '#/components/responses/Validation'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/batches/{id}/open:
+    post:
+      tags: [stock]
+      summary: Вскрыть упаковку — выделить из партии часть с коротким сроком (operator)
+      description: |
+        Срок на упаковке — для закрытой; после вскрытия действует свой срок продукта `shelf_after_open_hours`
+        (молоко и сливки 48 ч, пармезан 120 ч). Из исходной партии уходит `qty` движением `transfer_out` / `opened`,
+        создаётся дочерняя партия (`parent_batch_id`, `opened_at = now`) с остатком `qty`, сроком
+        `min(исходный срок, now + shelf_after_open_hours)` и движением `transfer_in` / `opened`.
+        Одна транзакция под блокировкой продукта. Идемпотентна по `id`: тот же `id` и тело — `200`, `replayed: true`;
+        другое тело — `409 correction_conflict`. Баланс партий — docs/opened.md.
+
+        `qty` не передан: одна упаковка (`pack_size` продукта при `pack_size > 1`, но не больше остатка),
+        иначе вся партия.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: integer, minimum: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id: {type: string, minLength: 1, maxLength: 128}
+                qty: {$ref: '#/components/schemas/QtyInput'}
+                unit: {$ref: '#/components/schemas/Unit'}
+            example: {id: open-001, qty: '1', unit: l}
+      responses:
+        '201':
+          description: Упаковка вскрыта
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string}
+                  parent_batch_id: {type: integer}
+                  product_id: {type: string}
+                  opened: {$ref: '#/components/schemas/Qty'}
+                  parent_remaining: {$ref: '#/components/schemas/Qty'}
+                  child:
+                    type: object
+                    description: Дочерняя партия
+                    properties:
+                      id: {type: integer}
+                      product_id: {type: string}
+                      quantity: {$ref: '#/components/schemas/Qty'}
+                      received_at: {type: string, format: date-time}
+                      expires_at: {type: string, format: date-time}
+                      status: {type: string}
+                  opened_at: {type: string, format: date-time}
+                  shelf_after_open_hours: {type: integer}
+                  replayed: {type: boolean}
+        '200': {description: Повтор операции (`replayed=true`)}
+        '400':
+          description: "`validation_error`: `qty` больше остатка, не той размерности или не положительное; у продукта нет `shelf_after_open_hours` («вскрытие не меняет срок»)"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: "`batch_closed` (партия просрочена или пуста) или `correction_conflict`"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
   /api/alerts:
     get:
       tags: [stock]
@@ -207,7 +275,7 @@ paths:
       summary: Журнал движений, новые первыми (viewer)
       parameters:
         - {name: product_id, in: query, schema: {type: string}}
-        - {name: kind, in: query, schema: {type: string, enum: [receipt, sale, writeoff, return, adjustment]}}
+        - {name: kind, in: query, schema: {type: string, enum: [receipt, sale, writeoff, return, adjustment, transfer_in, transfer_out]}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1}}
       responses:
         '200':
@@ -325,6 +393,25 @@ paths:
                        available: {qty: 0, unit: g}, missing: {qty: 150, unit: g}}
                   recipe: [{product_id: salmon, quantity: {qty: 150, unit: g}}]
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/forecast/writeoffs:
+    get:
+      tags: [menu]
+      summary: Прогноз списаний «если ничего не делать» (viewer)
+      parameters:
+        - {name: hours, in: query, description: Горизонт в часах, по умолчанию 168, schema: {type: integer, enum: [24, 72, 168]}}
+      responses:
+        '200':
+          description: Деньги под риском по партиям со сроком раньше now+hours (количество под риском 2.6, без горячих предложений)
+          content:
+            application/json:
+              example:
+                hours: 168
+                total_minor: 126000
+                products:
+                  - {product_id: salmon, product_name: Лосось, at_risk: {qty: 1400, unit: g}, total_minor: 126000}
+                days:
+                  - {date: '2026-10-09', total_minor: 126000}
+                generated_at: '2026-10-09T11:00:00+03:00'
   /api/hot-offers:
     get:
       tags: [menu]
@@ -1155,6 +1242,9 @@ components:
         expiring: {$ref: '#/components/schemas/Qty'}
         batches_count: {type: integer}
         nearest_expires_at: {type: [string, 'null'], format: date-time}
+        shelf_after_open_hours:
+          type: [integer, 'null']
+          description: Срок после вскрытия упаковки, ч; null — вскрытие срок не меняет
     Batch:
       type: object
       properties:
@@ -1168,6 +1258,13 @@ components:
         expires_at: {type: string, format: date-time}
         time_left_seconds: {type: integer}
         status: {type: string, enum: [ok, expiring, expired]}
+        parent_batch_id:
+          type: [integer, 'null']
+          description: Исходная партия, если эта выделена вскрытием упаковки
+        opened_at:
+          type: [string, 'null']
+          format: date-time
+          description: Момент вскрытия; маркировка «вскрыто …»
     Alert:
       type: object
       properties:
@@ -1336,6 +1433,7 @@ components:
               lead_days: {type: integer}
               pack_size: {type: integer}
               shelf_life_hours: {type: integer, minimum: 1, maximum: 87600}
+              shelf_after_open_hours: {type: integer, minimum: 1, maximum: 87600, description: Срок после вскрытия упаковки, ч; не передан — прежний сохраняется}
               piece_weight:
                 type: integer
                 minimum: 1
