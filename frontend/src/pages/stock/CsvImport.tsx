@@ -3,6 +3,7 @@ import type { ChangeEvent } from "react";
 import { Modal, NativeSelect } from "@mantine/core";
 import { IconUpload } from "@tabler/icons-react";
 import { api } from "../../api/client";
+import { ApiError } from "../../api/types";
 import type { ProductStock } from "../../api/types";
 import { PrimaryButton, SecondaryButton } from "../../components";
 import { buildDelivery, decodeCsv, invoiceFromFileName, parseCsv, resolveRow } from "./csvImport";
@@ -11,6 +12,7 @@ import type { ParsedCsv } from "./csvImport";
 type Status = { kind: "idle" | "sending" } | { kind: "ok" | "error"; message: string };
 
 interface Loaded {
+  createdAt: Date; // дата изменения файла: у того же файла она та же, значит и тело запроса (BodyHash включает created_at)
   parsed: ParsedCsv;
   invoice: string;
 }
@@ -32,7 +34,7 @@ export function CsvImport({ products, onReceived }: { products: readonly Product
     const parsed = parseCsv(decodeCsv(await file.arrayBuffer()));
     setOverrides({});
     setStatus({ kind: "idle" });
-    setLoaded({ parsed, invoice: parsed.invoice || invoiceFromFileName(file.name) });
+    setLoaded({ createdAt: new Date(file.lastModified), parsed, invoice: parsed.invoice || invoiceFromFileName(file.name) });
   }
 
   const rows = loaded ? loaded.parsed.rows.map((r) => resolveRow(r, products, overrides[r.line])) : [];
@@ -43,7 +45,7 @@ export function CsvImport({ products, onReceived }: { products: readonly Product
     if (!loaded || !canSend) return;
     setStatus({ kind: "sending" });
     try {
-      const r = await api.receiveDelivery(buildDelivery(loaded.invoice, rows.map((x) => x.item!)));
+      const r = await api.receiveDelivery(buildDelivery(loaded.invoice, rows.map((x) => x.item!), loaded.createdAt));
       if (r.replayed) setStatus({ kind: "ok", message: "Эта накладная уже принята — остатки не изменились" });
       else {
         setStatus({ kind: "ok", message: `Поставка принята: партий ${r.batches.length}` });
@@ -51,6 +53,12 @@ export function CsvImport({ products, onReceived }: { products: readonly Product
       }
       setLoaded(null);
     } catch (err) {
+      // id — хэш содержимого, поэтому конфликт возможен только у пересохранённого файла с тем же содержимым.
+      if (err instanceof ApiError && err.code === "delivery_conflict") {
+        setStatus({ kind: "ok", message: "Эта накладная уже принята — остатки не изменились" });
+        setLoaded(null);
+        return;
+      }
       setStatus({ kind: "error", message: err instanceof Error ? err.message : "Не удалось отправить поставку" });
     }
   }

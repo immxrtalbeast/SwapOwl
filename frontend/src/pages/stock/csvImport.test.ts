@@ -119,6 +119,8 @@ describe("id поставки", () => {
   it("детерминирован от содержимого и номера", () => {
     const items = [resolveRow(row({}), PRODUCTS).item!];
     const a = buildDelivery("НК-1", items, new Date(0));
+    expect(buildDelivery("НК-1", items, new Date(1000)).created_at).toBe(a.created_at.replace("1970-01-01T00:00:00.000Z", "1970-01-01T00:00:01.000Z"));
+    expect(buildDelivery("НК-1", items, new Date(0))).toEqual(a);
     expect(buildDelivery("НК-1", items, new Date(1000)).id).toBe(a.id);
     expect(buildDelivery("НК-2", items).id).not.toBe(a.id);
     expect(buildDelivery("НК-1", [{ ...items[0], quantity: "2" }]).id).not.toBe(a.id);
