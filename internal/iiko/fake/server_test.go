@@ -201,7 +201,7 @@ func TestPieceProductPrice(t *testing.T) {
 	if err := xml.Unmarshal(b, &inv); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]float64{"bun": 0.015, "egg": 0.012, "salmon": 1800}
+	want := map[string]float64{"bun": 15, "egg": 12, "salmon": 1800}
 	seen := 0
 	for _, d := range inv.Documents {
 		for _, it := range d.Items {

@@ -128,3 +128,35 @@ func TestHistoryDemoConditionsAtT0(t *testing.T) {
 		}
 	}
 }
+
+// Списания недели истории — 4–10 % себестоимости проданного (FS-125, как в FS-114).
+func TestHistoryWriteoffsPlausible(t *testing.T) {
+	h, err := buildHistory(testT0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	price := map[string]int64{}
+	for _, p := range Products() {
+		price[p.ID] = p.PriceMinorPer1000
+	}
+	from := testT0.Add(-7 * 24 * time.Hour)
+	var sold, written float64
+	for _, m := range h.moves {
+		if m.At.Before(from) {
+			continue
+		}
+		cost := float64(m.Qty) * float64(price[m.ProductID]) / 1000
+		switch m.Kind {
+		case "sale":
+			sold += cost
+		case "writeoff":
+			written += cost
+		}
+	}
+	if sold == 0 {
+		t.Fatal("нет продаж за неделю")
+	}
+	if pct := written / sold * 100; pct < 4 || pct > 10 {
+		t.Fatalf("списания недели %.1f %% себестоимости проданного, ожидалось 4–10 %%", pct)
+	}
+}
