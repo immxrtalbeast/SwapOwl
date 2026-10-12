@@ -12,7 +12,13 @@ ENV_FILE="$DEPLOY_DIR/.env"
 LAST_GOOD="$DEPLOY_DIR/.last_good"
 
 die() { echo "ошибка: $*" >&2; exit 1; }
-dc() { IMAGE_TAG="$1" docker compose -p swapowl -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "${@:2}"; }
+# Профили (integrations, ops) берутся из COMPOSE_PROFILES в .env; без них стартуют только caddy, web, api, postgres.
+PROFILES=()
+if [ -f "$ENV_FILE" ]; then
+  IFS=, read -r -a _p <<< "$(sed -n 's/^COMPOSE_PROFILES=//p' "$ENV_FILE" | tail -n 1 | tr -d '"'"'"' ')"
+  for _x in ${_p[@]+"${_p[@]}"}; do [ -n "$_x" ] && PROFILES+=(--profile "$_x"); done
+fi
+dc() { IMAGE_TAG="$1" docker compose -p swapowl ${PROFILES[@]+"${PROFILES[@]}"} -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "${@:2}"; }
 
 # Проверяем сам API внутри сети compose (в обход Caddy: прокси отвечает и при упавшем API).
 wait_health() {

@@ -85,6 +85,16 @@ Actions → Deploy → Run workflow, `tag` = нужный sha (или тег п�
 
 Сервис `watchdog` уже описан в `deploy/docker-compose.prod.yml` под профилем `ops` (в одиночном режиме не стартует без токена Telegram, иначе перезапускался бы в цикле): `docker compose -p swapowl --profile ops ... up -d watchdog`. В `deploy/.env.prod.example` есть `WATCHDOG_TG_TOKEN`, `WATCHDOG_TG_CHAT`. Образы `hub` и `watchdog` собирает `deploy.yml` вместе с остальными.
 
+## Демо-стенд и интеграции (профиль integrations)
+
+Демо-стенд работает **без интеграций**: по умолчанию стартуют только `caddy`, `web`, `api`, `postgres`. Сервисы `fake-iiko`, `iiko-adapter` и `notifier` вынесены в профиль `integrations` (как `ops` и `fleet`). Причина: адаптер с ключом API заливает в БД справочники эмулятора iiko и пытается залить продажи по реальным часам эмулятора, а у стенда часы симулированные. Демо-сид перезаписывается, и сценарий перестаёт воспроизводиться (помогает только сброс). `notifier` без токена Telegram перезапускается каждые несколько секунд, что даёт лишнюю нагрузку на 1 vCPU.
+
+Профили берутся из `COMPOSE_PROFILES` в `.env` точки (`/opt/swapowl/.env` для `deploy.sh`, `points/<slug>/.env` для `fleet.sh`). В `deploy/.env.prod.example` значение пустое: `COMPOSE_PROFILES=`.
+
+Интеграцию показывайте на отдельной точке: `fleet.sh up integ`, затем в `points/integ/.env` задайте `COMPOSE_PROFILES=integrations` (и `ADAPTER_API_KEY`, `NOTIFIER_API_KEY`) и повторите `fleet.sh up integ`. У точки своя БД и реальные часы, демо-стенд не затрагивается.
+
+После выкатки этого изменения на уже работающем стенде остановите и удалите лишние контейнеры вручную: `docker compose -p swapowl -f deploy/docker-compose.prod.yml --env-file /opt/swapowl/.env rm -sf iiko-adapter fake-iiko notifier`.
+
 ## Много точек на одном сервере
 
 Одиночный режим (`deploy.sh <sha>`, проект `swapowl`) остаётся по умолчанию и не меняется. Несколько ресторанов на одном сервере ведёт `deploy/scripts/fleet.sh`.

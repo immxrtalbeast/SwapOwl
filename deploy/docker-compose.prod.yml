@@ -82,7 +82,11 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  # Профиль integrations: fake-iiko, iiko-adapter, notifier. По умолчанию демо-стенд — caddy, web, api, postgres:
+  # адаптер заливает в БД справочники и продажи эмулятора с реальными часами и портит демо-сид.
+  # Включение: COMPOSE_PROFILES=integrations в .env точки (docs/operations.md).
   fake-iiko:
+    profiles: ["integrations"]
     image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/iiko-adapter:${IMAGE_TAG:-latest}
     entrypoint: ["/usr/local/bin/fake-iiko"]
     command: ["-addr", ":8081"]
@@ -94,6 +98,7 @@ services:
     logging: *logging
 
   iiko-adapter:
+    profiles: ["integrations"]
     image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/iiko-adapter:${IMAGE_TAG:-latest}
     depends_on:
       - api
@@ -114,6 +119,7 @@ services:
     logging: *logging
 
   notifier:
+    profiles: ["integrations"]
     image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/notifier:${IMAGE_TAG:-latest}
     depends_on:
       - api
