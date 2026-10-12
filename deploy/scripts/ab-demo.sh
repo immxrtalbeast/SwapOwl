@@ -166,7 +166,15 @@ points:
 YML
   chown 10001 "$EDGE_DIR/hub.yml" 2>/dev/null && chmod 600 "$EDGE_DIR/hub.yml" || chmod 644 "$EDGE_DIR/hub.yml"
   echo "== hub"
-  dc_hub up -d --no-deps --force-recreate hub
+  local img; img="$(envval "$EDGE_DIR/.env" IMAGE_REPO)"; img="${img:-ghcr.io/immxrtalbeast/umirhack-2026}/hub:$(tag)"
+  if ! docker image inspect "$img" >/dev/null 2>&1 && ! docker pull -q "$img" >/dev/null 2>&1; then
+    # Вход deploy в GHCR живёт один запуск Actions: собираем образ из исходников рядом с deploy/ (HUB_SRC).
+    local src="${HUB_SRC:-/root/src}"
+    [ -f "$src/deploy/Dockerfile.hub" ] || die "нет образа $img и исходников в $src (tar репозитория в $src и повторить)"
+    echo "образа в GHCR нет — собираю из $src"
+    docker build -q -f "$src/deploy/Dockerfile.hub" -t "$img" "$src" >/dev/null
+  fi
+  dc_hub up -d --no-deps --force-recreate --pull never hub
   sleep 8
   curl -fsS -o /dev/null "$(main_url)/api/network/summary" && echo "готово: $(main_url)/#/network" \
     || die "сводка сети не отвечает: docker logs swapowl-edge-hub-1"
@@ -175,14 +183,25 @@ YML
 demo() { # demo <base_url> <путь> <json> <env-файл>
   curl -fsS -o /dev/null -H "Authorization: Bearer $(envval "$4" DEMO_TOKEN)" -H 'Content-Type: application/json' -d "$3" "$1$2"
 }
-both() { demo "$(main_url)" "$1" "$2" "$MAIN_ENV" & demo "$(point_url)" "$1" "$2" "$POINT_DIR/.env" & wait; }
+both() { # оба запроса параллельно; код возврата — ненулевой, если упал хоть один
+  local a b
+  demo "$(main_url)" "$1" "$2" "$MAIN_ENV" & a=$!
+  demo "$(point_url)" "$1" "$2" "$POINT_DIR/.env" & b=$!
+  wait "$a" && wait "$b"
+}
 
 cmd_start() {
   local speed="${1:-600}"
   [ -f "$POINT_DIR/.env" ] || die "сначала ab-demo.sh setup"
-  both /api/demo/reset '{}'
+  # Профиль сида для сравнения (FS-146): склад, где горячим предложениям есть что спасать. Без поддержки профиля
+  # в API (старая версия) — обычный сброс.
+  if ! both /api/demo/reset "{\"profile\":\"${AB_PROFILE:-ab}\"}"; then
+    echo "сброс с профилем ${AB_PROFILE:-ab} не принят — обычный сброс"
+    both /api/demo/reset '{}'
+  fi
   both /api/demo/clock/speed "{\"speed\":$speed}"
   both /api/demo/simulator '{"running":true}'
+  echo "после показа вернуть демо-стенд: ab-demo.sh stop, затем «Сброс» на демо-панели"
   echo "старт: ×$speed, генератор идёт на обеих точках. Экран: $(main_url)/#/network. Пауза: ab-demo.sh stop"
 }
 
