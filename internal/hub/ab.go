@@ -13,6 +13,11 @@ const GroupAB = "ab"
 // maxCatchUp — сколько часовых запросов за один опрос точки; остальное дочитается на следующих (длинный прогон).
 const maxCatchUp = 24
 
+// recheckHours — сколько последних закрытых часов перечитывается на каждом опросе. «Дворник» списывает просрочку
+// после окна опоздания (LATE_EVENTS_HOURS, 2 ч по умолчанию), а движение датирует моментом expires_at — уже
+// закрытым часом. Прочитанный один раз час остался бы нулевым навсегда.
+const recheckHours = 4
+
 // SeriesPoint — накопленные списания с начала прогона на момент Hour (часы стенда с начала прогона).
 type SeriesPoint struct {
 	Hour      float64 `json:"hour"`
@@ -153,6 +158,16 @@ func (c *Collector) pollRun(ctx context.Context, p Point) {
 		r.closed = append(r.closed, v)
 	}
 	r.caught = len(r.closed) == full
+	if r.caught {
+		for i := max(0, len(r.closed)-recheckHours); i < len(r.closed); i++ {
+			from := r.started.Add(time.Duration(i) * time.Hour)
+			v, err := c.writeoffs(ctx, p, from, from.Add(time.Hour))
+			if err != nil {
+				return
+			}
+			r.closed[i] = v
+		}
+	}
 	if r.caught {
 		from := r.started.Add(time.Duration(full) * time.Hour)
 		r.partial = 0
