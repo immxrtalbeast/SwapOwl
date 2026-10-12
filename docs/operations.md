@@ -62,3 +62,48 @@ deploy/scripts/backup.sh instances/cafe-lenina
 ## Откат
 
 Actions → Deploy → Run workflow, `tag` = нужный sha (или тег предыдущего успешного деплоя). Либо на сервере: `/opt/swapowl/deploy/scripts/deploy.sh <tag>`. Миграции базы откатом не отменяются; при несовместимой схеме восстановите копию (см. «Восстановление после сбоя»).
+
+## Оповещения
+
+Отдельный процесс `watchdog` (`cmd/watchdog`, образ `deploy/Dockerfile.watchdog`) раз в `WATCHDOG_EVERY` опрашивает API и шлёт сообщения в Telegram **инженеру** (отдельные бот и чат, не те, что у управляющего в `notifier`). Одно сообщение при входе в тревогу, одно при выходе; пока тревога держится, повтор не чаще `WATCHDOG_REPEAT`. Если Telegram недоступен, состояние не меняется и отправка повторится на следующей проверке.
+
+| Правило | Порог | Источник |
+|---|---|---|
+| API недоступен | 2 проверки подряд | `GET /healthz` |
+| Нет синхронизации адаптера | `WATCHDOG_SYNC_MAX` (15 мин) | `/metrics`: `adapter_last_sync_age_seconds` |
+| Старое неподтверждённое сообщение outbox | `WATCHDOG_OUTBOX_MAX` (10 мин) | `/metrics`: `outbox_oldest_unacked_age_seconds` (+ `outbox_undelivered` в тексте) |
+| Адаптер недоступен (необязательно) | 1 проверка | `GET $WATCHDOG_ADAPTER_URL/healthz` |
+| Мало места на диске | свободно < 10 % (`WATCHDOG_DISK_MIN_FREE`) | `statfs` каталога `WATCHDOG_DATA_DIR` |
+
+Правила по метрикам работают, только если задан `WATCHDOG_METRICS_TOKEN` (= `METRICS_TOKEN` API) и метрика есть в ответе; нет метрики — правило молча пропускается. **Сейчас API отдаёт только `outbox_undelivered`**; `outbox_oldest_unacked_age_seconds` и `adapter_last_sync_age_seconds` нужно добавить в `internal/metrics`/`cmd/api` отдельной задачей.
+
+**Диск.** Сторож видит только то, что смонтировано в его контейнер. Чтобы проверять диск PostgreSQL, смонтируйте в него тот же volume (только чтение) и укажите `WATCHDOG_DATA_DIR`. Без монтирования и без `WATCHDOG_DATA_DIR` правило пропускается.
+
+Переменные: `WATCHDOG_API_URL`, `WATCHDOG_TG_TOKEN`, `WATCHDOG_TG_CHAT` обязательны; `WATCHDOG_EVERY=30s`, `WATCHDOG_SYNC_MAX=15m`, `WATCHDOG_OUTBOX_MAX=10m`, `WATCHDOG_REPEAT=1h` по умолчанию.
+
+### Строки для `deploy/docker-compose.prod.yml`
+
+Сервис (рядом с `notifier`):
+
+```yaml
+  watchdog:
+    image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/watchdog:${IMAGE_TAG:-latest}
+    depends_on:
+      - api
+    environment:
+      WATCHDOG_API_URL: http://api:8080
+      WATCHDOG_ADAPTER_URL: ${WATCHDOG_ADAPTER_URL:-}
+      WATCHDOG_METRICS_TOKEN: ${METRICS_TOKEN:-}
+      WATCHDOG_TG_TOKEN: ${WATCHDOG_TG_TOKEN:-}
+      WATCHDOG_TG_CHAT: ${WATCHDOG_TG_CHAT:-}
+      WATCHDOG_EVERY: ${WATCHDOG_EVERY:-30s}
+      WATCHDOG_SYNC_MAX: ${WATCHDOG_SYNC_MAX:-15m}
+      WATCHDOG_OUTBOX_MAX: ${WATCHDOG_OUTBOX_MAX:-10m}
+      WATCHDOG_REPEAT: ${WATCHDOG_REPEAT:-1h}
+      WATCHDOG_DATA_DIR: ${WATCHDOG_DATA_DIR:-}
+    mem_limit: 32m
+    restart: unless-stopped
+    logging: *logging
+```
+
+В `deploy/.env.prod.example`: `WATCHDOG_TG_TOKEN=`, `WATCHDOG_TG_CHAT=`. Сборку образа `watchdog` добавить в тот же CI/`deploy.sh`, что собирает `notifier`.
