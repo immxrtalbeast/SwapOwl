@@ -12,6 +12,8 @@ import { DISH_STATES, SUPPLY_STATES } from "../../lib/urgency";
 import { useHotOffers } from "../hot-offers/useHotOffers";
 import { hotOffersUrl } from "../hot-offers/query";
 import { portionsWord } from "../hot-offers/view";
+import { realisticTarget } from "../hot-offers/realistic";
+import { RealisticBlock } from "../hot-offers/RealisticBlock";
 import { formatRub } from "../money/format";
 import { formatQty } from "../stock/format";
 import { buildAcceptBody, offerKey, outcomeFromError, outcomeFromResult } from "../supply/accept";
@@ -125,7 +127,7 @@ export function TodayPage() {
                 </p>
                 <HandNote arrow="down">это уйдёт в мусор, если не продать</HandNote>
                 <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>
-                  Оценка по цене из списаний за 30 дней.
+                  Оценка по цене из прогноза списаний.
                   {risk.atRisk.unpriced > 0 && ` Партий без цены (не вошли в сумму): ${risk.atRisk.unpriced}.`}
                 </p>
               </div>
@@ -157,14 +159,17 @@ export function TodayPage() {
             ) : (
               <ul style={list}>
                 {offers.map((o) => {
-                  const portions = o.target_today > 0 ? o.target_today : o.target_portions;
-                  const saved = offerSaved(o, prices);
+                  const real = realisticTarget(o);
+                  const portions = real ? real.real : o.target_today > 0 ? o.target_today : o.target_portions;
+                  // Урезанная цель спасает только проданную часть: остаток считает RealisticBlock рядом.
+                  const saved = real ? Math.round((offerSaved(o, prices) * real.real) / real.target) : offerSaved(o, prices);
                   return (
                     <li key={o.dish_id} className={cls(`h${o.dish_id}`)} style={row}>
                       <a href={hotOffersUrl(o.reasons[0]?.product_id ?? "")} style={{ font: "var(--type-body-strong)", color: "var(--brand-ink)" }}>{o.dish_name}</a>
                       <span style={{ font: "var(--type-body)" }}>
-                        {portions} {portionsWord(portions)}{o.target_today > 0 ? " сегодня" : ""}
+                        {real ? "реально " : ""}{portions} {portionsWord(portions)}{o.target_today > 0 ? " сегодня" : ""}
                       </span>
+                      {real && <RealisticBlock offer={o} prices={prices} />}
                       {saved > 0 && <span style={{ font: "var(--type-body-strong)", color: "var(--urgency-ok-fg)" }}>спасёт {formatRub(saved)}</span>}
                     </li>
                   );

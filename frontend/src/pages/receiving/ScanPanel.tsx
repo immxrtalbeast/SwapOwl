@@ -3,7 +3,7 @@ import { api } from "../../api/client";
 import type { ProductStock } from "../../api/types";
 import { Card, PrimaryButton, SecondaryButton } from "../../components";
 import { SAMPLE_MILK, parseGs1 } from "../../lib/gs1";
-import { loadGtinMap, lineFromScan, rememberGtin, toDeliveryItem, type ScanLine } from "./scan";
+import { isLineReady, loadGtinMap, lineFromScan, rememberGtin, toDeliveryItem, type ScanLine } from "./scan";
 
 /** Камера: BarcodeDetector, где он есть, иначе лениво подгружаемый @zxing/browser. */
 async function startCamera(video: HTMLVideoElement, onCode: (s: string) => void): Promise<() => void> {
@@ -179,11 +179,21 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
             <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
               {lines.map((l) => (
                 <li key={l.key} data-testid="scan-line">
-                  {name(l.product_id)} · {l.quantity} · {l.expires_on ? `годен до ${l.expires_on}` : "срок не указан"}
+                  {name(l.product_id)} ·{" "}
+                  <input
+                    aria-label={`Количество, ${l.unit}`}
+                    inputMode="decimal"
+                    placeholder="укажите количество"
+                    value={l.quantity}
+                    onChange={(e) => setLines((ls) => ls.map((x) => (x.key === l.key ? { ...x, quantity: e.target.value } : x)))}
+                    style={{ width: 120, height: 36, padding: "0 8px" }}
+                  />{" "}
+                  {l.unit} · {l.expires_on ? `годен до ${l.expires_on}` : "срок не указан"}
+                  {!isLineReady(l) && <span role="note"> — укажите количество</span>}
                 </li>
               ))}
             </ul>
-            <PrimaryButton style={{ height: 48 }} disabled={busy} onClick={() => void send()}>
+            <PrimaryButton style={{ height: 48 }} disabled={busy || !lines.every(isLineReady)} onClick={() => void send()}>
               Принять поставку ({lines.length})
             </PrimaryButton>
           </>

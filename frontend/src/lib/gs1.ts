@@ -18,6 +18,8 @@ export interface Gs1 {
   expiresOn?: string;
   /** Вес нетто, кг (AI 310n) */
   weightKg?: number;
+  /** Объём нетто, л (AI 315n) */
+  volumeL?: number;
 }
 
 /** AI 11/17 YYMMDD → YYYY-MM-DD; DD=00 — последний день месяца. Год: 00–99 → 2000–2099. */
@@ -93,7 +95,9 @@ function finish(ai: Record<string, string>): Gs1 | null {
   if (ai["17"]) r.expiresOn = parseGs1Date(ai["17"]);
   const w = Object.keys(ai).find((k) => /^310\d$/.test(k));
   if (w) r.weightKg = Number(ai[w]) / 10 ** Number(w[3]);
-  if (!r.gtin && !r.expiresOn && r.weightKg === undefined) return null;
+  const v = Object.keys(ai).find((k) => /^315\d$/.test(k));
+  if (v) r.volumeL = Number(ai[v]) / 10 ** Number(v[3]);
+  if (!r.gtin && !r.expiresOn && r.weightKg === undefined && r.volumeL === undefined) return null;
   return r;
 }
 

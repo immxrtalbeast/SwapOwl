@@ -1,4 +1,4 @@
-import type { Alert, MoneyReport, Qty } from "./types";
+import type { Alert, ForecastReport, MoneyReport, Qty } from "./types";
 
 /** Цена за базовую единицу (копеек за г/мл/шт) по продуктам. */
 export type UnitPrices = Record<string, number>;
@@ -16,6 +16,13 @@ export function unitPricesFromWriteoffs(report: MoneyReport): UnitPrices {
   }
   const out: UnitPrices = {};
   for (const id of Object.keys(qty)) if (qty[id] > 0 && cost[id] > 0) out[id] = cost[id] / qty[id];
+  return out;
+}
+
+/** Цена единицы из прогноза списаний (стоимость ÷ количество под угрозой) — есть и у продуктов без истории списаний. */
+export function unitPricesFromForecast(report: ForecastReport): UnitPrices {
+  const out: UnitPrices = {};
+  for (const p of report.products) if (p.at_risk.qty > 0 && p.total_minor > 0) out[p.product_id] = p.total_minor / p.at_risk.qty;
   return out;
 }
 
