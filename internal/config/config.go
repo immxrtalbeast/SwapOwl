@@ -63,6 +63,9 @@ type Config struct {
 	SimSeed      int64
 	SimFollowHot bool
 	SimHotUplift float64
+	// SeedProfile — склад и спрос стенда: "demo" (по умолчанию, сценарий показа) или "ab"
+	// (bench «скоропорт в трёх блюдах» для живого A/B на сцене).
+	SeedProfile string
 }
 
 // Load читает окружение через getenv (os.Getenv в проде), подставляет значения
@@ -102,6 +105,7 @@ func Load(getenv func(string) string) (Config, error) {
 		SimSeed:           int64(p.int("SIM_SEED", 2026)),
 		SimFollowHot:      p.bool("SIM_FOLLOW_HOT", true),
 		SimHotUplift:      p.float("SIM_HOT_UPLIFT", 1.5),
+		SeedProfile:       p.str("SEED_PROFILE", "demo"),
 	}
 	c.OpenAt = p.clock("OPEN_AT", "10:00")
 	c.CloseAt = p.clock("CLOSE_AT", "23:00")
@@ -171,6 +175,9 @@ func (c *Config) validate() []error {
 	}
 	if c.SimHotUplift < 1 || c.SimHotUplift > 10 {
 		bad("SIM_HOT_UPLIFT must be in 1..10, got %v", c.SimHotUplift)
+	}
+	if c.SeedProfile != "demo" && c.SeedProfile != "ab" {
+		bad("SEED_PROFILE must be demo or ab, got %q", c.SeedProfile)
 	}
 	if c.ClockMode != "real" && c.ClockMode != "simulated" {
 		bad("CLOCK_MODE must be real or simulated, got %q", c.ClockMode)

@@ -158,3 +158,9 @@ export function diffText(c: Pick<AbComparison, "diffMinor" | "diffPct">): string
   const sign = c.diffPct > 0 ? "+" : c.diffPct < 0 ? "−" : "";
   return `${rub} (${sign}${abs}\u00a0%)`;
 }
+
+/** Подпись сценария в блоке сравнения: только если обе точки пары на профиле ab. Допущение про 1,5 — как в bench. */
+export function abScenarioNote(pair: readonly [HubPoint, HubPoint]): string | null {
+  if (!pair.every((p) => p.run?.seed_profile === "ab")) return null;
+  return "Сценарий: скоропорт в трёх блюдах. Гости берут рекомендованное блюдо в 1,5 раза чаще — допущение, как в bench";
+}

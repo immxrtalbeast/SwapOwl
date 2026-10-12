@@ -19,6 +19,11 @@ type HotFollower interface {
 	FollowHot() bool
 }
 
+// ProfileReporter — необязательное дополнение к ClockInfo: профиль сида (SEED_PROFILE).
+type ProfileReporter interface {
+	SeedProfile() string
+}
+
 type clockOut struct {
 	Now              string  `json:"now"`
 	Speed            float64 `json:"speed"`
@@ -26,6 +31,7 @@ type clockOut struct {
 	Simulated        bool    `json:"simulated"`
 	SimulatorRunning bool    `json:"simulator_running"`
 	FollowHot        bool    `json:"follow_hot"`
+	SeedProfile      string  `json:"seed_profile"`
 }
 
 func (rt *Router) clockRoutes() {
@@ -38,11 +44,16 @@ func (rt *Router) getClock(w http.ResponseWriter, _ *http.Request) {
 		Now:      rt.deps.Now().UTC().Format(time.RFC3339Nano),
 		Speed:    1,
 		Timezone: rt.location().String(),
+		// Без стенда профиль — демо.
+		SeedProfile: "demo",
 	}
 	if c := rt.deps.Clock; c != nil {
 		out.Speed, out.Simulated, out.SimulatorRunning = c.Speed(), c.Simulated(), c.SimulatorRunning()
 		if f, ok := c.(HotFollower); ok {
 			out.FollowHot = f.FollowHot()
+		}
+		if p, ok := c.(ProfileReporter); ok {
+			out.SeedProfile = p.SeedProfile()
 		}
 	}
 	WriteJSON(w, http.StatusOK, out)

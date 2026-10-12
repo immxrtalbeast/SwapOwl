@@ -76,7 +76,7 @@ func run() error {
 	// Сид на пустую БД (2.8): до часов, чтобы начальное время ускоренных часов было T0.
 	t0 := stand.T0(time.Now(), cfg.Location)
 	if cfg.SeedOnEmpty {
-		loaded, err := stand.Load(ctx, db, t0)
+		loaded, err := stand.LoadProfile(ctx, db, t0, cfg.SeedProfile, cfg.Location)
 		if err != nil {
 			return fmt.Errorf("seed on empty: %w", err)
 		}
@@ -123,7 +123,7 @@ func run() error {
 	go jan.Run(ctx)
 	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt, Days: cfg.Days}
 	st := &stand.Stand{DB: db, Clock: accl, Gate: gate, Sweep: jan, Bus: bus, Loc: cfg.Location,
-		AfterChange: pub.recheckStopList}
+		AfterChange: pub.recheckStopList, Profile: cfg.SeedProfile}
 	orders := pubOrders{db, pub}
 	var (
 		demo api.Demo
@@ -139,6 +139,7 @@ func run() error {
 			algo: cfg.HotOffersAlgo, cfg: hotoffers.Config{TopN: cfg.HotTopN, WMin: cfg.HotWMinHours,
 				CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter, HorizonHours: cfg.HotHorizon}}
 		st.Sim.State = db.ClockStore()
+		st.UseProfile(cfg.SeedProfile)
 		if cfg.ClockMode == "simulated" {
 			if err := st.Sim.Restore(ctx); err != nil {
 				log.Error("simulator restore failed", slog.String("error", err.Error()))

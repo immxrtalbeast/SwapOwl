@@ -39,6 +39,8 @@ export interface HubRun {
   stand_time: string;
   total_minor: number;
   series: HubSeriesPoint[];
+  /** Профиль сида точки (/api/clock): «ab» — сценарий bench, «demo» — сид показа. */
+  seed_profile?: string;
 }
 
 export type HubStatus = "ok" | "unreachable" | "unauthorized" | "error";

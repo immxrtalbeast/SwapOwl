@@ -155,4 +155,15 @@ func TestSimDefaultsAndValidation(t *testing.T) {
 	if _, err := Load(env(map[string]string{"DATABASE_URL": "postgres://x", "SIM_HOT_UPLIFT": "0.5"})); err == nil {
 		t.Error("SIM_HOT_UPLIFT < 1 must fail")
 	}
+	c, err = Load(env(map[string]string{"DATABASE_URL": "postgres://x"}))
+	if err != nil || c.SeedProfile != "demo" {
+		t.Errorf("SEED_PROFILE по умолчанию demo: %q %v", c.SeedProfile, err)
+	}
+	c, err = Load(env(map[string]string{"DATABASE_URL": "postgres://x", "SEED_PROFILE": "ab"}))
+	if err != nil || c.SeedProfile != "ab" {
+		t.Errorf("SEED_PROFILE=ab: %q %v", c.SeedProfile, err)
+	}
+	if _, err := Load(env(map[string]string{"DATABASE_URL": "postgres://x", "SEED_PROFILE": "x"})); err == nil {
+		t.Error("неизвестный SEED_PROFILE must fail")
+	}
 }
