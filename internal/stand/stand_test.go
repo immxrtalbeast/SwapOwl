@@ -294,3 +294,41 @@ func TestRealClockRejectsSpeedAndJump(t *testing.T) {
 		t.Fatal("real clock info")
 	}
 }
+
+// Генератор включён → «рестарт» (новый экземпляр на той же БД) → включён; пауза и сброс его гасят.
+func TestSimulatorRunningSurvivesRestart(t *testing.T) {
+	s, db := newStand(t)
+	ctx := context.Background()
+	mk := func() *Simulator {
+		sim := newSim(&recSink{}, s.Now)
+		sim.State = db.ClockStore()
+		return sim
+	}
+	first := mk()
+	first.SetRunning(true)
+	first.halt() // рестарт процесса: горутина гаснет, признак не трогается
+
+	second := mk()
+	if err := second.Restore(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !second.Running() {
+		t.Fatal("generator must resume after restart")
+	}
+
+	second.SetRunning(false) // явная пауза
+	third := mk()
+	if err := third.Restore(ctx); err != nil || third.Running() {
+		t.Fatalf("paused generator must stay off: %v running=%v", err, third.Running())
+	}
+
+	third.SetRunning(true)
+	s.Sim = third
+	if err := s.Reset(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fourth := mk()
+	if err := fourth.Restore(ctx); err != nil || fourth.Running() {
+		t.Fatalf("reset must leave generator off: %v running=%v", err, fourth.Running())
+	}
+}

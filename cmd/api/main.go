@@ -132,6 +132,12 @@ func run() error {
 		demo = st
 		// Генератор идёт в процессе через тот же путь, что POST /api/orders (2.8).
 		st.Sim = stand.NewSimulator(ctx, simSink{api.OrderPlacer{Orders: orders, Now: now, Gate: gate}}, now, simSeed, log)
+		st.Sim.State = db.ClockStore()
+		if cfg.ClockMode == "simulated" {
+			if err := st.Sim.Restore(ctx); err != nil {
+				log.Error("simulator restore failed", slog.String("error", err.Error()))
+			}
+		}
 		sim = st.Sim
 	}
 	schedule := domain.Schedule{Location: cfg.Location, OpenAt: cfg.OpenAt, CloseAt: cfg.CloseAt, Days: cfg.Days}
