@@ -23,8 +23,21 @@ type fakeCatalog struct {
 func (f *fakeCatalog) ProductUnits(_ context.Context, ids []string) (map[string]domain.Unit, error) {
 	m := map[string]domain.Unit{}
 	for _, id := range ids {
-		if id == "salt" {
+		switch id {
+		case "salt":
 			m[id] = domain.UnitG
+		case "egg":
+			m[id] = domain.UnitPcs
+		}
+	}
+	return m, nil
+}
+
+func (f *fakeCatalog) ProductPacking(_ context.Context, ids []string) (map[string]store.Packing, error) {
+	m := map[string]store.Packing{}
+	for _, id := range ids {
+		if id == "egg" {
+			m[id] = store.Packing{Unit: domain.UnitPcs, PieceWeight: 55, PieceWeightUnit: domain.UnitG, PackSize: 1}
 		}
 	}
 	return m, nil
@@ -217,6 +230,106 @@ func TestPutCatalogTechcardValidation(t *testing.T) {
 		rec := putCatalog(t, fc, "/api/catalog", c.body)
 		if rec.Code != 400 || !strings.Contains(rec.Body.String(), c.code) || fc.calls != 0 {
 			t.Errorf("%s: %d %s calls=%d", name, rec.Code, rec.Body, fc.calls)
+		}
+	}
+}
+
+const eggProduct = `{"id":"egg","name":"Яйцо","unit":"pcs","price_minor_per_1000":1,"lead_days":1,"pack_size":30,"piece_weight":55`
+
+func eggDish(recipe string) string {
+	return `{"products":[` + eggProduct + `}],"dishes":[{"id":"omelette","name":"Омлет","price_minor":1,"prior_daily":1,"recipe":` + recipe + `}]}`
+}
+
+// Яйцо 55 г: норма 50 г на порцию — 1 шт на порцию, 3 порции — 3 шт; 30 г и 60 г — тоже по штуке и две.
+func TestPutCatalogPieceWeightNorms(t *testing.T) {
+	cases := map[string]struct {
+		line string
+		want int64
+	}{
+		"50 g":           {`{"product_id":"egg","gross":"50","unit":"g"}`, 1},
+		"exact 55 g":     {`{"product_id":"egg","gross":"55","unit":"g"}`, 1},
+		"56 g rounds up": {`{"product_id":"egg","gross":"56","unit":"g"}`, 2},
+		"0.11 kg":        {`{"product_id":"egg","gross":"0.11","unit":"kg"}`, 2},
+		"net with loss":  {`{"product_id":"egg","net":"100","unit":"g","loss_pct":20}`, 3}, // брутто 125 г
+		"pcs unchanged":  {`{"product_id":"egg","quantity":"2"}`, 2},
+		"explicit pcs":   {`{"product_id":"egg","quantity":"2","unit":"pcs"}`, 2},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			fc := &fakeCatalog{}
+			rec := putCatalog(t, fc, "/api/catalog", eggDish(`[`+c.line+`]`))
+			if rec.Code != 200 {
+				t.Fatalf("code %d body %s", rec.Code, rec.Body)
+			}
+			if got := fc.in.Dishes[0].Recipe[0].Quantity; got != c.want {
+				t.Fatalf("quantity %d, want %d", got, c.want)
+			}
+			p := fc.in.Products[0]
+			if p.PieceWeight == nil || *p.PieceWeight != 55 || p.PieceWeightUnit != domain.UnitG {
+				t.Fatalf("product: %+v", p)
+			}
+		})
+	}
+}
+
+// Вес штуки уже в БД (продукта нет в теле) — норма в граммах тоже пересчитывается.
+func TestPutCatalogPieceWeightFromStoredProduct(t *testing.T) {
+	fc := &fakeCatalog{}
+	body := `{"products":[{"id":"rice","name":"Рис","unit":"g","price_minor_per_1000":1,"lead_days":1,"pack_size":1}],
+"dishes":[{"id":"d","name":"D","price_minor":1,"prior_daily":1,"recipe":[{"product_id":"egg","gross":"100","unit":"g"}]}]}`
+	if rec := putCatalog(t, fc, "/api/catalog", body); rec.Code != 200 || fc.in.Dishes[0].Recipe[0].Quantity != 2 {
+		t.Fatalf("code %d body %s in %+v", rec.Code, rec.Body, fc.in.Dishes)
+	}
+}
+
+func TestPutCatalogPieceWeightValidation(t *testing.T) {
+	noWeight := `{"products":[{"id":"egg","name":"Яйцо","unit":"pcs","price_minor_per_1000":1,"lead_days":1,"pack_size":1}],
+"dishes":[{"id":"d","name":"D","price_minor":1,"prior_daily":1,"recipe":[{"product_id":"egg","gross":"50","unit":"g"}]}]}`
+	cases := map[string]string{
+		"grams without weight": noWeight,
+		"ml for gram weight":   eggDish(`[{"product_id":"egg","gross":"50","unit":"ml"}]`),
+		"weight on grams":      `{"products":[{"id":"r","name":"R","unit":"g","price_minor_per_1000":1,"lead_days":1,"pack_size":1,"piece_weight":5}]}`,
+		"zero weight":          `{"products":[{"id":"e","name":"E","unit":"pcs","price_minor_per_1000":1,"lead_days":1,"pack_size":1,"piece_weight":0}]}`,
+		"bad weight unit":      `{"products":[{"id":"e","name":"E","unit":"pcs","price_minor_per_1000":1,"lead_days":1,"pack_size":1,"piece_weight":5,"piece_weight_unit":"kg"}]}`,
+		"unit without weight":  `{"products":[{"id":"e","name":"E","unit":"pcs","price_minor_per_1000":1,"lead_days":1,"pack_size":1,"piece_weight_unit":"g"}]}`,
+		"empty pack_unit":      `{"products":[{"id":"e","name":"E","unit":"pcs","price_minor_per_1000":1,"lead_days":1,"pack_size":1,"pack_unit":""}]}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			fc := &fakeCatalog{}
+			rec := putCatalog(t, fc, "/api/catalog", body)
+			if rec.Code != 400 || decodeErr(t, rec).Error.Code != CodeValidation || fc.calls != 0 {
+				t.Fatalf("code %d body %s calls %d", rec.Code, rec.Body, fc.calls)
+			}
+		})
+	}
+}
+
+// Продукт без новых полей импортируется как раньше: поля nil, нормы не меняются.
+func TestPutCatalogWithoutPieceFieldsUnchanged(t *testing.T) {
+	fc := &fakeCatalog{}
+	if rec := putCatalog(t, fc, "/api/catalog", catalogBody); rec.Code != 200 {
+		t.Fatalf("code %d %s", rec.Code, rec.Body)
+	}
+	if p := fc.in.Products[0]; p.PieceWeight != nil || p.PackUnit != nil || p.PieceWeightUnit != "" {
+		t.Fatalf("product: %+v", p)
+	}
+}
+
+func TestPiecesFromWeight(t *testing.T) {
+	pw := pieceWeight{55, domain.UnitG}
+	for _, c := range []struct {
+		q, u   string
+		loss   int
+		want   int64
+		wantOK bool
+	}{
+		{"150", "g", 0, 3, true}, {"1", "g", 0, 1, true}, {"55", "g", 0, 1, true}, {"110.5", "g", 0, 0, false},
+		{"1", "kg", 0, 19, true}, {"100", "g", 2000, 3, true}, {"1", "ml", 0, 0, false},
+	} {
+		got, err := piecesFromWeight(c.q, c.u, pw, c.loss)
+		if (err == nil) != c.wantOK || int64(got) != c.want {
+			t.Errorf("%s%s loss %d: got %d err %v, want %d ok=%v", c.q, c.u, c.loss, got, err, c.want, c.wantOK)
 		}
 	}
 }

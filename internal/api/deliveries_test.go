@@ -28,6 +28,18 @@ func (f *fakeStock) ProductUnits(_ context.Context, ids []string) (map[string]do
 	}
 	return m, nil
 }
+func (f *fakeStock) ProductPacking(_ context.Context, ids []string) (map[string]store.Packing, error) {
+	m := map[string]store.Packing{}
+	for _, id := range ids {
+		switch id {
+		case "cream_pack":
+			m[id] = store.Packing{Unit: domain.UnitMl, PackSize: 500, PackUnit: "уп"}
+		case "salmon":
+			m[id] = store.Packing{Unit: domain.UnitG, PackSize: 1000}
+		}
+	}
+	return m, nil
+}
 func (f *fakeStock) ReceiveDelivery(_ context.Context, in store.DeliveryInput, _ func() time.Time, _ *time.Location) (store.DeliveryResponse, error) {
 	f.in = in
 	return store.DeliveryResponse{ID: in.ID, Batches: []store.BatchJSON{}, Warnings: []store.WarningJSON{}}, f.err
@@ -156,5 +168,35 @@ func TestPostDeliveryOccurredAt(t *testing.T) {
 	}
 	if rec := post(t, &fakeStock{}, item(`{"product_id":"salmon","quantity":"1","unit":"kg","shelf_life_hours":72}`)); rec.Code != 201 {
 		t.Fatalf("without occurred_at: %d", rec.Code)
+	}
+}
+
+// «Сливки 0,5 л × 6»: шесть упаковок — 3000 мл в базовой единице.
+func TestPostDeliveryInPacks(t *testing.T) {
+	fs := &fakeStock{}
+	rec := post(t, fs, item(`{"product_id":"cream_pack","quantity":"6","unit":"pack","shelf_life_hours":72},{"product_id":"salmon","quantity":"2","unit":"kg","shelf_life_hours":72}`))
+	if rec.Code != 201 || len(fs.in.Items) != 2 {
+		t.Fatalf("code %d body %s", rec.Code, rec.Body)
+	}
+	if a, b := fs.in.Items[0], fs.in.Items[1]; a.Qty != 3000 || a.Unit != domain.UnitMl || a.ShelfLifeHours != 72 || b.Qty != 2000 || b.Unit != domain.UnitG {
+		t.Fatalf("items: %+v", fs.in.Items)
+	}
+}
+
+func TestPostDeliveryPackValidation(t *testing.T) {
+	for name, extra := range map[string]string{
+		"fractional packs": `{"product_id":"cream_pack","quantity":"1.5","unit":"pack","shelf_life_hours":1}`,
+		"zero packs":       `{"product_id":"cream_pack","quantity":"0","unit":"pack","shelf_life_hours":1}`,
+		"no pack_unit":     `{"product_id":"salmon","quantity":"1","unit":"pack","shelf_life_hours":1}`,
+		"unknown product":  `{"product_id":"ghost","quantity":"1","unit":"pack","shelf_life_hours":1}`,
+		"overflow":         `{"product_id":"cream_pack","quantity":"99999999999","unit":"pack","shelf_life_hours":1}`,
+		"not a number":     `{"product_id":"cream_pack","quantity":"1e3","unit":"pack","shelf_life_hours":1}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := post(t, &fakeStock{}, item(extra))
+			if rec.Code != 400 {
+				t.Fatalf("code %d body %s", rec.Code, rec.Body)
+			}
+		})
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 // Stock — то, что нужно маршрутам склада от хранилища.
 type Stock interface {
 	ProductUnits(ctx context.Context, ids []string) (map[string]domain.Unit, error)
+	ProductPacking(ctx context.Context, ids []string) (map[string]store.Packing, error)
 	ReceiveDelivery(ctx context.Context, in store.DeliveryInput, now func() time.Time, loc *time.Location) (store.DeliveryResponse, error)
 	ListDeliveries(ctx context.Context) ([]store.DeliveryResponse, error)
 	GetDelivery(ctx context.Context, id string) (store.DeliveryResponse, error)
@@ -33,6 +35,18 @@ var inputBase = map[string]domain.Unit{
 	"g": domain.UnitG, "kg": domain.UnitG,
 	"ml": domain.UnitMl, "l": domain.UnitMl,
 	"pcs": domain.UnitPcs,
+}
+
+// packUnitInput — единица позиции поставки «упаковки»: количество × pack_size продукта.
+const packUnitInput = "pack"
+
+// parsePackCount: целое число упаковок (строка из цифр) × размер упаковки в базовых единицах.
+func parsePackCount(quantity string, packSize int64) (int64, error) {
+	n, err := strconv.ParseUint(quantity, 10, 63)
+	if err != nil || n == 0 || packSize < 1 || n > uint64(units.Limit)/uint64(packSize) {
+		return 0, units.ErrLimit
+	}
+	return int64(n) * packSize, nil
 }
 
 type deliveryItemIn struct {
@@ -110,6 +124,18 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Позиции в упаковках (unit = "pack") пересчитываются в базовую единицу по pack_size продукта.
+	var packing map[string]store.Packing
+	for _, it := range in.Items {
+		if it.Unit == packUnitInput {
+			if packing, err = rt.deps.Stock.ProductPacking(r.Context(), ids); err != nil {
+				rt.internalError(w, r, err)
+				return
+			}
+			break
+		}
+	}
+
 	out := store.DeliveryInput{ID: in.ID, Number: in.Number, CreatedAt: created, OccurredAt: occurred, Items: make([]store.DeliveryItem, 0, len(in.Items))}
 	for i, it := range in.Items {
 		field := func(f string) string { return fmt.Sprintf("items[%d].%s", i, f) }
@@ -139,6 +165,21 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 		}
 		base, ok := known[it.ProductID]
 		unit := it.Unit
+		if unit == packUnitInput {
+			pk, has := packing[it.ProductID]
+			if !has || pk.PackUnit == "" {
+				validationError(w, field("unit"), fmt.Sprintf("product %q has no pack_unit: receive it in %s", it.ProductID, "g, kg, ml, l or pcs"))
+				return
+			}
+			n, err := parsePackCount(it.Quantity, pk.PackSize)
+			if err != nil {
+				validationError(w, field("quantity"), "quantity in packs must be a whole number of packs within the quantity limit")
+				return
+			}
+			di.Unit, di.Qty = pk.Unit, n
+			out.Items = append(out.Items, di)
+			continue
+		}
 		switch {
 		case ok && unit == "":
 			unit = string(base)

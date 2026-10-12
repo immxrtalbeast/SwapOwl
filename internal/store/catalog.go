@@ -46,6 +46,11 @@ type CatalogProduct struct {
 	LeadDays          int
 	PackSize          int64
 	ShelfLifeHours    *int
+	// PieceWeight (g или ml на 1 шт, единица в PieceWeightUnit) и PackUnit — необязательны;
+	// nil — поле не трогать (как ShelfLifeHours; очистить через импорт нельзя).
+	PieceWeight     *int64
+	PieceWeightUnit domain.Unit
+	PackUnit        *string
 }
 
 // CatalogRecipeItem — норма в базовой единице продукта.
@@ -100,6 +105,9 @@ type productRow struct {
 	pack       int64
 	shelf      *int
 	autoCreate bool
+	pieceW     *int64
+	pieceU     *string
+	packUnit   *string
 }
 
 var errDryRun = errors.New("store: dry run")
@@ -143,12 +151,12 @@ func (d *DB) ImportCatalog(ctx context.Context, in CatalogInput, dryRun bool) (C
 }
 
 func upsertProduct(ctx context.Context, tx pgx.Tx, p CatalogProduct) (CatalogChange, error) {
-	const sel = `SELECT name, unit, price_minor_per_1000, lead_days, pack_size, shelf_life_hours, auto_created
-		FROM products WHERE id = $1 FOR UPDATE`
+	const sel = `SELECT name, unit, price_minor_per_1000, lead_days, pack_size, shelf_life_hours, auto_created,
+		piece_weight, piece_weight_unit, pack_unit FROM products WHERE id = $1 FOR UPDATE`
 	scan := func() (productRow, bool, error) {
 		var r productRow
 		var u string
-		err := tx.QueryRow(ctx, sel, p.ID).Scan(&r.name, &u, &r.price, &r.lead, &r.pack, &r.shelf, &r.autoCreate)
+		err := tx.QueryRow(ctx, sel, p.ID).Scan(&r.name, &u, &r.price, &r.lead, &r.pack, &r.shelf, &r.autoCreate, &r.pieceW, &r.pieceU, &r.packUnit)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return r, false, nil
 		}
@@ -161,9 +169,11 @@ func upsertProduct(ctx context.Context, tx pgx.Tx, p CatalogProduct) (CatalogCha
 	}
 	if !ok {
 		tag, err := tx.Exec(ctx,
-			`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size, shelf_life_hours, auto_created)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, false) ON CONFLICT (id) DO NOTHING`,
-			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, p.PackSize, p.ShelfLifeHours)
+			`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size, shelf_life_hours, auto_created,
+			 piece_weight, piece_weight_unit, pack_unit)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8, $9, $10) ON CONFLICT (id) DO NOTHING`,
+			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, p.PackSize, p.ShelfLifeHours,
+			p.PieceWeight, pieceUnitArg(p), p.PackUnit)
 		if err != nil {
 			return CatalogChange{}, fmt.Errorf("store: catalog insert product %s: %w", p.ID, err)
 		}
@@ -182,6 +192,13 @@ func upsertProduct(ctx context.Context, tx pgx.Tx, p CatalogProduct) (CatalogCha
 	if p.ShelfLifeHours != nil {
 		shelf = p.ShelfLifeHours
 	}
+	pw, pu, pk := cur.pieceW, cur.pieceU, cur.packUnit
+	if p.PieceWeight != nil {
+		pw, pu = p.PieceWeight, pieceUnitArg(p)
+	}
+	if p.PackUnit != nil {
+		pk = p.PackUnit
+	}
 	var fields []string
 	add := func(name string, changed bool) {
 		if changed {
@@ -193,19 +210,69 @@ func upsertProduct(ctx context.Context, tx pgx.Tx, p CatalogProduct) (CatalogCha
 	add("lead_days", cur.lead != p.LeadDays)
 	add("pack_size", cur.pack != p.PackSize)
 	add("shelf_life_hours", (cur.shelf == nil) != (shelf == nil) || (shelf != nil && *cur.shelf != *shelf))
+	add("piece_weight", (cur.pieceW == nil) != (pw == nil) || (pw != nil && (*cur.pieceW != *pw || *cur.pieceU != *pu)))
+	add("pack_unit", (cur.packUnit == nil) != (pk == nil) || (pk != nil && *cur.packUnit != *pk))
 	if len(fields) == 0 && !cur.autoCreate {
 		return CatalogChange{ID: p.ID, Action: CatalogUnchanged}, nil
 	}
 	// Импортированный продукт — справочный: сброс стенда автосозданные удаляет, а этот остаётся.
 	if _, err := tx.Exec(ctx,
-		`UPDATE products SET name=$2, price_minor_per_1000=$3, lead_days=$4, pack_size=$5, shelf_life_hours=$6, auto_created=false WHERE id=$1`,
-		p.ID, p.Name, p.PriceMinorPer1000, p.LeadDays, p.PackSize, shelf); err != nil {
+		`UPDATE products SET name=$2, price_minor_per_1000=$3, lead_days=$4, pack_size=$5, shelf_life_hours=$6, auto_created=false,
+		piece_weight=$7, piece_weight_unit=$8, pack_unit=$9 WHERE id=$1`,
+		p.ID, p.Name, p.PriceMinorPer1000, p.LeadDays, p.PackSize, shelf, pw, pu, pk); err != nil {
 		return CatalogChange{}, fmt.Errorf("store: catalog update product %s: %w", p.ID, err)
 	}
 	if len(fields) == 0 {
 		return CatalogChange{ID: p.ID, Action: CatalogUnchanged}, nil
 	}
 	return CatalogChange{ID: p.ID, Action: CatalogUpdated, Fields: fields}, nil
+}
+
+// pieceUnitArg — единица веса штуки для SQL: nil, если веса нет.
+func pieceUnitArg(p CatalogProduct) *string {
+	if p.PieceWeight == nil {
+		return nil
+	}
+	u := string(p.PieceWeightUnit)
+	return &u
+}
+
+// Packing — как продукт считается штуками и упаковками (FS-122). Нулевые поля — «не задано».
+type Packing struct {
+	Unit            domain.Unit
+	PieceWeight     int64       // g или ml на 1 шт; 0 — не задан
+	PieceWeightUnit domain.Unit // g или ml
+	PackSize        int64       // содержимое упаковки в базовых единицах
+	PackUnit        string      // метка упаковки; пусто — позиции в упаковках не принимаются
+}
+
+// ProductPacking возвращает базовую единицу, вес штуки и упаковку известных продуктов.
+func (d *DB) ProductPacking(ctx context.Context, ids []string) (map[string]Packing, error) {
+	rows, err := d.Pool.Query(ctx, `SELECT id, unit, piece_weight, piece_weight_unit, pack_size, pack_unit
+		FROM products WHERE id = ANY($1)`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("store: product packing: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]Packing{}
+	for rows.Next() {
+		var id, u string
+		var pw *int64
+		var pwu, pk *string
+		var pack Packing
+		if err := rows.Scan(&id, &u, &pw, &pwu, &pack.PackSize, &pk); err != nil {
+			return nil, fmt.Errorf("store: product packing: %w", err)
+		}
+		pack.Unit = domain.Unit(u)
+		if pw != nil && pwu != nil {
+			pack.PieceWeight, pack.PieceWeightUnit = *pw, domain.Unit(*pwu)
+		}
+		if pk != nil {
+			pack.PackUnit = *pk
+		}
+		out[id] = pack
+	}
+	return out, rows.Err()
 }
 
 type dishRow struct {
