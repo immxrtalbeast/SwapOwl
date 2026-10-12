@@ -2,16 +2,16 @@ import { useEffect, useState } from "react";
 import "./landing.css";
 import { Logo, HandNote, Pill } from "../components";
 import { formatQty, formatRelative } from "../lib/format";
-import { benchNumbers, loadBench, loadLive } from "./data";
+import { PITCH_NUMBERS, benchNumbers, loadBench, loadLive } from "./data";
 import type { LiveData } from "./data";
 import type { BenchResult } from "../api/types";
 
 const DEMO_HREF = "/#/stock";
 
 const STEPS = [
-  { n: "1", title: "Разведка и справочники", text: "Анкета: система, доступ к API, выгрузки, источник сроков, часы работы. Затем справочники продуктов, блюд и рецептов." },
-  { n: "2", title: "Начальные остатки", text: "Остатки заводятся поставкой-инвентаризацией. До этого шага цикл доходит уже сейчас; блюда и рецепты пока загружаются вручную скриптом." },
-  { n: "3", title: "Теневой режим и боевой", text: "1–2 недели работаем рядом с кассой и сверяем стоп-лист. Затем боевой режим с обратной связью в кассу." },
+  { n: "1", title: "Вручную", text: "Приёмка и заказы на экранах приложения: кладовщик вносит поставку и срок, официант — заказ. Ничего подключать не нужно.", note: "можно начать сегодня" },
+  { n: "2", title: "Файл накладной", text: "CSV накладной поставщика со сроками годности: загрузили файл — получили партии и остатки.", note: "сроки — в файле" },
+  { n: "3", title: "REST API или адаптер", text: "Поставки и продажи приходят по API или через адаптер к учётной системе. iiko — пример; теневой режим: сначала только сверка, без записи в кассу.", note: "iiko — лишь пример" },
 ];
 
 function LiveWindow({ live }: { live: LiveData | null }) {
@@ -59,6 +59,22 @@ function LiveWindow({ live }: { live: LiveData | null }) {
   );
 }
 
+function Numbers() {
+  const n = PITCH_NUMBERS;
+  return (
+    <section className="ld-nums" aria-labelledby="ld-nums-h">
+      <div className="ld-wrap">
+        <h2 id="ld-nums-h">Цифры</h2>
+        <div className="ld-kpis">
+          <div className="ld-kpi"><b>{n.wasteWithoutPct} → {n.wasteWithPct}%</b><span className="ld-muted">списания в % себестоимости: без учёта сроков → с SwapOwl</span></div>
+          <div className="ld-kpi"><b>≈ {n.savedKRubPerMonth} тыс. ₽</b><span className="ld-muted">в месяц на точку в {n.checksPerDay} чеков в день</span></div>
+        </div>
+        <p className="ld-muted">Симулятор, {n.runs} прогонов, допущения — в документации.</p>
+      </div>
+    </section>
+  );
+}
+
 function Bench({ bench }: { bench: BenchResult | null }) {
   const n = benchNumbers(bench);
   if (!n) return null;
@@ -101,8 +117,8 @@ export function Landing() {
         <div className="ld-wrap">
           <div>
             <div className="ld-pills">
-              <Pill>Работает поверх iiko</Pill>
-              <Pill>Теневой режим</Pill>
+              <Pill>Работает самостоятельно</Pill>
+              <Pill>Интеграции по API</Pill>
             </div>
             <h1>Партии, сроки и <em>стоп-лист</em> — <em>без списаний</em></h1>
             <p className="ld-lead">
@@ -118,18 +134,20 @@ export function Landing() {
       </section>
       <section className="ld-how" id="connect" aria-labelledby="ld-how-h">
         <div className="ld-wrap">
-          <h2 id="ld-how-h">Подключение — работа инженера, а не разработка</h2>
+          <h2 id="ld-how-h">Три способа начать</h2>
           <ol className="ld-steps">
             {STEPS.map((s) => (
               <li key={s.n}>
                 <span className="ld-step-n" aria-hidden="true">{s.n}</span>
                 <h3>{s.title}</h3>
                 <p>{s.text}</p>
+                <div className="ld-step-note"><HandNote arrow={null}>{s.note}</HandNote></div>
               </li>
             ))}
           </ol>
         </div>
       </section>
+      <Numbers />
       <Bench bench={bench} />
       <footer className="ld-foot">
         <div className="ld-wrap">Концепт для линейки Swap «Флагмана»</div>

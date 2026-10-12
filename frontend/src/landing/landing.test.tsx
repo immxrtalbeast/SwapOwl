@@ -25,7 +25,15 @@ describe("лендинг", () => {
     expect(out.match(/href="\/#\/stock"/g)?.length).toBe(2);
     expect(out).toContain('href="#connect"');
     expect(out).toContain('id="connect"');
-    expect(out).toContain("Подключение — работа инженера, а не разработка");
+    expect(out).toContain("Три способа начать");
+    expect(out).toContain("Работает самостоятельно");
+    expect(out).toContain("Интеграции по API");
+    expect(out).not.toContain("Работает поверх iiko");
+    expect(out).toContain("Вручную");
+    expect(out).toContain("Файл накладной");
+    expect(out).toContain("iiko — пример");
+    expect(out).toContain("7,6 → 0,1%");
+    expect(out).toContain("Симулятор, 20 прогонов, допущения — в документации.");
     expect(out).toContain("Концепт для линейки Swap «Флагмана»");
     expect(out).not.toContain("ld-bench");
   });
