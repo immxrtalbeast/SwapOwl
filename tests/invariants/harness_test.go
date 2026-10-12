@@ -339,12 +339,24 @@ func (s *stand) batchesSnapshot() string {
 	return out
 }
 
-// checkConservation — инвариант 1 по журналу движений: quantity − sale − writeoff = remaining ≥ 0.
+// checkConservation — инвариант 1 по журналу движений (internal/store/kinds.go):
+// receipt + transfer_in + return − sale − writeoff − adjustment − transfer_out = remaining, 0 ≤ remaining ≤ quantity.
+// Неизвестный вид движения — падение: новый вид должен попасть в инвариант осознанно.
 func (s *stand) checkConservation(ctx string) {
 	s.t.Helper()
+	var unknown string
+	if err := s.pool.QueryRow(context.Background(), `
+		SELECT COALESCE(string_agg(DISTINCT kind, ','), '') FROM movements
+		WHERE kind NOT IN ('receipt','transfer_in','return','sale','writeoff','adjustment','transfer_out')`).Scan(&unknown); err != nil {
+		s.t.Fatal(err)
+	}
+	if unknown != "" {
+		s.t.Fatalf("%s: неизвестные виды движений: %s", ctx, unknown)
+	}
 	rows, err := s.pool.Query(context.Background(), `
 		SELECT b.id, b.quantity, b.remaining,
-		       COALESCE(SUM(m.quantity) FILTER (WHERE m.kind IN ('sale','writeoff')), 0)
+		       COALESCE(SUM(m.quantity) FILTER (WHERE m.kind IN ('receipt','transfer_in','return')), 0),
+		       COALESCE(SUM(m.quantity) FILTER (WHERE m.kind IN ('sale','writeoff','adjustment','transfer_out')), 0)
 		FROM batches b LEFT JOIN movements m ON m.batch_id = b.id
 		GROUP BY b.id ORDER BY b.id`)
 	if err != nil {
@@ -352,12 +364,12 @@ func (s *stand) checkConservation(ctx string) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, q, rem, out int64
-		if err := rows.Scan(&id, &q, &rem, &out); err != nil {
+		var id, q, rem, in, out int64
+		if err := rows.Scan(&id, &q, &rem, &in, &out); err != nil {
 			s.t.Fatal(err)
 		}
-		if rem < 0 || q-out != rem {
-			s.t.Fatalf("%s: партия %d: поступило %d − выбыло %d ≠ remaining %d", ctx, id, q, out, rem)
+		if rem < 0 || rem > q || in-out != rem {
+			s.t.Fatalf("%s: партия %d: пришло %d − выбыло %d ≠ remaining %d (quantity %d)", ctx, id, in, out, rem, q)
 		}
 	}
 }
