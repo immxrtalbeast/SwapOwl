@@ -467,6 +467,19 @@ func (e *validationEnv) routes() map[string]vRoute {
 		{"role missing", vjs(vwith(user, "role", nil)), "role", ""},
 		{"unknown field", vjs(vwith(user, "bogus", 1)), "", ""},
 	}
+	// Вскрытие упаковки (партия 1 — из сида окружения).
+	open := map[string]any{"id": "OPEN-AUDIT", "qty": "1"}
+	openCases := []vCase{
+		{"id missing", vjs(vwith(open, "id", nil)), "id", ""},
+		{"id too long", vjs(vwith(open, "id", long)), "id", ""},
+		{"unit without qty", vjs(map[string]any{"id": "OPEN-AUDIT", "unit": "g"}), "unit", ""},
+		{"qty number", vjs(vwith(open, "qty", 5)), "", ""},
+		{"unknown field", vjs(vwith(open, "bogus", 1)), "", ""},
+	}
+	for _, q := range []string{"-1", "+1", "0", "0.0", "1e3", "1,5", ".5", "", " 1", "NaN", "1000000000001", strings.Repeat("9", 5000)} {
+		openCases = append(openCases, vCase{"qty " + q, vjs(vwith(open, "qty", q)), "qty", ""})
+	}
+
 	key := map[string]any{"name": "audit-key", "role": "operator"}
 	keyCases := []vCase{
 		{"name missing", vjs(vwith(key, "name", nil)), "name", ""},
@@ -483,6 +496,7 @@ func (e *validationEnv) routes() map[string]vRoute {
 		"POST /api/inventory":            {path: "/api/inventory", valid: vjs(inv), cases: invCases},
 		"POST /api/orders/{id}/cancel":   {path: "/api/orders/" + vUUID + "/cancel", valid: vjs(cancel), cases: cancelCases},
 		"PATCH /api/batches/{id}/expiry": {path: "/api/batches/999999999/expiry", valid: vjs(expiry), cases: expiryCases},
+		"POST /api/batches/{id}/open":    {path: "/api/batches/1/open", valid: vjs(open), cases: openCases},
 		"PUT /api/catalog":               {path: "/api/catalog", valid: vjs(cat), cases: catCases},
 		"POST /api/users":                {path: "/api/users", valid: vjs(user), cases: userCases},
 		"POST /api/api-keys":             {path: "/api/api-keys", valid: vjs(key), cases: keyCases},
@@ -627,6 +641,9 @@ func TestValidationAuditPathParams(t *testing.T) {
 	env := newValidationEnv(t)
 	for _, c := range []struct{ method, path, body, field string }{
 		{"POST", "/api/orders/not-a-uuid/cancel", `{"id":"C1"}`, "id"},
+		{"POST", "/api/batches/abc/open", `{"id":"o"}`, "id"},
+		{"POST", "/api/batches/0/open", `{"id":"o"}`, "id"},
+		{"POST", "/api/batches/-1/open", `{"id":"o"}`, "id"},
 		{"PATCH", "/api/batches/abc/expiry", `{"shelf_life_hours":24}`, "id"},
 		{"PATCH", "/api/batches/0/expiry", `{"shelf_life_hours":24}`, "id"},
 		{"PATCH", "/api/batches/-1/expiry", `{"shelf_life_hours":24}`, "id"},

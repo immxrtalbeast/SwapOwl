@@ -271,6 +271,14 @@ func (c pubCorrections) Inventory(ctx context.Context, in store.InventoryInput, 
 	return res, err
 }
 
+func (c pubCorrections) OpenBatch(ctx context.Context, in store.OpenInput, now func() time.Time) (store.OpenResult, error) {
+	res, err := c.Corrections.OpenBatch(ctx, in, now)
+	if err == nil && !res.Replayed {
+		c.p.stockChanged(ctx, []string{res.ProductID})
+	}
+	return res, err
+}
+
 func (c pubCorrections) CancelOrder(ctx context.Context, in store.CancelInput, now func() time.Time) (store.CancelResult, error) {
 	res, err := c.Corrections.CancelOrder(ctx, in, now)
 	if err != nil || res.Replayed {

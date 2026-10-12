@@ -18,13 +18,15 @@ type ProductStock struct {
 	Expiring         QtyJSON     `json:"expiring"`
 	BatchesCount     int         `json:"batches_count"`
 	NearestExpiresAt *time.Time  `json:"nearest_expires_at"`
+	// ShelfAfterOpenHours — срок после вскрытия упаковки; nil — вскрытие срок не меняет.
+	ShelfAfterOpenHours *int `json:"shelf_after_open_hours"`
 }
 
 // ListProductStock — остатки по продуктам на момент now (время берёт вызывающий из clock).
 // Статус «истекает» считает domain.Status с d.Expiry.
 func (d *DB) ListProductStock(ctx context.Context, now time.Time) ([]ProductStock, error) {
 	rows, err := d.Pool.Query(ctx, `
-		SELECT p.id, p.name, p.unit,
+		SELECT p.id, p.name, p.unit, p.shelf_after_open_hours,
 		       COALESCE(SUM(b.remaining), 0)::bigint, count(b.id)::int, MIN(b.expires_at)
 		FROM products p
 		LEFT JOIN batches b ON b.product_id = p.id AND b.remaining > 0 AND b.expires_at > $1
@@ -37,7 +39,7 @@ func (d *DB) ListProductStock(ctx context.Context, now time.Time) ([]ProductStoc
 	for rows.Next() {
 		var s ProductStock
 		var u string
-		if err := rows.Scan(&s.ID, &s.Name, &u, &s.Available.Qty, &s.BatchesCount, &s.NearestExpiresAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &u, &s.ShelfAfterOpenHours, &s.Available.Qty, &s.BatchesCount, &s.NearestExpiresAt); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("store: list products: %w", err)
 		}

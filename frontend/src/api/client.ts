@@ -62,6 +62,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+  openBatch: (batchId: number, id: string, qty?: string) =>
+    request<{ child: { id: number; expires_at: string }; opened_at: string; replayed: boolean }>(`/api/batches/${batchId}/open`, {
+      method: "POST",
+      body: JSON.stringify(qty ? { id, qty } : { id }),
+    }),
   receiveDelivery: (d: DeliveryInput) =>
     request<DeliveryResult>("/api/deliveries", { method: "POST", body: JSON.stringify(d) }),
   users: () => request<{ items: UserAccount[] }>("/api/users").then((r) => r.items),
