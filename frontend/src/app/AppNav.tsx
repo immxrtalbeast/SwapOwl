@@ -1,12 +1,13 @@
 import {
   IconBell, IconBoxSeam, IconBuildingStore, IconChartBar, IconCoin, IconFlame, IconInbox, IconListCheck, IconPlayerPlay,
-  IconSalad, IconTruckDelivery, IconUser, IconUsers, IconShoppingCart,
+  IconSalad, IconTruckDelivery, IconUser, IconUsers, IconShoppingCart, IconSunHigh,
 } from "@tabler/icons-react";
 import { Logo } from "../components/Logo";
 import { useBadges } from "./BadgesContext";
 import type { Screen } from "./screens";
 
 const ICONS: Record<string, typeof IconBell> = {
+  today: IconSunHigh,
   stock: IconBoxSeam,
   receiving: IconInbox,
   menu: IconSalad,

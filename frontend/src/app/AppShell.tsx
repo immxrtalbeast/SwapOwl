@@ -11,6 +11,7 @@ import { AnalyticsPage } from "../pages/analytics";
 import { UsersPage } from "../pages/users";
 import { AccountPage } from "../pages/account";
 import { ReceivingPage } from "../pages/receiving";
+import { TodayPage } from "../pages/today";
 import { NetworkPage } from "../pages/network";
 import { useHubAvailable } from "../pages/network/useHubAvailable";
 import { OfflineBanner } from "../components/ScreenStates";
@@ -26,6 +27,7 @@ import { SCREENS, screenFromHash } from "./screens";
 
 function ScreenView({ id }: { id: string }) {
   switch (id) {
+    case "today": return <TodayPage />;
     case "stock": return <StockPage />;
     case "receiving": return <ReceivingPage />;
     case "menu": return <StopListPage />;
