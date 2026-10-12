@@ -112,7 +112,8 @@ func (c *Collector) writeoffs(ctx context.Context, p Point, from, to time.Time) 
 }
 
 // pollRun: прогон начинается, когда впервые замечен идущий генератор (начало — час стенда этого момента);
-// часы стенда назад (сброс) обнуляют прогон. Ошибка точки оставляет прошлый ряд.
+// часы стенда назад (сброс) или переход генератора «стоял → идёт» (ab-start всегда делает сброс, а пауза
+// не возобновляется) начинают прогон заново — сброс в другой день уводит часы вперёд. Ошибка точки оставляет прошлый ряд.
 func (c *Collector) pollRun(ctx context.Context, p Point) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -129,7 +130,7 @@ func (c *Collector) pollRun(ctx context.Context, p Point) {
 
 	var r abRun
 	switch {
-	case prev != nil && !clk.Now.Before(prev.now):
+	case prev != nil && !clk.Now.Before(prev.now) && !(clk.Running && !prev.running):
 		r = *prev
 		r.closed = append([]int64(nil), prev.closed...)
 	case clk.Running:

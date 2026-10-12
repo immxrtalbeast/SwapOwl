@@ -353,3 +353,28 @@ func TestABSeriesGroupingAndReset(t *testing.T) {
 		t.Errorf("после сброса прогон должен исчезнуть: %+v", r)
 	}
 }
+
+func TestABNextDayRestartStartsNewRun(t *testing.T) {
+	p := newABPoint(t, 100)
+	col := NewCollector(Config{Points: []Point{{ID: "a", Name: "A", Group: GroupAB, URL: p.srv.URL, APIKey: goodKey}}}, 2*time.Second, nil)
+	ctx := context.Background()
+	col.PollAll(ctx)
+	day1 := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	p.set(day1, true)
+	col.PollAB(ctx)
+	p.set(day1.Add(3*time.Hour), true)
+	col.PollAB(ctx)
+	p.set(day1.Add(3*time.Hour), false) // ab-stop
+	col.PollAB(ctx)
+	if r := col.Snapshot()[0].Run; r == nil || r.Running {
+		t.Fatalf("после паузы ряд должен остаться: %+v", r)
+	}
+	// ab-start на следующий день: reset ставит часы на T0 нового дня — вперёд, а не назад.
+	day2 := time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
+	p.set(day2.Add(10*time.Minute), true)
+	col.PollAB(ctx)
+	r := col.Snapshot()[0].Run
+	if r == nil || !r.StartedAt.Equal(day2) || len(r.Series) != 2 {
+		t.Fatalf("новый прогон должен начаться с %v: %+v", day2, r)
+	}
+}
