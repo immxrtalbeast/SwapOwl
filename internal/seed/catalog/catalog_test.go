@@ -121,3 +121,16 @@ func TestFormatQty(t *testing.T) {
 		}
 	}
 }
+
+// Цена в разумном коридоре: 1–500 ₽ за штуку, 1–3000 ₽ за кг или литр (FS-125).
+func TestProductPricesPlausible(t *testing.T) {
+	for _, p := range Products() {
+		rub, hi := p.PriceMinorPer1000/100, int64(3000) // ₽ за кг или л
+		if p.Unit == domain.UnitPcs {
+			rub, hi = p.PriceMinorPer1000/1000/100, 500 // ₽ за штуку
+		}
+		if rub < 1 || rub > hi {
+			t.Errorf("%s: %d ₽ за единицу вне коридора 1–%d", p.ID, rub, hi)
+		}
+	}
+}

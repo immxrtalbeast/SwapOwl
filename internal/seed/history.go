@@ -2,6 +2,7 @@ package seed
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +18,21 @@ const HistorySeed int64 = 20261010
 
 // HistoryDays — глубина истории поставок и заказов.
 const HistoryDays = 14
+
+// Закупка истории — «до уровня» (как в FS-114, docs/pitch-numbers.md). Генератор привозит от 1 до 3
+// суток априорного спроса независимо от остатка, поэтому «как есть» остатки копятся и портятся
+// (FS-125: 185 тыс. ₽ просрочки в неделю). Расписание поставок берём у генератора, а количество
+// пересчитываем: прогноз спроса на интервал до следующей поставки минус текущий непросроченный остаток.
+const (
+	// historyDemandRatio — доля априорного спроса, которую реально дают заказы генератора.
+	historyDemandRatio = 0.75
+	// historyReserve — запас сверх прогноза; подобран так, чтобы списания недели были в коридоре
+	// 4–10 % себестоимости проданного.
+	historyReserve = 1.2
+	// Каждая historyShortEvery-я позиция приходит со сроком historyShortHours (в FS-114 — 20 % поставок).
+	historyShortEvery = 5
+	historyShortHours = 36
+)
 
 // history — строки таблиц, посчитанные в памяти и согласованные с журналом движений.
 type history struct {
@@ -124,7 +140,14 @@ func buildHistory(t0 time.Time) (*history, error) {
 		sweep(at)
 		switch e.Kind {
 		case generator.KindDelivery:
-			err = h.addDelivery(e.Delivery, at, prods, strings.HasPrefix(e.Delivery.ID, "D-SEED-"))
+			d, seeded := e.Delivery, strings.HasPrefix(e.Delivery.ID, "D-SEED-")
+			if !seeded {
+				d = h.procure(d, at, prods)
+			}
+			if len(d.Items) == 0 {
+				continue // закупать нечего — поставки не было
+			}
+			err = h.addDelivery(d, at, prods, seeded)
 		case generator.KindOrder:
 			err = h.addOrder(e.Order, at, prods, recipes)
 		}
@@ -135,6 +158,37 @@ func buildHistory(t0 time.Time) (*history, error) {
 	sweep(t0)
 	sort.SliceStable(h.moves, func(i, j int) bool { return h.moves[i].At.Before(h.moves[j].At) })
 	return h, nil
+}
+
+// procure заменяет количества в поставке истории закупкой «до уровня» по текущим остаткам.
+func (h *history) procure(d *generator.Delivery, at time.Time, prods map[string]Product) *generator.Delivery {
+	need := DailyNeed()
+	stock := map[string]float64{}
+	for _, b := range h.batches {
+		if !b.Demo && at.Before(b.ExpiresAt) {
+			stock[b.ProductID] += float64(b.Remaining)
+		}
+	}
+	out := *d
+	out.Items = nil
+	for i, it := range d.Items {
+		p := prods[it.ProductID]
+		days := 1.0
+		if p.ShelfLifeHours > 100 { // поставки нескоропортящихся приходят примерно через день
+			days = 2
+		}
+		want := need[p.ID]*historyDemandRatio*days*historyReserve - stock[p.ID]
+		if want <= 0 {
+			continue
+		}
+		q, u := FormatQty(RoundToPack(domain.Qty(math.Ceil(want)), p.PackSize), p.Unit)
+		it.Quantity, it.Unit = q, u
+		if (int(at.Unix()/86400)+i)%historyShortEvery == 0 && it.ShelfLifeHours > historyShortHours {
+			it.ShelfLifeHours = historyShortHours // остатки поставщика с коротким сроком
+		}
+		out.Items = append(out.Items, it)
+	}
+	return &out
 }
 
 func (h *history) addDelivery(d *generator.Delivery, at time.Time, prods map[string]Product, seeded bool) error {

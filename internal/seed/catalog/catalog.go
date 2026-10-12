@@ -69,8 +69,8 @@ func Products() []Product {
 		{"parmesan", "Пармезан", domain.UnitG, 120000, 3, 500, 720},
 		{"beef", "Говяжья вырезка", domain.UnitG, 210000, 2, 1000, 96},
 		{"potato", "Картофель", domain.UnitG, 6000, 3, 5000, 336},
-		{"bun", "Булочка", domain.UnitPcs, 1500, 1, 20, 72},
-		{"egg", "Яйцо", domain.UnitPcs, 1200, 2, 30, 360},
+		{"bun", "Булочка", domain.UnitPcs, 1500000, 1, 20, 72},
+		{"egg", "Яйцо", domain.UnitPcs, 1200000, 2, 30, 360},
 		{"milk", "Молоко", domain.UnitMl, 9000, 1, 1000, 120},
 	}
 }
