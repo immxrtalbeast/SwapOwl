@@ -27,9 +27,10 @@ async function post<T>(path: string, body: unknown, token?: string): Promise<T> 
 }
 
 export const demoApi = {
-  simulator: (running: boolean) => post<{ running: boolean }>("/api/demo/simulator", { running }),
-  burst: (dishId: string, orders: number) => post<BurstResult>("/api/demo/burst", { dish_id: dishId, orders }),
-  // Действия ниже требуют DEMO_TOKEN (2.8).
+  // Все действия требуют DEMO_TOKEN (2.8).
+  simulator: (running: boolean, token: string) => post<{ running: boolean }>("/api/demo/simulator", { running }, token),
+  burst: (dishId: string, orders: number, token: string) =>
+    post<BurstResult>("/api/demo/burst", { dish_id: dishId, orders }, token),
   speed: (speed: number, token: string) => post<unknown>("/api/demo/clock/speed", { speed }, token),
   jump: (hours: number, token: string) => post<unknown>("/api/demo/clock/jump", { hours }, token),
   reset: (token: string) => post<unknown>("/api/demo/reset", {}, token),
@@ -61,6 +62,8 @@ export function parseBurstOrders(raw: string): number | null {
 export function describeBurst(r: BurstResult): string {
   return `Принято ${r.accepted}, отклонено ${r.rejected} из ${r.orders}`;
 }
+
+export const TOKEN_HINT = "нужен DEMO_TOKEN";
 
 /** Действия с токеном видны только при введённом DEMO_TOKEN. */
 export const tokenActionsVisible = (token: string): boolean => token.trim() !== "";

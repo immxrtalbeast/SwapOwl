@@ -16,7 +16,10 @@ info:
     * Маршруты склада, заказов и т. д. регистрируются, только если подключена соответствующая зависимость;
       `/api/demo/*` при `DEMO_MODE=false` отвечают 404.
 servers:
+  - url: https://swapowl.duckdns.org
+    description: Стенд
   - url: http://localhost:8080
+    description: Локально
 tags:
   - {name: service, description: Служебные}
   - {name: stock, description: Поставки, склад, мониторинг}
@@ -30,6 +33,28 @@ security:
   - session: []
   - bearer: []
 paths:
+  /api/openapi.yaml:
+    get:
+      tags: [service]
+      summary: Описание API (этот файл)
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1
+          content:
+            application/yaml:
+              schema: {type: string}
+  /api/docs:
+    get:
+      tags: [service]
+      summary: Страница документации по описанию API
+      security: []
+      responses:
+        '200':
+          description: HTML
+          content:
+            text/html:
+              schema: {type: string}
   /healthz:
     get:
       tags: [service]
@@ -869,7 +894,9 @@ paths:
   /api/demo/simulator:
     post:
       tags: [demo]
-      summary: Запустить или поставить на паузу генератор заказов (operator)
+      summary: Запустить или поставить на паузу генератор заказов (DEMO_TOKEN)
+      description: "Требует `Authorization: Bearer <DEMO_TOKEN>`."
+      security: [{demoToken: []}]
       requestBody:
         required: true
         content:
@@ -888,7 +915,9 @@ paths:
   /api/demo/burst:
     post:
       tags: [demo]
-      summary: Параллельные заказы по одной порции блюда (operator)
+      summary: Параллельные заказы по одной порции блюда (DEMO_TOKEN)
+      description: "Требует `Authorization: Bearer <DEMO_TOKEN>`."
+      security: [{demoToken: []}]
       requestBody:
         required: true
         content:

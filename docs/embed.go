@@ -7,3 +7,8 @@ import _ "embed"
 //
 //go:embed bench.json
 var BenchJSON []byte
+
+// OpenAPIYAML — описание API; отдаётся как GET /api/openapi.yaml.
+//
+//go:embed openapi.yaml
+var OpenAPIYAML []byte

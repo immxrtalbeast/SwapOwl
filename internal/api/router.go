@@ -136,6 +136,7 @@ func (rt *Router) Routes() {
 	rt.clockRoutes()
 	rt.demoRoutes()
 	rt.demoSimRoutes()
+	rt.openAPIRoutes()
 }
 
 // Handle регистрирует хендлер для метода и шаблона пути (синтаксис ServeMux без метода: "/api/x/{id}").
