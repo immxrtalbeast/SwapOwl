@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SupplySuggestion } from "../../api/types";
-import { ORDER_STATUS_TEXT, buildOrderBody, needsPolling, selectionKey } from "./order";
+import { ORDER_STATUS_TEXT, buildOrderBody, buildOrderCsv, needsPolling, selectionKey } from "./order";
 
 const row = (id: string, qty: number): SupplySuggestion => ({
   product_id: id,
@@ -29,9 +29,12 @@ describe("supply order", () => {
     expect(selectionKey([row("a", 1)])).not.toBe(selectionKey([row("a", 2)]));
   });
   it("статусы на экране", () => {
-    expect(ORDER_STATUS_TEXT).toEqual({ sent: "отправлен", delivered: "доставлен в iiko", error: "ошибка доставки" });
+    expect(ORDER_STATUS_TEXT).toEqual({ sent: "отправлен", delivered: "доставлен поставщику", error: "ошибка доставки" });
     expect(needsPolling("sent")).toBe(true);
     expect(needsPolling("error")).toBe(true);
     expect(needsPolling("delivered")).toBe(false);
+  });
+  it("CSV: заголовок, строки, экранирование", () => {
+    expect(buildOrderCsv([row("a;b", 1500)])).toBe('\uFEFFПродукт;Количество;Единица\r\n"a;b";1500;g\r\n');
   });
 });

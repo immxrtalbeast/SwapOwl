@@ -5,11 +5,11 @@ import { RoleGate } from "../../auth/AuthContext";
 import { Card, DataTable, EmptyState, ErrorState, LoadingState, PrimaryButton, ScreenTitle, SecondaryButton, UrgencyBadge } from "../../components";
 import type { Column } from "../../components";
 import { SUPPLY_STATES } from "../../lib/urgency";
-import { formatQty } from "../../lib/format";
+import { formatSupplyQty as formatQty } from "./qty";
 import { explainSupply } from "./explain";
 import { buildAcceptBody, offerKey, outcomeFromError, outcomeFromResult } from "./accept";
 import type { AcceptOutcome } from "./accept";
-import { ORDER_STATUS_TEXT, buildOrderBody, needsPolling, selectionKey } from "./order";
+import { ORDER_STATUS_TEXT, buildOrderBody, buildOrderCsv, needsPolling, selectionKey } from "./order";
 import { formatStockout } from "./urgency";
 import { useSupply } from "./useSupply";
 
@@ -73,7 +73,7 @@ interface SentOrder {
 export function SupplyPage() {
   const [state, reload] = useSupply();
   const nowMs = Date.now();
-  // Заказ поставщику в iiko: выбранные строки → POST /api/supply-orders → статус по подтверждению outbox.
+  // Заказ поставщику (через подключённую учётную систему): выбранные строки → POST /api/supply-orders → статус по подтверждению outbox.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [ordering, setOrdering] = useState(false);
   const [placed, setPlaced] = useState<SentOrder | null>(null);
@@ -98,6 +98,14 @@ export function SupplyPage() {
     } finally {
       setOrdering(false);
     }
+  }
+  function downloadCsv() {
+    const url = URL.createObjectURL(new Blob([buildOrderCsv(chosen)], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "order.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   }
   const placedId = placed?.order?.id;
   const placedStatus = placed?.order?.status;
@@ -148,7 +156,7 @@ export function SupplyPage() {
       cell: (r) => (
         <input
           type="checkbox"
-          aria-label={`Выбрать ${r.product_name} для заказа в iiko`}
+          aria-label={`Выбрать ${r.product_name} для заказа`}
           checked={selected.has(offerKey(r))}
           onChange={(e) =>
             setSelected((prev) => {
@@ -176,7 +184,7 @@ export function SupplyPage() {
     {
       key: "stockout",
       header: "Закончится",
-      cell: (r) => <span title={r.stockout_at ? new Date(r.stockout_at).toLocaleString("ru-RU") : undefined}>{formatStockout(r.stockout_at, nowMs)}</span>,
+      cell: (r) => <span style={r.usable_stock.qty <= 0 ? { color: "var(--urgency-risk-fg, #a3330a)" } : undefined} title={r.stockout_at ? new Date(r.stockout_at).toLocaleString("ru-RU") : undefined}>{formatStockout(r.stockout_at, nowMs, r.usable_stock.qty)}</span>,
     },
     { key: "urgency", header: "Срочность", cell: (r) => <UrgencyBadge def={SUPPLY_STATES[r.urgency]} /> },
     { key: "explanation", header: "Объяснение", cell: (r) => <span style={{ font: "var(--type-small)" }}>{explainSupply(r.explanation, r.quantity.unit)}</span> },
@@ -194,8 +202,11 @@ export function SupplyPage() {
       <RoleGate min="operator">
         <div style={{ margin: "0 0 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", font: "var(--type-body)" }}>
           <PrimaryButton size="compact-md" onClick={() => void placeOrder()} disabled={ordering || chosen.length === 0} loading={ordering}>
-            Отправить заказ в iiko
+            Отправить заказ поставщику
           </PrimaryButton>
+          <SecondaryButton size="compact-md" onClick={downloadCsv} disabled={chosen.length === 0}>Скачать заказ (CSV)</SecondaryButton>
+          {/* В API нет признака подключённого адаптера — показываем обе кнопки. */}
+          <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>Отправка — через подключённую учётную систему</span>
           <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>Выбрано строк: {chosen.length}</span>
           {placed?.order && (
             <span role={placed.order.status === "error" ? "alert" : "status"}>

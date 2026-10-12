@@ -20,8 +20,9 @@ export function supplyUrgencyView(u: SupplyUrgency): SupplyUrgencyView {
   return VIEWS[u];
 }
 
-/** «через 5 ч» / «через 2 сут.» до обнуления запаса; null — расхода нет. */
-export function formatStockout(iso: string | null, nowMs: number): string {
+/** При нулевом пригодном запасе — «закончилось», а не время. «через 5 ч» / «через 2 сут.» до обнуления запаса; null — расхода нет. */
+export function formatStockout(iso: string | null, nowMs: number, usableQty?: number): string {
+  if (usableQty !== undefined && usableQty <= 0) return "закончилось";
   if (!iso) return "расхода нет";
   const ms = new Date(iso).getTime() - nowMs;
   if (ms <= 0) return "уже закончился";
