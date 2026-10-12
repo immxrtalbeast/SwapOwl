@@ -31,8 +31,8 @@ export const SCREENS: Screen[] = [
   { id: "users", title: "Пользователи и ключи", minRole: "admin", soon: "учётные записи и ключи доступа", bottom: true },
 ];
 
-/** Стартовый экран после входа — склад (e2e открывает #/stock); «Сегодня» — первый пункт меню, но не стартовый. */
-export const DEFAULT_SCREEN = "stock";
+/** Стартовый экран после входа и при пустом хэше — «Сегодня»: показ начинается с него (e2e открывают экраны явными хэшами). */
+export const DEFAULT_SCREEN = "today";
 
 export function screenFromHash(hash: string): string {
   const id = hash.replace(/^#\/?/, "").split("?")[0];

@@ -40,7 +40,7 @@ export function LoginScreen() {
         <div style={{ display: "grid", justifyItems: "center", gap: 8 }}>
           <Logo size={64} />
           <h1 style={{ margin: 0, font: "400 26px/1 var(--font-body)", color: "var(--brand-strong)" }}>SwapOwl</h1>
-          <p style={{ margin: 0, color: "var(--text-muted)", textAlign: "center" }}>Концепт для линейки Swap «Флагмана»</p>
+          <p style={{ margin: 0, color: "var(--text-muted)", textAlign: "center" }}>Сделано по кейсу «Флагмана» · UMIRHack 2026</p>
         </div>
         <Card title="Вход">
           <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>

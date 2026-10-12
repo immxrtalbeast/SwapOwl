@@ -60,14 +60,19 @@ function standLabel(p: HubPoint): string {
   return `время стенда: ${day} ${clockText(t)}`;
 }
 
-function Big({ side, tone }: { side: AbSide; tone: "ours" | "base" }) {
+/** Сколько часов стенда длился прогон: конец самого длинного ряда. */
+export function runHours(...sides: AbSide[]): number {
+  return Math.max(0, ...sides.flatMap((s) => s.series.map((p) => p.hour)));
+}
+
+function Big({ side, tone, running }: { side: AbSide; tone: "ours" | "base"; running: boolean }) {
   return (
     <div data-testid={`ab-${tone}`} style={{ minWidth: 0 }}>
       <div style={{ font: "var(--type-body-strong)", color: tone === "ours" ? "var(--brand-ink)" : "var(--urgency-risk-fg)" }}>{side.label}</div>
       <div className="so-num" style={{ font: "700 40px/44px var(--font-sans, inherit)" }}>
         {side.totalMinor === null ? "—" : formatRub(side.totalMinor)}
       </div>
-      <div style={{ color: "var(--text-muted)", font: "var(--type-small)" }}>списано, ₽ · {standLabel(side.point)}</div>
+      <div style={{ color: "var(--text-muted)", font: "var(--type-small)" }}>списано, ₽{running ? ` · ${standLabel(side.point)}` : ""}</div>
     </div>
   );
 }
@@ -77,14 +82,21 @@ export function AbCompare({ pair }: { pair: readonly [HubPoint, HubPoint] }) {
   const c = compareAb(pair);
   const note = abScenarioNote(pair);
   const saved = c.diffMinor !== null && c.diffMinor < 0;
-  const status = c.ours.series.length === 0 && c.base.series.length === 0
-    ? "Ждём запуска генератора на обеих точках (fleet.sh ab-start)."
-    : c.running ? "Прогон идёт, обновление каждые пару секунд." : "Прогон на паузе.";
+  const hasRun = c.ours.totalMinor !== null || c.base.totalMinor !== null || c.ours.series.length > 0 || c.base.series.length > 0;
+  if (!hasRun) {
+    return (
+      <Card title="Живое сравнение: со SwapOwl и без">
+        <p data-testid="ab-empty" style={{ margin: 0, color: "var(--text-muted)" }}>Сравнение ещё не запускали: <code>ab-demo.sh start</code></p>
+      </Card>
+    );
+  }
+  const hours = Math.round(runHours(c.ours, c.base));
+  const status = c.running ? "Прогон идёт, обновление каждые пару секунд." : `Последний прогон, ${hours} ч стенда.`;
   return (
     <Card title="Живое сравнение: со SwapOwl и без" actions={<span style={{ color: "var(--text-muted)", font: "var(--type-small)" }}>{status}</span>}>
       <div style={{ display: "grid", gap: 24, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", alignItems: "start" }}>
-        <Big side={c.ours} tone="ours" />
-        <Big side={c.base} tone="base" />
+        <Big side={c.ours} tone="ours" running={c.running} />
+        <Big side={c.base} tone="base" running={c.running} />
         <div data-testid="ab-diff">
           <div style={{ font: "var(--type-body-strong)" }}>Разница</div>
           <div className="so-num" style={{ font: "700 40px/44px var(--font-sans, inherit)", color: saved ? "var(--brand-ink)" : "var(--text)" }}>{diffText(c)}</div>
