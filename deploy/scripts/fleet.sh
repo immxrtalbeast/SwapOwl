@@ -48,11 +48,15 @@ ENV
   fi
 }
 
-# dc <slug> <tag> <аргументы compose>: compose-проект точки; профиль ops включается, если задан токен сторожа.
+# dc <slug> <tag> <аргументы compose>: compose-проект точки; профили берутся из COMPOSE_PROFILES в .env точки,
+# профиль ops добавляется, если задан токен сторожа.
 dc() {
   local slug="$1" tag="$2"; shift 2
-  local prof=()
-  if [ -n "$(envval "$EDGE_DIR/.env" WATCHDOG_TG_TOKEN)" ] && [ -n "$(envval "$EDGE_DIR/.env" WATCHDOG_TG_CHAT)" ]; then prof=(--profile ops); fi
+  local prof=() p
+  local -a want
+  IFS=, read -r -a want <<< "$(envval "$POINTS/$slug/.env" COMPOSE_PROFILES | tr -d '"'"'"' ')"
+  for p in ${want[@]+"${want[@]}"}; do [ -n "$p" ] && prof+=(--profile "$p"); done
+  if [ -n "$(envval "$EDGE_DIR/.env" WATCHDOG_TG_TOKEN)" ] && [ -n "$(envval "$EDGE_DIR/.env" WATCHDOG_TG_CHAT)" ]; then prof+=(--profile ops); fi
   IMAGE_TAG="$tag" docker compose -p "swapowl-$slug" ${prof[@]+"${prof[@]}"} -f "$PROD_COMPOSE" -f "$POINTS/$slug/compose.override.yml" \
     --env-file "$EDGE_DIR/.env" --env-file "$POINTS/$slug/.env" "$@"
 }
