@@ -97,7 +97,7 @@ func rub(r result) float64 { return float64(r.Writeoff) / 100 }
 func (rep *report) write(w io.Writer) {
 	pf := rep.Profile
 	fmt.Fprintf(w, "Прогонов: %d, сиды: %d…%d, суток в прогоне: %d, заказов в сутки (среднее): %.1f\n", rep.Runs, rep.Seed0, rep.Seed0+int64(rep.Runs)-1, rep.Days, rep.Orders)
-	fmt.Fprintf(w, "Профиль: %d чеков в сутки; закупка до уровня «интервал между поставками + %.1f сут.» × (1 + %.0f %%) ± %.0f %% ошибки прогноза; %d %% поставки с коротким сроком (×%.1f)\n\n",
+	fmt.Fprintf(w, "Профиль: %d чеков в сутки; закупка до уровня «интервал между поставками + %g сут.» × (1 + %.0f %%) ± %.0f %% ошибки прогноза; %d %% поставки с коротким сроком (×%.1f)\n\n",
 		pf.Checks, pf.CoverDays, 100*pf.Reserve, 100*pf.ForecastErr, pf.ShortShare, pf.ShortFactor)
 
 	fmt.Fprintln(w, "| Режим | Выручка, ₽ (среднее) | Себестоимость проданного, ₽ (среднее) | Себестоимость, % выручки | Списания, ₽ (среднее ± σ) | Списания, % себестоимости (среднее ± σ) |")
