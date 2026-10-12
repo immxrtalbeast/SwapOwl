@@ -11,6 +11,9 @@ import { AnalyticsPage } from "../pages/analytics";
 import { UsersPage } from "../pages/users";
 import { AccountPage } from "../pages/account";
 import { ReceivingPage } from "../pages/receiving";
+import { TodayPage } from "../pages/today";
+import { LabelPage } from "../pages/label";
+import { labelBatchIdFromHash } from "../pages/label/labelData";
 import { NetworkPage } from "../pages/network";
 import { useHubAvailable } from "../pages/network/useHubAvailable";
 import { OfflineBanner } from "../components/ScreenStates";
@@ -26,6 +29,7 @@ import { SCREENS, screenFromHash } from "./screens";
 
 function ScreenView({ id }: { id: string }) {
   switch (id) {
+    case "today": return <TodayPage />;
     case "stock": return <StockPage />;
     case "receiving": return <ReceivingPage />;
     case "menu": return <StopListPage />;
@@ -58,8 +62,12 @@ function Offline() {
 /** Каркас: боковая панель, белая шапка, содержимое экрана; навигация по хэшу адреса (без библиотеки маршрутизации). */
 export function AppShell() {
   const [screen, setScreen] = useState(() => screenFromHash(window.location.hash));
+  const [labelId, setLabelId] = useState(() => labelBatchIdFromHash(window.location.hash));
   useEffect(() => {
-    const on = () => setScreen(screenFromHash(window.location.hash));
+    const on = () => {
+      setScreen(screenFromHash(window.location.hash));
+      setLabelId(labelBatchIdFromHash(window.location.hash));
+    };
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
@@ -80,7 +88,7 @@ export function AppShell() {
               <AppHeader />
               <main id="so-main" tabIndex={-1} className="so-main" style={{ flex: 1, minWidth: 0, width: "100%", boxSizing: "border-box" }}>
                 <Offline />
-                <ScreenView id={screen} />
+                {labelId !== null ? <LabelPage batchId={labelId} /> : <ScreenView id={screen} />}
               </main>
               <footer style={{ padding: "12px var(--gutter)", font: "var(--type-small)", color: "var(--text-muted)" }}>
                 SwapOwl · Концепт для линейки Swap «Флагмана»

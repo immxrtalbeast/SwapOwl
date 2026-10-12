@@ -144,7 +144,7 @@ func saveCorrection(ctx context.Context, tx pgx.Tx, kind, id string, at time.Tim
 // delta > 0 увеличивает остаток (receipt/return), delta < 0 — уменьшает.
 func moveBatch(ctx context.Context, tx pgx.Tx, batchID int64, productID, kind, reason string, qty int64, orderID *string, at time.Time) error {
 	delta := qty
-	if kind == KindSale || kind == KindWriteoff || kind == KindAdjustment {
+	if kind == KindSale || kind == KindWriteoff || kind == KindAdjustment || kind == KindTransferOut {
 		delta = -qty
 	}
 	tag, err := tx.Exec(ctx,

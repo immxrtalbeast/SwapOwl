@@ -15,6 +15,7 @@ export interface Screen {
 
 // Порядок — по .ai/frontend-prompt.md, «Боковая панель».
 export const SCREENS: Screen[] = [
+  { id: "today", title: "Сегодня" },
   { id: "stock", title: "Склад" },
   { id: "receiving", title: "Приёмка" },
   { id: "menu", title: "Меню и стоп-лист" },
@@ -30,7 +31,10 @@ export const SCREENS: Screen[] = [
   { id: "users", title: "Пользователи и ключи", minRole: "admin", soon: "учётные записи и ключи доступа", bottom: true },
 ];
 
+/** Стартовый экран после входа — склад (e2e открывает #/stock); «Сегодня» — первый пункт меню, но не стартовый. */
+export const DEFAULT_SCREEN = "stock";
+
 export function screenFromHash(hash: string): string {
   const id = hash.replace(/^#\/?/, "").split("?")[0];
-  return SCREENS.some((s) => s.id === id) ? id : SCREENS[0].id;
+  return SCREENS.some((s) => s.id === id) ? id : DEFAULT_SCREEN;
 }

@@ -6,6 +6,7 @@ import { useStandFormat } from "../../app/useStandFormat";
 import { Card, PrimaryButton, ScreenStates, ScreenTitle, SecondaryButton } from "../../components";
 import { formatQty } from "../../lib/format";
 import { SHELF_DAYS, currentShelfHours, datePatch, formatShelf } from "./shelf";
+import { ScanPanel } from "./ScanPanel";
 import { useReceiving } from "./useReceiving";
 
 // Крупные цели касания для телефона и ТСД: не меньше 44 px (берём 48).
@@ -91,6 +92,7 @@ export function ReceivingPage() {
   return (
     <section>
       <ScreenTitle stale={stale}>Приёмка</ScreenTitle>
+      <ScanPanel onSent={reload} />
       <p style={{ margin: "0 0 16px", color: "var(--text-muted)" }}>
         Срок этих партий взят из справочника продукта: накладная его не содержала. Подтвердите или поправьте.
       </p>

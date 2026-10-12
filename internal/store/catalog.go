@@ -46,6 +46,8 @@ type CatalogProduct struct {
 	LeadDays          int
 	PackSize          int64
 	ShelfLifeHours    *int
+	// ShelfAfterOpenHours — срок после вскрытия упаковки; nil — не трогать (очистить через импорт нельзя).
+	ShelfAfterOpenHours *int
 	// PieceWeight (g или ml на 1 шт, единица в PieceWeightUnit) и PackUnit — необязательны;
 	// nil — поле не трогать (как ShelfLifeHours; очистить через импорт нельзя).
 	PieceWeight     *int64
@@ -104,6 +106,7 @@ type productRow struct {
 	lead       int
 	pack       int64
 	shelf      *int
+	afterOpen  *int
 	autoCreate bool
 	pieceW     *int64
 	pieceU     *string
@@ -152,11 +155,11 @@ func (d *DB) ImportCatalog(ctx context.Context, in CatalogInput, dryRun bool) (C
 
 func upsertProduct(ctx context.Context, tx pgx.Tx, p CatalogProduct) (CatalogChange, error) {
 	const sel = `SELECT name, unit, price_minor_per_1000, lead_days, pack_size, shelf_life_hours, auto_created,
-		piece_weight, piece_weight_unit, pack_unit FROM products WHERE id = $1 FOR UPDATE`
+		piece_weight, piece_weight_unit, pack_unit, shelf_after_open_hours FROM products WHERE id = $1 FOR UPDATE`
 	scan := func() (productRow, bool, error) {
 		var r productRow
 		var u string
-		err := tx.QueryRow(ctx, sel, p.ID).Scan(&r.name, &u, &r.price, &r.lead, &r.pack, &r.shelf, &r.autoCreate, &r.pieceW, &r.pieceU, &r.packUnit)
+		err := tx.QueryRow(ctx, sel, p.ID).Scan(&r.name, &u, &r.price, &r.lead, &r.pack, &r.shelf, &r.autoCreate, &r.pieceW, &r.pieceU, &r.packUnit, &r.afterOpen)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return r, false, nil
 		}
@@ -170,10 +173,10 @@ func upsertProduct(ctx context.Context, tx pgx.Tx, p CatalogProduct) (CatalogCha
 	if !ok {
 		tag, err := tx.Exec(ctx,
 			`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size, shelf_life_hours, auto_created,
-			 piece_weight, piece_weight_unit, pack_unit)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8, $9, $10) ON CONFLICT (id) DO NOTHING`,
+			 piece_weight, piece_weight_unit, pack_unit, shelf_after_open_hours)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8, $9, $10, $11) ON CONFLICT (id) DO NOTHING`,
 			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, p.PackSize, p.ShelfLifeHours,
-			p.PieceWeight, pieceUnitArg(p), p.PackUnit)
+			p.PieceWeight, pieceUnitArg(p), p.PackUnit, p.ShelfAfterOpenHours)
 		if err != nil {
 			return CatalogChange{}, fmt.Errorf("store: catalog insert product %s: %w", p.ID, err)
 		}
@@ -191,6 +194,10 @@ func upsertProduct(ctx context.Context, tx pgx.Tx, p CatalogProduct) (CatalogCha
 	shelf := cur.shelf
 	if p.ShelfLifeHours != nil {
 		shelf = p.ShelfLifeHours
+	}
+	afterOpen := cur.afterOpen
+	if p.ShelfAfterOpenHours != nil {
+		afterOpen = p.ShelfAfterOpenHours
 	}
 	pw, pu, pk := cur.pieceW, cur.pieceU, cur.packUnit
 	if p.PieceWeight != nil {
@@ -210,6 +217,7 @@ func upsertProduct(ctx context.Context, tx pgx.Tx, p CatalogProduct) (CatalogCha
 	add("lead_days", cur.lead != p.LeadDays)
 	add("pack_size", cur.pack != p.PackSize)
 	add("shelf_life_hours", (cur.shelf == nil) != (shelf == nil) || (shelf != nil && *cur.shelf != *shelf))
+	add("shelf_after_open_hours", (cur.afterOpen == nil) != (afterOpen == nil) || (afterOpen != nil && *cur.afterOpen != *afterOpen))
 	add("piece_weight", (cur.pieceW == nil) != (pw == nil) || (pw != nil && (*cur.pieceW != *pw || *cur.pieceU != *pu)))
 	add("pack_unit", (cur.packUnit == nil) != (pk == nil) || (pk != nil && *cur.packUnit != *pk))
 	if len(fields) == 0 && !cur.autoCreate {
@@ -218,8 +226,8 @@ func upsertProduct(ctx context.Context, tx pgx.Tx, p CatalogProduct) (CatalogCha
 	// Импортированный продукт — справочный: сброс стенда автосозданные удаляет, а этот остаётся.
 	if _, err := tx.Exec(ctx,
 		`UPDATE products SET name=$2, price_minor_per_1000=$3, lead_days=$4, pack_size=$5, shelf_life_hours=$6, auto_created=false,
-		piece_weight=$7, piece_weight_unit=$8, pack_unit=$9 WHERE id=$1`,
-		p.ID, p.Name, p.PriceMinorPer1000, p.LeadDays, p.PackSize, shelf, pw, pu, pk); err != nil {
+		piece_weight=$7, piece_weight_unit=$8, pack_unit=$9, shelf_after_open_hours=$10 WHERE id=$1`,
+		p.ID, p.Name, p.PriceMinorPer1000, p.LeadDays, p.PackSize, shelf, pw, pu, pk, afterOpen); err != nil {
 		return CatalogChange{}, fmt.Errorf("store: catalog update product %s: %w", p.ID, err)
 	}
 	if len(fields) == 0 {

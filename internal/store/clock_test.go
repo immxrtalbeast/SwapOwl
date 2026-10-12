@@ -52,3 +52,27 @@ func TestLastEventTimeIsMaxOfEvents(t *testing.T) {
 		t.Fatalf("after delivery: %v %v", last, err)
 	}
 }
+
+func TestSimulatorRunningSeparateFromSaveClock(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cs := db.ClockStore()
+	if on, err := cs.SimulatorRunning(ctx); err != nil || on {
+		t.Fatalf("no row: on=%v err=%v", on, err)
+	}
+	if err := cs.Save(ctx, clock.State{SimTime: t0, Speed: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.SetSimulatorRunning(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.Save(ctx, clock.State{SimTime: t0.Add(time.Hour), Speed: 600}); err != nil {
+		t.Fatal(err)
+	}
+	if on, err := cs.SimulatorRunning(ctx); err != nil || !on {
+		t.Fatalf("SaveClock must keep the flag: on=%v err=%v", on, err)
+	}
+}

@@ -20,11 +20,15 @@ type Notifier struct {
 	Out      Sender
 	DigestAt string // "HH:MM" по времени ресторана
 	Logf     func(string, ...any)
+	Buttons  ButtonSender  // необязательно: сообщения с кнопками о партиях без срока
+	Weekly   *WeeklyConfig // необязательно: недельный отчёт собственнику
 
+	recvSent   map[int64]bool // партии без срока, о которых уже написали
 	sendMu     sync.Mutex     // сериализует отправку и защищает sent
 	sent       map[int64]bool // партии, о которых уже написали
 	mu         sync.Mutex
 	digestDate string // дата последней сводки
+	weeklyDate string // дата последнего недельного отчёта
 }
 
 func (n *Notifier) logf(f string, a ...any) {
@@ -35,6 +39,10 @@ func (n *Notifier) logf(f string, a ...any) {
 
 // Handle обрабатывает одно событие SSE. Нужны только batch.expiring.
 func (n *Notifier) Handle(ctx context.Context, ev Event) {
+	if ev.Type == "delivery.accepted" {
+		n.notifyReceiving(ctx)
+		return
+	}
 	if ev.Type != "batch.expiring" {
 		return
 	}
@@ -61,6 +69,7 @@ func (n *Notifier) Handle(ctx context.Context, ev Event) {
 // сервер присылает batch.expiring один раз, поэтому упавшая отправка или разрыв SSE
 // догоняются здесь (на каждом тике и после переподключения).
 func (n *Notifier) CatchUp(ctx context.Context) {
+	n.notifyReceiving(ctx)
 	alerts, err := n.API.Alerts(ctx)
 	if err != nil {
 		n.logf("лента предупреждений: %v", err)
@@ -76,6 +85,7 @@ func (n *Notifier) CatchUp(ctx context.Context) {
 // SeedSent при старте помечает уже истекающие партии отправленными, ничего не отправляя,
 // чтобы перезапуск не завалил чат повторами.
 func (n *Notifier) SeedSent(ctx context.Context) {
+	n.seedReceiving(ctx)
 	alerts, err := n.API.Alerts(ctx)
 	if err != nil {
 		n.logf("лента предупреждений: %v", err)
@@ -150,6 +160,7 @@ func (n *Notifier) loc(ctx context.Context) *time.Location {
 // Tick проверяет, не пора ли отправить дневную сводку; вызывается периодически.
 func (n *Notifier) Tick(ctx context.Context) {
 	n.CatchUp(ctx)
+	n.WeeklyTick(ctx)
 	c, err := n.API.Clock(ctx)
 	if err != nil {
 		n.logf("часы стенда: %v", err)

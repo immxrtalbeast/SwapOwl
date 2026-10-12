@@ -13,12 +13,19 @@ type ClockInfo interface {
 	SimulatorRunning() bool
 }
 
+// HotFollower — необязательное дополнение к ClockInfo: слушается ли генератор стенда горячих
+// предложений (SIM_FOLLOW_HOT). Экран «Сеть» подписывает им точки демо «со SwapOwl и без».
+type HotFollower interface {
+	FollowHot() bool
+}
+
 type clockOut struct {
 	Now              string  `json:"now"`
 	Speed            float64 `json:"speed"`
 	Timezone         string  `json:"timezone"`
 	Simulated        bool    `json:"simulated"`
 	SimulatorRunning bool    `json:"simulator_running"`
+	FollowHot        bool    `json:"follow_hot"`
 }
 
 func (rt *Router) clockRoutes() {
@@ -34,6 +41,9 @@ func (rt *Router) getClock(w http.ResponseWriter, _ *http.Request) {
 	}
 	if c := rt.deps.Clock; c != nil {
 		out.Speed, out.Simulated, out.SimulatorRunning = c.Speed(), c.Simulated(), c.SimulatorRunning()
+		if f, ok := c.(HotFollower); ok {
+			out.FollowHot = f.FollowHot()
+		}
 	}
 	WriteJSON(w, http.StatusOK, out)
 }

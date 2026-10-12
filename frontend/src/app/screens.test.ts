@@ -12,6 +12,11 @@ describe("screenFromHash", () => {
 });
 
 describe("SCREENS", () => {
+  it("«Сегодня» — первый пункт меню, но стартовый экран — склад", () => {
+    expect(SCREENS[0].id).toBe("today");
+    expect(screenFromHash("#/today")).toBe("today");
+    expect(screenFromHash("")).toBe("stock");
+  });
   it("есть экран приёмки", () => {
     expect(SCREENS.find((s) => s.id === "receiving")?.title).toBe("Приёмка");
     expect(screenFromHash("#/receiving")).toBe("receiving");

@@ -44,3 +44,23 @@ func TestClockSimulatedAndOpenWithoutAuth(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+type followClock struct{ fakeClock }
+
+func (followClock) FollowHot() bool { return true }
+
+func TestClockReportsFollowHot(t *testing.T) {
+	for _, c := range []struct {
+		info ClockInfo
+		want bool
+	}{{fakeClock{speed: 600}, false}, {followClock{fakeClock{speed: 600}}, true}} {
+		rt := NewRouter(Deps{Now: func() time.Time { return standTime }, Clock: c.info})
+		var got clockOut
+		if err := json.Unmarshal(do(rt.Handler(), http.MethodGet, "/api/clock", nil).Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.FollowHot != c.want {
+			t.Errorf("follow_hot = %v, want %v", got.FollowHot, c.want)
+		}
+	}
+}

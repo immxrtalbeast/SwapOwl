@@ -14,6 +14,8 @@ export interface ProductStock {
   available: Qty;
   batches_count: number;
   nearest_expires_at: string | null;
+  /** Срок после вскрытия упаковки, ч; null — вскрытие срок не меняет. */
+  shelf_after_open_hours?: number | null;
 }
 
 export interface Batch {
@@ -28,6 +30,9 @@ export interface Batch {
   time_left_seconds: number;
   status: "ok" | "expired";
   expiry_source: ExpirySource;
+  /** Исходная партия и момент вскрытия — у партии, выделенной вскрытием упаковки. */
+  parent_batch_id?: number | null;
+  opened_at?: string | null;
 }
 
 export type ExpirySource = "delivery" | "product_default" | "confirmed";

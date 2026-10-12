@@ -13,6 +13,9 @@ import type { Column } from "../../components";
 import { formatQty } from "../../lib/format";
 import { BATCH_STATES } from "../../lib/urgency";
 import { DeliveryForm } from "./DeliveryForm";
+import { BatchOpen } from "./BatchOpen";
+import { openedMark } from "./opened";
+import { needsOpenFirst } from "../label/labelData";
 import { StockCards } from "./StockCards";
 import { buildRows, changedKeys, signature } from "./view";
 import type { StockRow } from "./view";
@@ -85,6 +88,19 @@ export function StockPage() {
       return next;
     });
 
+  // Кнопка «Вскрыл упаковку» — у непросроченной партии продукта со сроком после вскрытия (operator).
+  const productsById = useMemo(() => new Map((state.kind === "ready" ? state.products : []).map((p) => [p.id, p])), [state]);
+  const openAction = (r: Extract<StockRow, { kind: "batch" }>) => {
+    const product = productsById.get(r.batch.product_id);
+    const hours = product?.shelf_after_open_hours;
+    if (!product || !hours || r.batch.status === "expired" || r.batch.remaining.qty <= 0) return null;
+    return (
+      <RoleGate min="operator">
+        <BatchOpen batchId={r.batch.id} productName={product.name} hours={hours} batchExpiresAt={r.batch.expires_at} nowMs={f.now.getTime()} timeZone={f.timezone} onOpened={load} />
+      </RoleGate>
+    );
+  };
+
   const columns: Column<StockRow>[] = [
     {
       key: "name",
@@ -102,7 +118,14 @@ export function StockPage() {
             {r.product.name}
           </button>
         ) : (
-          <span className="so-num" style={{ paddingLeft: 24 }}>партия №{r.batch.id}</span>
+          <span style={{ paddingLeft: 24, display: "inline-grid" }}>
+            <span className="so-num">партия №{r.batch.id}{!needsOpenFirst(r.batch.opened_at, productsById.get(r.batch.product_id)?.shelf_after_open_hours) && <> · <a href={`#/label/${r.batch.id}`}>Печать этикетки</a></>}</span>
+            {r.batch.opened_at && (
+              <span title={`вскрыта из партии №${r.batch.parent_batch_id ?? "?"}`} style={{ color: "var(--text-muted)" }}>
+                {openedMark(r.batch.opened_at, f.timezone)}
+              </span>
+            )}
+          </span>
         ),
     },
     {
@@ -141,6 +164,7 @@ export function StockPage() {
       },
     },
     { key: "state", header: "Состояние", cell: (r) => <UrgencyBadge def={BATCH_STATES[r.state]} /> },
+    { key: "open", header: "Действие", cell: (r) => (r.kind === "batch" ? openAction(r) : null) },
   ];
 
   const stale = conn === "offline" && updatedAt ? f.time(updatedAt) : null;
@@ -164,7 +188,7 @@ export function StockPage() {
             )}
             {state.kind === "ready" && state.products.length > 0 && (
               narrow ? (
-                <StockCards rows={rows} changed={changed} expiresText={f.dateTime} exactText={f.exact} onToggle={toggle} />
+                <StockCards rows={rows} changed={changed} expiresText={f.dateTime} exactText={f.exact} onToggle={toggle} timeZone={f.timezone} batchAction={openAction} />
               ) : (
               <DataTable
                 caption="Продукты склада с раскрытием до партий"

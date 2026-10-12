@@ -2,6 +2,8 @@ import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { UrgencyBadge } from "../../components";
 import { formatQty } from "../../lib/format";
 import { BATCH_STATES, toneVars } from "../../lib/urgency";
+import type { ReactNode } from "react";
+import { openedMark } from "./opened";
 import type { StockRow } from "./view";
 
 interface Props {
@@ -10,10 +12,13 @@ interface Props {
   expiresText: (iso: string) => string;
   exactText: (iso: string) => string;
   onToggle: (productId: string) => void;
+  timeZone: string;
+  /** Действие над партией («Вскрыл упаковку»); null — действия нет. */
+  batchAction?: (r: Extract<StockRow, { kind: "batch" }>) => ReactNode;
 }
 
 /** Склад на телефоне (< 640 px): вместо таблицы — карточки «продукт · остаток · состояние · годна до». */
-export function StockCards({ rows, changed, expiresText, exactText, onToggle }: Props) {
+export function StockCards({ rows, changed, expiresText, exactText, onToggle, timeZone, batchAction }: Props) {
   return (
     <ul aria-label="Продукты склада" style={{ listStyle: "none", margin: 0, padding: 12, display: "grid", gap: 8 }}>
       {rows.map((r) => {
@@ -39,7 +44,10 @@ export function StockCards({ rows, changed, expiresText, exactText, onToggle }: 
                   {r.product.name}
                 </button>
               ) : (
-                <span className="so-num" style={{ font: "var(--type-body-strong)" }}>партия №{r.batch.id}</span>
+                <span style={{ display: "grid" }}>
+                  <span className="so-num" style={{ font: "var(--type-body-strong)" }}>партия №{r.batch.id}</span>
+                  {r.batch.opened_at && <span style={{ color: "var(--text-muted)" }}>{openedMark(r.batch.opened_at, timeZone)}</span>}
+                </span>
               )}
               <UrgencyBadge def={BATCH_STATES[r.state]} />
             </div>
@@ -53,6 +61,7 @@ export function StockCards({ rows, changed, expiresText, exactText, onToggle }: 
                 {at ? <span title={exactText(at)}>{expiresText(at)}</span> : "—"}
               </span>
             </div>
+            {r.kind === "batch" && batchAction?.(r)}
           </li>
         );
       })}

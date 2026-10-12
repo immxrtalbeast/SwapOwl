@@ -43,6 +43,8 @@ type catalogProductIn struct {
 	LeadDays          *int   `json:"lead_days"`
 	PackSize          *int64 `json:"pack_size"`
 	ShelfLifeHours    *int   `json:"shelf_life_hours"`
+	// ShelfAfterOpenHours — срок после вскрытия упаковки, ч; не передан — прежний срок сохраняется.
+	ShelfAfterOpenHours *int `json:"shelf_after_open_hours"`
 	// PieceWeight — g или ml в одной штуке (только unit=pcs), PieceWeightUnit — g (по умолчанию) или ml.
 	PieceWeight     *int64 `json:"piece_weight"`
 	PieceWeightUnit string `json:"piece_weight_unit"`
@@ -142,6 +144,8 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 			bad, msg = "pack_size", "pack_size is required, an integer >= 1"
 		case p.ShelfLifeHours != nil && (*p.ShelfLifeHours < 1 || *p.ShelfLifeHours > maxShelfHours):
 			bad, msg = "shelf_life_hours", fmt.Sprintf("shelf_life_hours must be an integer in 1..%d", maxShelfHours)
+		case p.ShelfAfterOpenHours != nil && (*p.ShelfAfterOpenHours < 1 || *p.ShelfAfterOpenHours > maxShelfHours):
+			bad, msg = "shelf_after_open_hours", fmt.Sprintf("shelf_after_open_hours must be an integer in 1..%d", maxShelfHours)
 		case p.PieceWeight == nil && p.PieceWeightUnit != "":
 			bad, msg = "piece_weight_unit", "piece_weight_unit needs piece_weight"
 		case p.PieceWeight != nil && p.Unit != "pcs":
@@ -163,7 +167,7 @@ func (rt *Router) putCatalog(w http.ResponseWriter, r *http.Request) {
 		importUnit[p.ID] = domain.Unit(p.Unit)
 		cp := store.CatalogProduct{ID: p.ID, Name: p.Name, Unit: domain.Unit(p.Unit),
 			PriceMinorPer1000: *p.PriceMinorPer1000, LeadDays: *p.LeadDays, PackSize: *p.PackSize, ShelfLifeHours: p.ShelfLifeHours,
-			PieceWeight: p.PieceWeight, PackUnit: p.PackUnit}
+			ShelfAfterOpenHours: p.ShelfAfterOpenHours, PieceWeight: p.PieceWeight, PackUnit: p.PackUnit}
 		if p.PieceWeight != nil {
 			cp.PieceWeightUnit = domain.UnitG
 			if p.PieceWeightUnit == "ml" {

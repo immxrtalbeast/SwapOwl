@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -32,7 +33,7 @@ func env(name, def string) string {
 func run() error {
 	var missing []string
 	for _, n := range []string{"API_URL", "API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"} {
-		if os.Getenv(n) == "" {
+		if os.Getenv(n) == "" && !(n == "TELEGRAM_CHAT_ID" && os.Getenv("NOTIFY_TG_CHAT") != "") {
 			missing = append(missing, n)
 		}
 	}
@@ -46,16 +47,34 @@ func run() error {
 	lg := log.New(os.Stderr, "notifier: ", log.LstdFlags)
 	hc := &http.Client{Timeout: 30 * time.Second}
 	api := &notify.APIClient{Base: os.Getenv("API_URL"), Key: os.Getenv("API_KEY"), HC: hc}
+	chat := env("NOTIFY_TG_CHAT", os.Getenv("TELEGRAM_CHAT_ID"))
+	chatID, err := strconv.ParseInt(chat, 10, 64)
+	if err != nil {
+		return fmt.Errorf("NOTIFY_TG_CHAT: нужен числовой id чата")
+	}
+	tg := &notify.Telegram{Base: os.Getenv("TELEGRAM_API_URL"), Token: os.Getenv("TELEGRAM_BOT_TOKEN"), ChatID: chat, HC: &http.Client{Timeout: 60 * time.Second}}
 	n := &notify.Notifier{
 		API:      api,
-		Out:      &notify.Telegram{Base: os.Getenv("TELEGRAM_API_URL"), Token: os.Getenv("TELEGRAM_BOT_TOKEN"), ChatID: os.Getenv("TELEGRAM_CHAT_ID"), HC: hc},
+		Out:      tg,
+		Buttons:  tg,
 		DigestAt: digestAt,
 		Logf:     lg.Printf,
 	}
+	if owner := os.Getenv("NOTIFY_OWNER_CHAT"); owner != "" {
+		weeklyAt := env("NOTIFY_WEEKLY_AT", "09:00")
+		if _, err := time.Parse("15:04", weeklyAt); err != nil {
+			return fmt.Errorf("NOTIFY_WEEKLY_AT: нужен формат ЧЧ:ММ")
+		}
+		otg := &notify.Telegram{Base: tg.Base, Token: tg.Token, ChatID: owner, HC: tg.HC}
+		n.Weekly = &notify.WeeklyConfig{At: weeklyAt, Text: otg, Photo: otg, StandURL: os.Getenv("NOTIFY_STAND_URL")}
+	}
+	bot := &notify.Bot{N: n, TG: tg, ChatID: chatID, Logf: lg.Printf}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	n.MarkDigestStartup(ctx)
+	n.MarkWeeklyStartup(ctx)
 	n.SeedSent(ctx)
+	go bot.Run(ctx, 5*time.Second)
 	go func() {
 		t := time.NewTicker(30 * time.Second)
 		defer t.Stop()

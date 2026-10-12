@@ -29,6 +29,7 @@ type Corrections interface {
 	WriteOffBatch(ctx context.Context, in store.WriteoffInput, now func() time.Time) (store.WriteoffResult, error)
 	Inventory(ctx context.Context, in store.InventoryInput, now func() time.Time) (store.InventoryResult, error)
 	CancelOrder(ctx context.Context, in store.CancelInput, now func() time.Time) (store.CancelResult, error)
+	OpenBatch(ctx context.Context, in store.OpenInput, now func() time.Time) (store.OpenResult, error)
 }
 
 func (rt *Router) correctionRoutes() {
