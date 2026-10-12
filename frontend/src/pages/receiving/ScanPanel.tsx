@@ -52,6 +52,8 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const seq = useRef(0);
+  // id и номер живут до успешной отправки: повтор после потерянного ответа не задвоит поставку.
+  const [delivery, setDelivery] = useState(() => ({ id: crypto.randomUUID(), number: `SCAN-${Date.now()}` }));
   const last = useRef("");
 
   useEffect(() => {
@@ -108,13 +110,14 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
     setBusy(true);
     try {
       await api.receiveDelivery({
-        id: crypto.randomUUID(),
-        number: `SCAN-${Date.now()}`,
+        id: delivery.id,
+        number: delivery.number,
         created_at: new Date().toISOString(),
         items: lines.map((l) => toDeliveryItem(l, products)),
       });
       setLines([]);
       last.current = "";
+      setDelivery({ id: crypto.randomUUID(), number: `SCAN-${Date.now()}` });
       await onSent();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Не удалось отправить накладную");

@@ -27,9 +27,10 @@ export interface ScanLine {
   expires_on?: string;
   quantity: string;
   batch?: string;
+  unit: "kg" | "pack";
 }
 
-/** Количество: вес из AI 310n (кг), иначе 1 упаковка. pack_size в API продуктов нет — 1 упаковка = 1 единица учёта. */
+/** Количество: вес из AI 310n (unit kg) или 1 упаковка (unit pack); пересчёт в базовую единицу делает бэкенд. */
 export function lineFromScan(g: Gs1, product: ProductStock, key: number): ScanLine {
   return {
     key,
@@ -38,11 +39,12 @@ export function lineFromScan(g: Gs1, product: ProductStock, key: number): ScanLi
     expires_on: g.expiresOn,
     quantity: g.weightKg !== undefined ? String(g.weightKg) : "1",
     batch: g.batch,
+    unit: g.weightKg !== undefined ? "kg" : "pack",
   };
 }
 
 export function toDeliveryItem(l: ScanLine, _products: ProductStock[]): DeliveryItemInput {
-  return { product_id: l.product_id, quantity: l.quantity, ...(l.expires_on ? { expires_on: l.expires_on } : {}) };
+  return { product_id: l.product_id, quantity: l.quantity, unit: l.unit, ...(l.expires_on ? { expires_on: l.expires_on } : {}) };
 }
 
 export { parseGs1 };
