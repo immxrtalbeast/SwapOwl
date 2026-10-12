@@ -150,8 +150,10 @@ CF
 
 edge_up() {
   gen_edge
-  EDGE_DIR="$EDGE_DIR" docker compose -p swapowl-edge --profile fleet -f "$PROD_COMPOSE" --env-file "$EDGE_DIR/.env" \
-    up -d --no-deps --force-recreate edge hub
+  local svc=(edge) compose=(docker compose -p swapowl-edge --profile fleet -f "$PROD_COMPOSE" --env-file "$EDGE_DIR/.env")
+  # hub без точек с ключом завершается с ошибкой конфига и крутился бы в рестартах: поднимаем только при наличии точек.
+  if grep -q '^  - id:' "$EDGE_DIR/hub.yml"; then svc+=(hub); else EDGE_DIR="$EDGE_DIR" "${compose[@]}" stop hub 2>/dev/null || true; fi
+  EDGE_DIR="$EDGE_DIR" "${compose[@]}" up -d --no-deps --force-recreate "${svc[@]}"
 }
 
 cmd_list() { slugs; }
@@ -180,8 +182,12 @@ deploy_one() {
   echo "== $slug: $tag (прошлый: ${prev:-нет})"
   write_override "$slug"
   if [ -n "$prev" ]; then backup "$slug" || { echo "$slug: бэкап не удался, точка не тронута" >&2; return 1; }; fi
-  dc "$slug" "$tag" pull
-  dc "$slug" "$tag" up -d --remove-orphans
+  # deploy_one вызывается из условия if: set -e здесь не действует, коды возврата проверяем явно.
+  if ! dc "$slug" "$tag" pull || ! dc "$slug" "$tag" up -d --remove-orphans; then
+    echo "$slug: pull/up $tag не удался" >&2
+    if [ -n "$prev" ] && [ "$prev" != "$tag" ]; then dc "$slug" "$prev" up -d --remove-orphans || true; fi
+    return 1
+  fi
   if wait_health "$slug" "$tag"; then echo "$tag" > "$POINTS/$slug/.last_good"; echo "$slug: готово"; return 0; fi
   echo "$slug: /healthz не ответил за ${HEALTH_TIMEOUT} с" >&2
   dc "$slug" "$tag" logs --tail=30 api >&2 || true
