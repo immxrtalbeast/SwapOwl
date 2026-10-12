@@ -54,7 +54,7 @@ export interface DeliveryItemInput {
   product_id: string;
   name?: string;
   quantity: string; // только строка: "1.5"
-  unit?: "g" | "kg" | "ml" | "l" | "pcs" | "pack";
+  unit?: "g" | "kg" | "ml" | "l" | "pcs";
   shelf_life_hours?: number;
   expires_on?: string;
 }

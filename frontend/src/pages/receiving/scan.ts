@@ -44,7 +44,8 @@ export function lineFromScan(g: Gs1, product: ProductStock, key: number): ScanLi
 }
 
 export function toDeliveryItem(l: ScanLine, _products: ProductStock[]): DeliveryItemInput {
-  return { product_id: l.product_id, quantity: l.quantity, unit: l.unit, ...(l.expires_on ? { expires_on: l.expires_on } : {}) };
+  return { product_id: l.product_id, quantity: l.quantity, // "pack" бэкенд принимает (docs/openapi.yaml), но в DeliveryItemInput его нет — типы вне owned_files не трогаем.
+    unit: l.unit as DeliveryItemInput["unit"], ...(l.expires_on ? { expires_on: l.expires_on } : {}) };
 }
 
 export { parseGs1 };
