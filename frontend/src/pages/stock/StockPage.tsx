@@ -118,7 +118,7 @@ export function StockPage() {
           </button>
         ) : (
           <span style={{ paddingLeft: 24, display: "inline-grid" }}>
-            <span className="so-num">партия №{r.batch.id}</span>
+            <span className="so-num">партия №{r.batch.id} · <a href={`#/label/${r.batch.id}`}>Печать этикетки</a></span>
             {r.batch.opened_at && (
               <span title={`вскрыта из партии №${r.batch.parent_batch_id ?? "?"}`} style={{ color: "var(--text-muted)" }}>
                 {openedMark(r.batch.opened_at, f.timezone)}
