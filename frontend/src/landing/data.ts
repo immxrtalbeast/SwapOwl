@@ -54,3 +54,17 @@ export async function loadBench(): Promise<BenchResult | null> {
     return null;
   }
 }
+
+/**
+ * Цифры для питча. Источник: docs/pitch-numbers.md (FS-113, FS-114, калибровка),
+ * раздел «Результат» и «Фраза для слайда»: LIFO без системы 7,6 % → SwapOwl 0,1 % себестоимости,
+ * экономия ≈ 97 тыс. ₽ в месяц, 120 чеков в день, 20 прогонов (сиды 1…20). Файл в сборку не тянем:
+ * при пересчёте обновить константы вручную.
+ */
+export const PITCH_NUMBERS = {
+  wasteWithoutPct: "7,6",
+  wasteWithPct: "0,1",
+  savedKRubPerMonth: 97,
+  checksPerDay: 120,
+  runs: 20,
+} as const;
