@@ -15,6 +15,7 @@ import { BATCH_STATES } from "../../lib/urgency";
 import { DeliveryForm } from "./DeliveryForm";
 import { BatchOpen } from "./BatchOpen";
 import { openedMark } from "./opened";
+import { needsOpenFirst } from "../label/labelData";
 import { StockCards } from "./StockCards";
 import { buildRows, changedKeys, signature } from "./view";
 import type { StockRow } from "./view";
@@ -118,7 +119,7 @@ export function StockPage() {
           </button>
         ) : (
           <span style={{ paddingLeft: 24, display: "inline-grid" }}>
-            <span className="so-num">партия №{r.batch.id}</span>
+            <span className="so-num">партия №{r.batch.id}{!needsOpenFirst(r.batch.opened_at, productsById.get(r.batch.product_id)?.shelf_after_open_hours) && <> · <a href={`#/label/${r.batch.id}`}>Печать этикетки</a></>}</span>
             {r.batch.opened_at && (
               <span title={`вскрыта из партии №${r.batch.parent_batch_id ?? "?"}`} style={{ color: "var(--text-muted)" }}>
                 {openedMark(r.batch.opened_at, f.timezone)}
