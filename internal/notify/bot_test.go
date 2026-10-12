@@ -253,7 +253,15 @@ func TestRunLongPolling(t *testing.T) {
 	b.Logf = func(string, ...any) {}
 	done := make(chan struct{})
 	go func() { b.Run(ctx, 1); close(done) }()
-	for i := 0; i < 2000 && len(tgf.sent("sendMessage")) == 0; i++ {
+	offsetSeen := func() bool {
+		for _, c := range tgf.sent("getUpdates") {
+			if strings.Contains(c, `"offset":11`) {
+				return true
+			}
+		}
+		return false
+	}
+	for i := 0; i < 2000 && (len(tgf.sent("sendMessage")) == 0 || !offsetSeen()); i++ {
 		waitTick()
 	}
 	cancel()
