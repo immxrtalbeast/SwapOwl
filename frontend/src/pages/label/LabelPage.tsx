@@ -6,7 +6,7 @@ import { useStandFormat } from "../../app/useStandFormat";
 import { ErrorState, LoadingState, ScreenTitle } from "../../components";
 import { PrimaryButton, SecondaryButton } from "../../components";
 import { qrSvg } from "../../lib/qr";
-import { buildLabel, type LabelData } from "./labelData";
+import { buildLabel, needsOpenFirst, type LabelData } from "./labelData";
 
 type Mode = "thermal" | "a4";
 
@@ -79,6 +79,9 @@ export function LabelPage({ batchId }: { batchId: number }) {
 
   if (err) return <ErrorState what="этикетку" reason={err} onRetry={() => window.location.reload()} />;
   if (data === null) return <LoadingState label="Загрузка этикетки" />;
+  if (data !== "missing" && needsOpenFirst(data.batch.opened_at, data.product.shelf_after_open_hours)) {
+    return <ErrorState what="этикетку" reason="Сначала нажмите «Вскрыл упаковку» на складе: срок вскрытой части назначает сервер" onRetry={() => { window.location.hash = "#/stock"; }} />;
+  }
   if (data === "missing" || !label) return <ErrorState what="партию" reason={`Партия №${batchId} не найдена`} onRetry={() => { window.location.hash = "#/stock"; }} />;
 
   const count = mode === "a4" ? 8 : 1;

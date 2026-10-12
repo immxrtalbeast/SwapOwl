@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLabel, labelBatchIdFromHash } from "./labelData";
+import { buildLabel, labelBatchIdFromHash, needsOpenFirst } from "./labelData";
 
 describe("labelBatchIdFromHash", () => {
   it("разбирает номер партии", () => {
@@ -20,5 +20,17 @@ describe("buildLabel", () => {
   });
   it("без вскрытия «вскрыто» — момент печати", () => {
     expect(buildLabel(base).openedStamp).toBe("12.10 14:00");
+  });
+});
+
+describe("needsOpenFirst", () => {
+  it("невскрытая партия со сроком после вскрытия требует «Вскрыл»", () => {
+    expect(needsOpenFirst(null, 48)).toBe(true);
+    expect(needsOpenFirst(undefined, 48)).toBe(true);
+  });
+  it("вскрытая или без срока после вскрытия — можно печатать", () => {
+    expect(needsOpenFirst("2026-10-12T09:00:00Z", 48)).toBe(false);
+    expect(needsOpenFirst(null, null)).toBe(false);
+    expect(needsOpenFirst(null, undefined)).toBe(false);
   });
 });

@@ -44,3 +44,11 @@ export function buildLabel(args: {
     qrUrl: batchUrl(args.origin, args.batchId),
   };
 }
+
+/**
+ * Этикетку «вскрыто / годно до» нельзя печатать для невскрытой партии продукта со сроком после вскрытия:
+ * срок вскрытой части назначает сервер при «Вскрыл», а у запечатанной партии он другой.
+ */
+export function needsOpenFirst(openedAt: string | null | undefined, shelfAfterOpenHours: number | null | undefined): boolean {
+  return !openedAt && !!shelfAfterOpenHours;
+}
