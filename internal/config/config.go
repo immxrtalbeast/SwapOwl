@@ -56,6 +56,13 @@ type Config struct {
 	// LateEventsHours — окно событий задним числом (2.4а): occurred_at ∈ [now − окно, now],
 	// «дворник» списывает партию не раньше expires_at + окно.
 	LateEventsHours int
+
+	// SimSeed — seed генератора заказов на стенде; SimFollowHot — слушаются ли гости горячих
+	// предложений (демо «со SwapOwl и без»); SimHotUplift — подъём веса блюда на первой позиции
+	// списка (модель M2, 2.7), величина выдумана.
+	SimSeed      int64
+	SimFollowHot bool
+	SimHotUplift float64
 }
 
 // Load читает окружение через getenv (os.Getenv в проде), подставляет значения
@@ -92,6 +99,9 @@ func Load(getenv func(string) string) (Config, error) {
 		DBPoolSize:        p.int("DB_POOL_SIZE", 20),
 		ClockMode:         p.str("CLOCK_MODE", "real"),
 		LateEventsHours:   p.int("LATE_EVENTS_HOURS", 2),
+		SimSeed:           int64(p.int("SIM_SEED", 2026)),
+		SimFollowHot:      p.bool("SIM_FOLLOW_HOT", true),
+		SimHotUplift:      p.float("SIM_HOT_UPLIFT", 1.5),
 	}
 	c.OpenAt = p.clock("OPEN_AT", "10:00")
 	c.CloseAt = p.clock("CLOSE_AT", "23:00")
@@ -158,6 +168,9 @@ func (c *Config) validate() []error {
 	}
 	if c.LateEventsHours < 0 || c.LateEventsHours > 168 {
 		bad("LATE_EVENTS_HOURS must be in 0..168")
+	}
+	if c.SimHotUplift < 1 || c.SimHotUplift > 10 {
+		bad("SIM_HOT_UPLIFT must be in 1..10, got %v", c.SimHotUplift)
 	}
 	if c.ClockMode != "real" && c.ClockMode != "simulated" {
 		bad("CLOCK_MODE must be real or simulated, got %q", c.ClockMode)

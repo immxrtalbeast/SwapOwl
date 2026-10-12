@@ -139,3 +139,20 @@ func TestScheduleConfig(t *testing.T) {
 		t.Fatalf("no SCHEDULE: days=%v err=%v", c.Days, err)
 	}
 }
+
+func TestSimDefaultsAndValidation(t *testing.T) {
+	c, err := Load(env(map[string]string{"DATABASE_URL": "postgres://x"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.SimSeed != 2026 || !c.SimFollowHot || c.SimHotUplift != 1.5 {
+		t.Errorf("sim defaults: %d %v %v", c.SimSeed, c.SimFollowHot, c.SimHotUplift)
+	}
+	c, err = Load(env(map[string]string{"DATABASE_URL": "postgres://x", "SIM_SEED": "7", "SIM_FOLLOW_HOT": "false", "SIM_HOT_UPLIFT": "2"}))
+	if err != nil || c.SimSeed != 7 || c.SimFollowHot || c.SimHotUplift != 2 {
+		t.Errorf("sim override: %+v %v", c, err)
+	}
+	if _, err := Load(env(map[string]string{"DATABASE_URL": "postgres://x", "SIM_HOT_UPLIFT": "0.5"})); err == nil {
+		t.Error("SIM_HOT_UPLIFT < 1 must fail")
+	}
+}
