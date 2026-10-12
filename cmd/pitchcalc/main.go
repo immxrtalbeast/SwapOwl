@@ -64,9 +64,10 @@ func parseAccept(s string) ([]int, error) {
 type order int
 
 const (
-	orderLIFO order = iota // «без системы»: берут то, что лежит сверху — последнюю поставку
-	orderFIFO              // по порядку прихода
-	orderFEFO              // по сроку годности
+	orderLIFO  order = iota // «без системы»: берут то, что лежит сверху — последнюю поставку
+	orderFIFO               // по порядку прихода
+	orderFEFO               // по сроку годности
+	orderMixed              // «как придётся»: каждый заказ — FIFO или LIFO с вероятностью 50/50
 )
 
 // variant — режим работы точки.
@@ -100,7 +101,8 @@ func hotConfig() hotoffers.Config {
 
 func variants(acc []int) []variant {
 	vs := []variant{
-		{Name: "без системы (LIFO)", Order: orderLIFO},
+		{Name: "как придётся (50/50 FIFO/LIFO)", Order: orderMixed},
+		{Name: "худший случай (LIFO)", Order: orderLIFO},
 		{Name: "FIFO", Order: orderFIFO},
 	}
 	for _, a := range acc {
@@ -353,7 +355,15 @@ func run(v variant, seedValue int64, days int, pf profile, checks []check, t0 ti
 			}
 		}
 		res.Orders++
-		if spent, ok := w.consume(v.Order, needs, ch.At, price); ok {
+		o := v.Order
+		if o == orderMixed {
+			// повар берёт с верхней полки или с дальней — по заказу, детерминированно от сида
+			o = orderFIFO
+			if unit(hash(seedValue, int64(orderIdx), 7)) < 0.5 {
+				o = orderLIFO
+			}
+		}
+		if spent, ok := w.consume(o, needs, ch.At, price); ok {
 			res.Revenue += revenue
 			res.COGS += spent
 		} else {

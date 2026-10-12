@@ -140,9 +140,11 @@ func (rep *report) write(w io.Writer) {
 		}
 		fmt.Fprintf(w, "| %s − %s | %.0f | %.0f … %.0f | %s |\n", rep.Variants[a].Name, rep.Variants[b].Name, m, lo, hi, verdict)
 	}
-	pair(1, 0)
-	for i := 2; i < len(rep.Variants); i++ {
-		pair(i, 1)
+	pair(2, 0) // FIFO к «как придётся»
+	pair(1, 0) // LIFO к «как придётся»
+	for i := 3; i < len(rep.Variants); i++ {
 		pair(i, 0)
+		pair(i, 2)
+		pair(i, 1)
 	}
 }
