@@ -81,29 +81,35 @@ Actions → Deploy → Run workflow, `tag` = нужный sha (или тег п�
 
 Переменные: `WATCHDOG_API_URL`, `WATCHDOG_TG_TOKEN`, `WATCHDOG_TG_CHAT` обязательны; `WATCHDOG_EVERY=30s`, `WATCHDOG_SYNC_MAX=15m`, `WATCHDOG_OUTBOX_MAX=10m`, `WATCHDOG_REPEAT=1h` по умолчанию.
 
-### Строки для `deploy/docker-compose.prod.yml`
+### Сторож в прод-compose
 
-Сервис (рядом с `notifier`):
+Сервис `watchdog` уже описан в `deploy/docker-compose.prod.yml` под профилем `ops` (в одиночном режиме не стартует без токена Telegram, иначе перезапускался бы в цикле): `docker compose -p swapowl --profile ops ... up -d watchdog`. В `deploy/.env.prod.example` есть `WATCHDOG_TG_TOKEN`, `WATCHDOG_TG_CHAT`. Образы `hub` и `watchdog` собирает `deploy.yml` вместе с остальными.
 
-```yaml
-  watchdog:
-    image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/watchdog:${IMAGE_TAG:-latest}
-    depends_on:
-      - api
-    environment:
-      WATCHDOG_API_URL: http://api:8080
-      WATCHDOG_ADAPTER_URL: ${WATCHDOG_ADAPTER_URL:-}
-      WATCHDOG_METRICS_TOKEN: ${METRICS_TOKEN:-}
-      WATCHDOG_TG_TOKEN: ${WATCHDOG_TG_TOKEN:-}
-      WATCHDOG_TG_CHAT: ${WATCHDOG_TG_CHAT:-}
-      WATCHDOG_EVERY: ${WATCHDOG_EVERY:-30s}
-      WATCHDOG_SYNC_MAX: ${WATCHDOG_SYNC_MAX:-15m}
-      WATCHDOG_OUTBOX_MAX: ${WATCHDOG_OUTBOX_MAX:-10m}
-      WATCHDOG_REPEAT: ${WATCHDOG_REPEAT:-1h}
-      WATCHDOG_DATA_DIR: ${WATCHDOG_DATA_DIR:-}
-    mem_limit: 32m
-    restart: unless-stopped
-    logging: *logging
+## Много точек на одном сервере
+
+Одиночный режим (`deploy.sh <sha>`, проект `swapowl`) остаётся по умолчанию и не меняется. Несколько ресторанов на одном сервере ведёт `deploy/scripts/fleet.sh`.
+
+**Устройство.** Точка — отдельный compose-проект `swapowl-<slug>` из того же `docker-compose.prod.yml`: свой postgres, свой volume, свой `.env` в `/opt/swapowl/points/<slug>/` (создаёт `new-restaurant.sh` с `PROJECT_PREFIX=swapowl-`, пароли случайные). Общие настройки сервера — `/opt/swapowl/edge/.env` (`SITE_DOMAIN`, `IMAGE_REPO`, `IMAGE_TAG`, `HUB_TOKEN`, токены сторожа, лимиты памяти). Один Caddy и один hub — проект `swapowl-edge`, они видят точки по общей docker-сети `swapowl-edge` (алиасы `api-<slug>`, `web-<slug>`). Caddyfile и конфиг hub генерирует `fleet.sh` по списку точек.
+
+**Маршрут: `https://<slug>.<SITE_DOMAIN>`** (не `/<slug>/`). Причина: фронтенд ссылается на `/assets`, `/api`, `/events` от корня; путь-префикс потребовал бы пересборки фронтенда с base-путём и правок API. Поддомен ничего не меняет в образах, а у каждой точки свои cookie и CORS. Цена: нужен wildcard DNS (`*.example.com`) или записи на каждую точку; для `sslip.io` поддомены работают (`SITE_DOMAIN=1-2-3-4.sslip.io` даёт `cafe.1-2-3-4.sslip.io`). Сертификат Let's Encrypt выпускается на каждый поддомен (лимит — 50 имён в неделю на домен). Hub: `https://hub.<SITE_DOMAIN>`, авторизация `Authorization: Bearer $HUB_TOKEN`.
+
+**Команды** (`FLEET_ROOT` по умолчанию `/opt/swapowl`):
+
+```sh
+fleet.sh up cafe-lenina              # создать точку и поднять, обновить маршруты и hub
+fleet.sh list                        # точки
+fleet.sh status                      # тег и /healthz каждой точки
+fleet.sh deploy <tag> cafe-lenina    # одну или несколько точек
+fleet.sh deploy <tag> --all          # все, по очереди
+fleet.sh hub-key cafe-lenina <<<"$KEY"   # viewer-ключ точки для hub
 ```
 
-В `deploy/.env.prod.example`: `WATCHDOG_TG_TOKEN=`, `WATCHDOG_TG_CHAT=`. Сборку образа `watchdog` добавить в тот же CI/`deploy.sh`, что собирает `notifier`.
+`deploy` без `--all` и без списка точек не запускается. Каждая точка по очереди: `backup.sh` → `pull` → `up -d` → `/healthz` до `HEALTH_TIMEOUT` (60 с). Не ответил — эта точка возвращается на прошлый тег (`points/<slug>/.last_good`), раскатка **останавливается**, остальные не тронуты, код выхода 1. Если бэкап не удался, точка не обновляется и раскатка тоже останавливается.
+
+**Первая точка.** `SITE_DOMAIN=<домен> fleet.sh up cafe-lenina` (создаёт `edge/.env` с `HUB_TOKEN`; нужен `docker` и доступ к образам). Затем ключ viewer для hub: войти admin-ом точки (пароль в `points/cafe-lenina/.env`), `POST /api/api-keys` с ролью `viewer`, передать `fleet.sh hub-key`. Hub включает в сводку только точки с ключом; проверка: `curl -H "Authorization: Bearer $HUB_TOKEN" https://hub.<домен>/api/network/summary` (подробности — `docs/network.md`). Точки получают чистые экземпляры (`DEMO_MODE=false`), без сида.
+
+**Сторож.** Если в `edge/.env` заданы `WATCHDOG_TG_TOKEN` и `WATCHDOG_TG_CHAT`, на каждую точку поднимается свой `watchdog` (профиль `ops`, 32 МБ). Сообщение пока не содержит имени точки (в `cmd/watchdog` такого поля нет) — по тексту отличить точку нельзя; это пробел, нужна отдельная задача.
+
+**Сколько точек влезает (1 vCPU, 2 ГБ).** Лимиты на точку в `edge/.env`: `PG_MEM=320m`, `API_MEM=192m`, `WEB_MEM=32m`, `SIDECAR_MEM=32m` на каждый из `fake-iiko`, `iiko-adapter`, `notifier` (+ `watchdog` 32m). Итого по лимитам ≈ 700 МБ на точку (≈ 730 с watchdog), общие `edge` 128 МБ + `hub` 32 МБ. Остаток на ОС и swap: 2048 − 160 − ~300 ≈ 1,5 ГБ, то есть **по лимитам — 2 точки с запасом, 3 впритык**. Фактическое потребление ниже лимитов, но замер `docker stats` на двух точках на целевом сервере **не выполнен** (в среде разработки не было Docker): прогоните `docker stats --no-stream` на двух точках под нагрузкой и поправьте это число. Для точек, где адаптер не нужен, останавливайте `fake-iiko` (в проде у реальной точки это демо-эмулятор). CPU один: 3 точки и больше — только при низкой нагрузке; Postgres на точку — главный потребитель, при росте переходите на второй сервер.
+
+**Ограничения.** `fleet.sh` не удаляет точки и тома (удаление — вручную, после бэкапа). Миграции откатом тега не отменяются (как и в одиночном режиме). Раскатка последовательная, окно обновления растёт с числом точек.

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Новый ресторан: каталог экземпляра с .env чистого экземпляра (.ai/solution.md, 8.1).
 # Использование: new-restaurant.sh <имя> [порт]
-# Переменные: INSTANCES_ROOT (по умолчанию ./instances). Пароли случайные, в репозиторий не попадают.
+# Переменные: INSTANCES_ROOT (по умолчанию ./instances), PROJECT_PREFIX (префикс compose-проекта, по умолчанию пусто;
+# fleet.sh задаёт swapowl-). Пароли случайные, в репозиторий не попадают.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -28,7 +29,7 @@ mkdir -p "$dir"
 umask 077
 cat > "$dir/.env" <<ENV
 # Экземпляр $name. Содержит секреты: не коммитить, права 600.
-COMPOSE_PROJECT_NAME=$name
+COMPOSE_PROJECT_NAME=${PROJECT_PREFIX:-}$name
 POSTGRES_USER=umirhack
 POSTGRES_PASSWORD=$pg_password
 POSTGRES_DB=umirhack
