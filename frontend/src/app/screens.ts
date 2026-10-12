@@ -9,6 +9,8 @@ export interface Screen {
   soon?: string;
   /** Пункт внизу боковой панели (аккаунт, пользователи). */
   bottom?: boolean;
+  /** Пункт виден, только если задан VITE_HUB_URL или hub отвечает (экран «Сеть»). */
+  needsHub?: boolean;
 }
 
 // Порядок — по .ai/frontend-prompt.md, «Боковая панель».
@@ -22,6 +24,7 @@ export const SCREENS: Screen[] = [
   { id: "alerts", title: "Предупреждения", soon: "лента истекающих и списанных партий" },
   { id: "money", title: "Деньги", soon: "потери от списаний и сэкономленные суммы" },
   { id: "analytics", title: "Аналитика", soon: "сводки по списаниям и продажам" },
+  { id: "network", title: "Сеть", needsHub: true },
   { id: "demo", title: "Демо-панель", soon: "панель управления временем стенда" },
   { id: "account", title: "Аккаунт", bottom: true },
   { id: "users", title: "Пользователи и ключи", minRole: "admin", soon: "учётные записи и ключи доступа", bottom: true },

@@ -11,6 +11,8 @@ import { AnalyticsPage } from "../pages/analytics";
 import { UsersPage } from "../pages/users";
 import { AccountPage } from "../pages/account";
 import { ReceivingPage } from "../pages/receiving";
+import { NetworkPage } from "../pages/network";
+import { useHubAvailable } from "../pages/network/useHubAvailable";
 import { OfflineBanner } from "../components/ScreenStates";
 import { events } from "../api/events";
 import { AppHeader } from "./AppHeader";
@@ -32,6 +34,7 @@ function ScreenView({ id }: { id: string }) {
     case "supply": return <SupplyPage />;
     case "hot-offers": return <HotOffersPage />;
     case "money": return <MoneyPage />;
+    case "network": return <NetworkPage />;
     case "demo": return <DemoPage />;
     case "analytics": return <AnalyticsPage />;
     case "account": return <AccountPage />;
@@ -63,7 +66,8 @@ export function AppShell() {
 
   const { state } = useAuth();
   const role = state.kind === "user" ? state.role : null;
-  const visible = SCREENS.filter((s) => !s.minRole || hasRole(role, s.minRole));
+  const hub = useHubAvailable();
+  const visible = SCREENS.filter((s) => (!s.minRole || hasRole(role, s.minRole)) && (!s.needsHub || hub));
 
   return (
     <ConnectionProvider>

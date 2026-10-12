@@ -1,5 +1,5 @@
 import {
-  IconBell, IconBoxSeam, IconChartBar, IconCoin, IconFlame, IconInbox, IconListCheck, IconPlayerPlay,
+  IconBell, IconBoxSeam, IconBuildingStore, IconChartBar, IconCoin, IconFlame, IconInbox, IconListCheck, IconPlayerPlay,
   IconSalad, IconTruckDelivery, IconUser, IconUsers, IconShoppingCart,
 } from "@tabler/icons-react";
 import { Logo } from "../components/Logo";
@@ -16,6 +16,7 @@ const ICONS: Record<string, typeof IconBell> = {
   alerts: IconBell,
   money: IconCoin,
   analytics: IconChartBar,
+  network: IconBuildingStore,
   demo: IconPlayerPlay,
   account: IconUser,
   users: IconUsers,
