@@ -18,7 +18,11 @@ if [ -f "$ENV_FILE" ]; then
   IFS=, read -r -a _p <<< "$(sed -n 's/^COMPOSE_PROFILES=//p' "$ENV_FILE" | tail -n 1 | tr -d '"'"'"' ')"
   for _x in ${_p[@]+"${_p[@]}"}; do [ -n "$_x" ] && PROFILES+=(--profile "$_x"); done
 fi
-dc() { IMAGE_TAG="$1" docker compose -p swapowl ${PROFILES[@]+"${PROFILES[@]}"} -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "${@:2}"; }
+# Серверные добавки (например, подключение к сети точек для A/B — ab-demo.sh): $DEPLOY_DIR/compose.local.yml,
+# лежит вне deploy/, поэтому автодеплой его не затирает.
+LOCAL_FILES=()
+[ -f "$DEPLOY_DIR/compose.local.yml" ] && LOCAL_FILES=(-f "$DEPLOY_DIR/compose.local.yml")
+dc() { IMAGE_TAG="$1" docker compose -p swapowl ${PROFILES[@]+"${PROFILES[@]}"} -f "$COMPOSE_FILE" ${LOCAL_FILES[@]+"${LOCAL_FILES[@]}"} --env-file "$ENV_FILE" "${@:2}"; }
 
 # Проверяем сам API внутри сети compose (в обход Caddy: прокси отвечает и при упавшем API).
 wait_health() {
