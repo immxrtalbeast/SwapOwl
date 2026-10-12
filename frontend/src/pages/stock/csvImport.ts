@@ -279,8 +279,11 @@ export function sha256Hex(message: string): string {
   return h.map((v) => v.toString(16).padStart(8, "0")).join("");
 }
 
-/** Тело POST /api/deliveries. idSalt — для номера из имени файла (не уникален сам по себе): дата файла отличает разные поставки. id зависит от номера накладной и позиций, поэтому тот же файл → тот же id → replayed. */
+/**
+ * Тело POST /api/deliveries. id зависит от номера накладной (внешний идентификатор поставщика) и idSalt — для номера
+ * из имени файла, который не уникален сам по себе: дата файла отличает разные поставки. Позиций в id нет: тот же файл →
+ * тот же id и тело → replayed; исправленный файл с тем же номером → delivery_conflict, а не вторая поставка.
+ */
 export function buildDelivery(invoice: string, items: readonly DeliveryItemInput[], createdAt: Date = new Date(), idSalt = ""): DeliveryInput {
-  const canonical = JSON.stringify([idSalt, invoice, items.map((i) => [i.product_id, i.quantity, i.unit ?? "", i.shelf_life_hours ?? 0, i.expires_on ?? ""])]);
-  return { id: `csv-${sha256Hex(canonical).slice(0, 32)}`, number: invoice, created_at: createdAt.toISOString(), items: [...items] };
+  return { id: `csv-${sha256Hex(JSON.stringify([idSalt, invoice])).slice(0, 32)}`, number: invoice, created_at: createdAt.toISOString(), items: [...items] };
 }

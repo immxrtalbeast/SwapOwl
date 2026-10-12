@@ -54,10 +54,9 @@ export function CsvImport({ products, onReceived }: { products: readonly Product
       }
       setLoaded(null);
     } catch (err) {
-      // id — хэш содержимого, поэтому конфликт возможен только у пересохранённого файла с тем же содержимым.
+      // id зависит только от номера накладной: конфликт — это тот же номер с другим содержимым (или пересохранённый файл).
       if (err instanceof ApiError && err.code === "delivery_conflict") {
-        setStatus({ kind: "ok", message: "Эта накладная уже принята — остатки не изменились" });
-        setLoaded(null);
+        setStatus({ kind: "error", message: "Накладная с этим номером уже принята, но содержимое отличается — остатки не изменены. Исправления вносите корректировкой партий." });
         return;
       }
       setStatus({ kind: "error", message: err instanceof Error ? err.message : "Не удалось отправить поставку" });

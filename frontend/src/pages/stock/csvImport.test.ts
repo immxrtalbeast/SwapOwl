@@ -116,7 +116,7 @@ describe("id поставки", () => {
   it("sha256 совпадает с node:crypto", () => {
     for (const s of ["", "abc", "Лосось ".repeat(40)]) expect(sha256Hex(s)).toBe(createHash("sha256").update(s).digest("hex"));
   });
-  it("детерминирован от содержимого и номера", () => {
+  it("детерминирован от номера накладной", () => {
     const items = [resolveRow(row({}), PRODUCTS).item!];
     const a = buildDelivery("НК-1", items, new Date(0));
     expect(buildDelivery("НК-1", items, new Date(1000)).created_at).toBe(a.created_at.replace("1970-01-01T00:00:00.000Z", "1970-01-01T00:00:01.000Z"));
@@ -124,6 +124,7 @@ describe("id поставки", () => {
     expect(buildDelivery("НК-1", items, new Date(1000)).id).toBe(a.id);
     expect(buildDelivery("НК-2", items).id).not.toBe(a.id);
     expect(buildDelivery("НК-1", items, new Date(0), "123").id).not.toBe(a.id);
-    expect(buildDelivery("НК-1", [{ ...items[0], quantity: "2" }]).id).not.toBe(a.id);
+    // позиций в id нет: исправленный файл с тем же номером упрётся в delivery_conflict, а не создаст вторую поставку
+    expect(buildDelivery("НК-1", [{ ...items[0], quantity: "2" }], new Date(0)).id).toBe(a.id);
   });
 });
