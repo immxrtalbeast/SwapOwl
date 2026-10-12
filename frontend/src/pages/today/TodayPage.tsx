@@ -1,0 +1,234 @@
+import { useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { api } from "../../api/client";
+import { qtyCostMinor } from "../../api/today";
+import type { UnitPrices } from "../../api/today";
+import type { DishServings, HotOffer, ReceivingBatch, SupplySuggestion } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
+import { hasRole } from "../../auth/roles";
+import { useLive } from "../../app/useLive";
+import { Card, EmptyState, ErrorState, HandNote, LoadingState, PrimaryButton, ScreenTitle, UrgencyBadge } from "../../components";
+import { DISH_STATES, SUPPLY_STATES } from "../../lib/urgency";
+import { useHotOffers } from "../hot-offers/useHotOffers";
+import { hotOffersUrl } from "../hot-offers/query";
+import { portionsWord } from "../hot-offers/view";
+import { formatRub } from "../money/format";
+import { formatQty } from "../stock/format";
+import { buildAcceptBody, offerKey, outcomeFromError, outcomeFromResult } from "../supply/accept";
+import { useSupply } from "../supply/useSupply";
+import { useReceiving } from "../receiving/useReceiving";
+import { reasonText } from "../stop-list/reason";
+import { useChangedKeys } from "./useChanged";
+import { useRisk } from "./useToday";
+
+const bigNum = { margin: 0, font: "var(--type-kpi)", lineHeight: 1.1, wordBreak: "break-word" } as const;
+const list = { listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 } as const;
+const row = { display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 12px", padding: "8px 4px", borderRadius: 6 } as const;
+
+function useStopped(): DishServings[] | "loading" | { error: string } {
+  const [s, setS] = useState<DishServings[] | "loading" | { error: string }>("loading");
+  useLive(async () => {
+    try {
+      setS((await api.menu()).filter((d) => !d.available));
+    } catch (e) {
+      setS((p) => (p === "loading" ? { error: e instanceof Error ? e.message : "Не удалось загрузить меню" } : p));
+    }
+  }, ["stoplist.changed", "stock.changed", "stand.reset"]);
+  return s;
+}
+
+function Block({ title, children, testid }: { title: string; children: ReactNode; testid: string }) {
+  return (
+    <div data-testid={testid} style={{ minWidth: 0 }}>
+      <Card title={title} style={{ height: "100%", boxSizing: "border-box" }}>{children}</Card>
+    </div>
+  );
+}
+
+function offerSaved(o: HotOffer, prices: UnitPrices): number {
+  return o.reasons.reduce((s, r) => s + (qtyCostMinor(r.product_id, r.at_risk, prices) ?? 0), 0);
+}
+
+function AcceptNow({ row: r, ids }: { row: SupplySuggestion; ids: React.MutableRefObject<Map<string, { id: string; at: string }>> }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null);
+  async function accept() {
+    const k = offerKey(r);
+    let p = ids.current.get(k);
+    if (!p) ids.current.set(k, (p = { id: crypto.randomUUID(), at: new Date().toISOString() }));
+    setBusy(true);
+    try {
+      const res = await api.receiveDelivery(buildAcceptBody(r, p.id, p.at));
+      setMsg({ text: outcomeFromResult(res.replayed).message, bad: false });
+    } catch (e) {
+      const o = outcomeFromError(e);
+      setMsg({ text: o.kind === "need-shelf-life" ? "Нужен срок хранения — примите на экране «Поставки»" : o.message, bad: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <PrimaryButton size="compact-md" onClick={() => void accept()} loading={busy} disabled={busy}>Принять предложенное</PrimaryButton>
+      {msg && <span role={msg.bad ? "alert" : "status"} style={{ font: "var(--type-small)" }}>{msg.text}</span>}
+    </span>
+  );
+}
+
+function Pending({ what, state, reload, children }: { what: string; state: { kind: string; message?: string }; reload: () => void; children: ReactNode }) {
+  if (state.kind === "loading") return <LoadingState rows={2} label={`Загрузка: ${what}`} />;
+  if (state.kind === "error") return <ErrorState what={what} reason={state.message} onRetry={reload} />;
+  return <>{children}</>;
+}
+
+/** Экран «Сегодня»: что продать, заказать, проверить и сколько рублей под риском. Всё считает бэкенд, здесь — сборка. */
+export function TodayPage() {
+  const [risk, reloadRisk] = useRisk();
+  const [hot, reloadHot] = useHotOffers(null);
+  const [supply, reloadSupply] = useSupply();
+  const [receiving, reloadReceiving] = useReceiving();
+  const stopped = useStopped();
+  const { state: auth } = useAuth();
+  const canAccept = auth.kind === "user" && hasRole(auth.role, "operator");
+  const ids = useRef(new Map<string, { id: string; at: string }>());
+
+  const prices = risk.kind === "ready" ? risk.prices : {};
+  const offers = hot.kind === "ready" ? hot.data.offers.slice(0, 3) : [];
+  const urgent = supply.kind === "ready" ? supply.rows.filter((r) => r.urgency === "now") : [];
+  const unconfirmed = receiving.kind === "ready" ? receiving.rows : [];
+  const stops = Array.isArray(stopped) ? stopped : [];
+
+  const changed = useChangedKeys({
+    risk: risk.kind === "ready" ? String(risk.atRisk.totalMinor) : "",
+    today: risk.kind === "ready" ? String(risk.today) : "",
+    week: risk.kind === "ready" ? String(risk.week) : "",
+    ...Object.fromEntries(offers.map((o) => [`h${o.dish_id}`, `${o.target_today}|${o.target_portions}`])),
+    ...Object.fromEntries(urgent.map((r) => [`s${r.product_id}`, `${r.quantity.qty}`])),
+    ...Object.fromEntries(unconfirmed.map((b) => [`r${b.id}`, `${b.remaining.qty}`])),
+    ...Object.fromEntries(stops.map((d) => [`d${d.id}`, reasonText(d)])),
+  });
+  const cls = (k: string) => (changed.has(k) ? "so-row-changed" : undefined);
+
+  return (
+    <section>
+      <ScreenTitle>Сегодня</ScreenTitle>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
+        <Block title="Под риском сегодня, ₽" testid="today-risk">
+          <Pending what="суммы под риском" state={risk} reload={() => void reloadRisk()}>
+            {risk.kind === "ready" && (
+              <div className={cls("risk")} style={{ display: "grid", gap: 8 }}>
+                <p data-testid="today-risk-total" style={{ ...bigNum, color: risk.atRisk.totalMinor > 0 ? "var(--urgency-risk-fg)" : "var(--text)" }}>
+                  {formatRub(risk.atRisk.totalMinor)}
+                </p>
+                <HandNote arrow="down">это уйдёт в мусор, если не продать</HandNote>
+                <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>
+                  Оценка по цене из списаний за 30 дней.
+                  {risk.atRisk.unpriced > 0 && ` Партий без цены (не вошли в сумму): ${risk.atRisk.unpriced}.`}
+                </p>
+              </div>
+            )}
+          </Pending>
+        </Block>
+
+        <Block title="Списано" testid="today-writeoffs">
+          <Pending what="списания" state={risk} reload={() => void reloadRisk()}>
+            {risk.kind === "ready" && (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div className={cls("today")}>
+                  <div style={{ font: "var(--type-caption)", textTransform: "uppercase", color: "var(--text-muted)" }}>Списано за сегодня, ₽</div>
+                  <p data-testid="today-writeoff-day" style={bigNum}>{formatRub(risk.today)}</p>
+                </div>
+                <div className={cls("week")}>
+                  <div style={{ font: "var(--type-caption)", textTransform: "uppercase", color: "var(--text-muted)" }}>За 7 дней, ₽</div>
+                  <p data-testid="today-writeoff-week" style={bigNum}>{formatRub(risk.week)}</p>
+                </div>
+              </div>
+            )}
+          </Pending>
+        </Block>
+
+        <Block title="Продать" testid="today-sell">
+          <Pending what="горячие предложения" state={hot} reload={() => void reloadHot()}>
+            {offers.length === 0 ? (
+              <EmptyState title="Продвигать нечего" text="Партий под риском нет." />
+            ) : (
+              <ul style={list}>
+                {offers.map((o) => {
+                  const portions = o.target_today > 0 ? o.target_today : o.target_portions;
+                  const saved = offerSaved(o, prices);
+                  return (
+                    <li key={o.dish_id} className={cls(`h${o.dish_id}`)} style={row}>
+                      <a href={hotOffersUrl(o.reasons[0]?.product_id ?? "")} style={{ font: "var(--type-body-strong)", color: "var(--brand-ink)" }}>{o.dish_name}</a>
+                      <span style={{ font: "var(--type-body)" }}>
+                        {portions} {portionsWord(portions)}{o.target_today > 0 ? " сегодня" : ""}
+                      </span>
+                      {saved > 0 && <span style={{ font: "var(--type-body-strong)", color: "var(--urgency-ok-fg)" }}>спасёт {formatRub(saved)}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Pending>
+        </Block>
+
+        <Block title="Заказать" testid="today-order">
+          <Pending what="предложение поставок" state={supply} reload={() => void reloadSupply()}>
+            {urgent.length === 0 ? (
+              <EmptyState title="Срочного нет" text="Заказывать «сейчас» нечего." />
+            ) : (
+              <ul style={list}>
+                {urgent.map((r) => (
+                  <li key={r.product_id} className={cls(`s${r.product_id}`)} style={row}>
+                    <UrgencyBadge def={SUPPLY_STATES[r.urgency]} />
+                    <span style={{ font: "var(--type-body-strong)" }}>{r.product_name}</span>
+                    <span className="so-num">{formatQty(r.quantity)}</span>
+                    {canAccept && <AcceptNow row={r} ids={ids} />}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Pending>
+        </Block>
+
+        <Block title="Проверить" testid="today-check">
+          <Pending what="партии на проверку" state={receiving} reload={() => void reloadReceiving()}>
+            <h3 style={{ margin: "0 0 8px", font: "var(--type-label)" }}>Срок не подтверждён · {unconfirmed.length}</h3>
+            {unconfirmed.length === 0 ? (
+              <p style={{ margin: "0 0 12px", color: "var(--text-muted)" }}>Все сроки подтверждены.</p>
+            ) : (
+              <ul style={{ ...list, marginBottom: 12 }}>
+                {unconfirmed.slice(0, 5).map((b: ReceivingBatch) => (
+                  <li key={b.id} className={cls(`r${b.id}`)} style={row}>
+                    <a href="#/receiving" style={{ color: "var(--brand-ink)", font: "var(--type-body-strong)" }}>{b.product_name}</a>
+                    <span className="so-num">{formatQty(b.remaining)} · №{b.id}</span>
+                  </li>
+                ))}
+                {unconfirmed.length > 5 && <li><a href="#/receiving" style={{ color: "var(--brand-ink)" }}>Все {unconfirmed.length}</a></li>}
+              </ul>
+            )}
+          </Pending>
+          {stopped === "loading" && <LoadingState rows={1} label="Загрузка стоп-листа" />}
+          {typeof stopped === "object" && !Array.isArray(stopped) && <ErrorState what="стоп-лист" reason={stopped.error} />}
+          {Array.isArray(stopped) && (
+            <>
+              <h3 style={{ margin: "0 0 8px", font: "var(--type-label)" }}>В стоп-листе · {stops.length}</h3>
+              {stops.length === 0 ? (
+                <p style={{ margin: 0, color: "var(--text-muted)" }}>Стоп-лист пуст.</p>
+              ) : (
+                <ul style={list}>
+                  {stops.map((d) => (
+                    <li key={d.id} className={cls(`d${d.id}`)} style={row}>
+                      <UrgencyBadge def={DISH_STATES.stopped} />
+                      <span style={{ font: "var(--type-body-strong)" }}>{d.name}</span>
+                      <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>{reasonText(d)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </Block>
+      </div>
+    </section>
+  );
+}

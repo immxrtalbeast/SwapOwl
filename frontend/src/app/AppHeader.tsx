@@ -7,6 +7,7 @@ import { formatClock } from "../lib/format";
 import { useAuth } from "../auth/AuthContext";
 import { roleLabel } from "../auth/roles";
 import { modeLabel } from "./clock";
+import { RiskCounter } from "../pages/today";
 import { useBadges } from "./BadgesContext";
 import { useClock } from "./ClockContext";
 import { useConnection } from "./ConnectionContext";
@@ -38,6 +39,7 @@ export function AppHeader() {
         <Pill title={info.simulated ? "Время стенда симулированное, не реальное" : undefined}>{modeLabel(info)}</Pill>
       )}
       <span style={{ flex: 1 }} />
+      <RiskCounter />
       {alerts && (
         // Контракт e2e (10-demo.spec.ts): одна ссылка data-testid="alerts-counter" с aria-label «Предупреждения: N».
         <a
