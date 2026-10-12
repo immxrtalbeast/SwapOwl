@@ -22,6 +22,11 @@ describe("SCREENS", () => {
     expect(a?.minRole).toBeUndefined();
     expect(screenFromHash("#/account")).toBe("account");
   });
+  it("пункт «Сеть» зависит от hub", () => {
+    expect(SCREENS.find((s) => s.id === "network")?.needsHub).toBe(true);
+    expect(SCREENS.filter((s) => s.id !== "network").every((s) => !s.needsHub)).toBe(true);
+    expect(screenFromHash("#/network")).toBe("network");
+  });
   it("экран пользователей и ключей только для администратора", () => {
     expect(SCREENS.find((s) => s.id === "users")?.minRole).toBe("admin");
   });
