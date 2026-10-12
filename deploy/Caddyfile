@@ -1,4 +1,7 @@
 # Обратный прокси стенда. SITE_DOMAIN — домен (Let's Encrypt выпускается сам) или localhost (локальный запуск, HTTP).
+# API_UPSTREAM / WEB_UPSTREAM — адреса сервисов (по умолчанию api и web из сети compose). Для живого A/B
+# (deploy/scripts/ab-demo.sh) стенд подключается к общей сети точек, и там имена api/web неоднозначны —
+# скрипт подставляет уникальные имена контейнеров.
 (site) {
 	encode zstd gzip
 
@@ -10,13 +13,13 @@
 
 	# SSE: без буферизации события приходят пачками.
 	handle /events {
-		reverse_proxy api:8080 {
+		reverse_proxy {$API_UPSTREAM:api}:8080 {
 			flush_interval -1
 		}
 	}
 
 	handle /healthz {
-		reverse_proxy api:8080
+		reverse_proxy {$API_UPSTREAM:api}:8080
 	}
 
 	# /metrics: только с loopback/частных адресов; сверх этого API требует Bearer METRICS_TOKEN.
@@ -28,15 +31,23 @@
 		respond "not found" 404
 	}
 	handle /metrics {
-		reverse_proxy api:8080
+		reverse_proxy {$API_UPSTREAM:api}:8080
+	}
+
+	# Сводка сети (экран «Сеть»): hub за этим же адресом, токен hub подставляет прокси — в бандл фронта он не попадает.
+	# Без hub ответ 502, фронт тогда просто не показывает пункт «Сеть».
+	handle /api/network/* {
+		reverse_proxy {$HUB_UPSTREAM:hub}:8090 {
+			header_up Authorization "Bearer {$HUB_TOKEN:}"
+		}
 	}
 
 	handle /api/* {
-		reverse_proxy api:8080
+		reverse_proxy {$API_UPSTREAM:api}:8080
 	}
 
 	handle {
-		reverse_proxy web:80
+		reverse_proxy {$WEB_UPSTREAM:web}:80
 	}
 }
 
@@ -48,3 +59,7 @@
 http://localhost {
 	import site
 }
+
+# Дополнительные сайты сервера (например, точка «без подсказок» для A/B — ab-demo.sh). Каталог монтируется
+# из /opt/swapowl/caddy-extra, автодеплой его не трогает; пустой каталог — ничего не добавляется.
+import /etc/caddy/extra/*.caddy

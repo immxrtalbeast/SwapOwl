@@ -16,8 +16,13 @@ services:
       - "443:443"
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+      API_UPSTREAM: ${API_UPSTREAM:-api}
+      WEB_UPSTREAM: ${WEB_UPSTREAM:-web}
+      HUB_UPSTREAM: ${HUB_UPSTREAM:-hub}
+      HUB_TOKEN: ${HUB_TOKEN:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${CADDY_EXTRA_DIR:-./caddy-extra}:/etc/caddy/extra:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -54,6 +59,10 @@ services:
       SEED_ON_EMPTY: ${SEED_ON_EMPTY:-true}
       LATE_EVENTS_HOURS: ${LATE_EVENTS_HOURS:-2}
       METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Генератор стенда (FS-135): слушается ли горячих предложений; одинаковый seed — одинаковые заказы.
+      SIM_FOLLOW_HOT: ${SIM_FOLLOW_HOT:-true}
+      SIM_SEED: ${SIM_SEED:-2026}
+      SIM_HOT_UPLIFT: ${SIM_HOT_UPLIFT:-1.5}
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 10s
