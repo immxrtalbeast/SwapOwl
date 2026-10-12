@@ -71,11 +71,11 @@ func TestQtyBaseUnits(t *testing.T) {
 func TestBuildOrdersPerCheck(t *testing.T) {
 	loc, _ := time.LoadLocation("Europe/Moscow")
 	sales := []Sale{
-		{Date: "2026-01-02", DishID: "soup", Portions: 2, CheckID: "c3", OpenTime: "2026-01-02T19:40:00"},
-		{Date: "2026-01-02", DishID: "pilaf", Portions: 1, CheckID: "c1", OpenTime: "2026-01-02T12:05:00"},
-		{Date: "2026-01-02", DishID: "soup", Portions: 1, CheckID: "c1", OpenTime: "2026-01-02T12:05:00"},
-		{Date: "2026-01-02", DishID: "soup", Portions: 3, CheckID: "c2", OpenTime: "2026-01-02T15:30:00"},
-		{Date: "2026-01-02", DishID: "tea", Portions: 0, CheckID: "c2", OpenTime: "2026-01-02T15:30:00"},
+		{Date: "2026-01-02", DishID: "soup", Portions: 2, CheckID: "c3", CloseTime: "2026-01-02T19:40:00"},
+		{Date: "2026-01-02", DishID: "pilaf", Portions: 1, CheckID: "c1", CloseTime: "2026-01-02T12:05:00"},
+		{Date: "2026-01-02", DishID: "soup", Portions: 1, CheckID: "c1", CloseTime: "2026-01-02T12:05:00"},
+		{Date: "2026-01-02", DishID: "soup", Portions: 3, CheckID: "c2", CloseTime: "2026-01-02T15:30:00"},
+		{Date: "2026-01-02", DishID: "tea", Portions: 0, CheckID: "c2", CloseTime: "2026-01-02T15:30:00"},
 	}
 	got := BuildOrders(sales, loc)
 	if len(got) != 3 {
@@ -102,8 +102,8 @@ func TestBuildOrdersPerCheck(t *testing.T) {
 func TestBuildOrdersWithoutCheck(t *testing.T) {
 	loc, _ := time.LoadLocation("Europe/Moscow")
 	sales := []Sale{
-		{Date: "2026-01-02", DishID: "soup", Portions: 2, OpenTime: "2026-01-02T13:00:00"},
-		{Date: "2026-01-02", DishID: "soup", Portions: 1, OpenTime: "2026-01-02T14:00:00"},
+		{Date: "2026-01-02", DishID: "soup", Portions: 2, CloseTime: "2026-01-02T13:00:00"},
+		{Date: "2026-01-02", DishID: "soup", Portions: 1, CloseTime: "2026-01-02T14:00:00"},
 		{Date: "2026-01-02", DishID: "pilaf", Portions: 1},
 	}
 	got := BuildOrders(sales, loc)

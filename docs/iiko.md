@@ -88,7 +88,7 @@ go run ./cmd/iiko-adapter          # цикл; флаг -once — один пр�
 | `type=DISH` → `id`, `name`, `defaultSalePrice` | `dishes[]`: `id`, `name`, `price_minor` (копейки) |
 | действующая техкарта (`dateTo=null`): `items[].productId`, `amountIn` / `assembledAmount` | `recipe[]`: `product_id`, `quantity` (целое число базовых единиц, не меньше 1), `unit` (g/ml/pcs) |
 | приходная накладная (`status=PROCESSED`): `id`, `documentNumber`, `dateIncoming`, `items[]` | `POST /api/deliveries`: `id` (= id накладной), `number`, `created_at` и `occurred_at` (оба = `dateIncoming` в часовом поясе ресторана), `items[]`: `product_id`, `quantity` (целые базовые единицы), `unit` (g/ml/pcs), `shelf_life_hours` |
-| OLAP `SALES`: `DishId`, `UniqOrderId.Id` (чек), `OpenTime` (время открытия чека), `DishAmountInt` | `POST /api/orders`, `source: "pos"`: один заказ на чек, `items[]`: `dish_id`, `portions`; `occurred_at` = `OpenTime` (часовой пояс ресторана); `id` = UUID v5 от `iiko-check:<id чека>`. Если в выгрузке нет id чека — один заказ на строку, `id` = UUID v5 от `iiko-line:<дата>\|<время>\|<блюдо>`; нет времени — `occurred_at` не передаётся (время приёма) |
+| OLAP `SALES`: `DishId`, `UniqOrderId.Id` (чек), `CloseTime` (время закрытия чека), `DishAmountInt` | `POST /api/orders`, `source: "pos"`: один заказ на чек, `items[]`: `dish_id`, `portions`; `occurred_at` = `CloseTime` (часовой пояс ресторана); `id` = UUID v5 от `iiko-check:<id чека>`. Если в выгрузке нет id чека — один заказ на строку, `id` = UUID v5 от `iiko-line:<дата>\|<время>\|<блюдо>`; нет времени — `occurred_at` не передаётся (время приёма) |
 | `GET /api/outbox`, `kind=stoplist`: `payload` — блюда с `available=false` | `POST stopLists`: `items[]`: `productId` = id блюда, `balance` = 0 (заменяет список целиком, только при изменении) |
 
 Не передаются: удалённые позиции, блюда без действующей техкарты или с неизвестным продуктом в ней, накладные не в статусе `PROCESSED`, позиции с неизвестным продуктом (всё это — строкой в журнале).
@@ -99,8 +99,8 @@ go run ./cmd/iiko-adapter          # цикл; флаг -once — один пр�
 
 ## Допущения
 
-- Чек и время продажи берутся из OLAP-полей `UniqOrderId.Id` и `OpenTime` (строка `yyyy-MM-ddTHH:mm:ss`, часовой пояс ресторана) [ПРЕДПОЛОЖЕНО: форма значения `OpenTime` в боевом iiko сверяется при подключении]. Фейк отдаёт оба поля.
-- Время события (`.ai/solution.md`, 2.4а): накладная — `dateIncoming`, продажа — `OpenTime`. Срок партии считается от даты накладной, а не от приёма.
+- Чек и время продажи берутся из OLAP-полей `UniqOrderId.Id` и `CloseTime` (строка `yyyy-MM-ddTHH:mm:ss`, часовой пояс ресторана) [ПРЕДПОЛОЖЕНО: форма значения `CloseTime` в боевом iiko сверяется при подключении]. Фейк отдаёт оба поля.
+- Время события (`.ai/solution.md`, 2.4а): накладная — `dateIncoming`, продажа — `CloseTime`: чек появляется в OLAP и списывается в iiko при закрытии, а время открытия у долгого чека может не уложиться в окно опоздания. Срок партии считается от даты накладной, а не от приёма.
 - `lead_days`, `pack_size`, `prior_daily` в iiko нет — берутся из переменных `ADAPTER_DEFAULT_*`; каждый проход обновляет каталог (в том числе цены) теми же правилами.
 - Стоп-лист в iiko — `[ПРЕДПОЛОЖЕНО]` (см. выше); блюда передаются как `productId`.
 - Ack API принимает только `{ok, error?}`, поля для пометки `shadow` в нём нет. Поэтому в теневом режиме строка outbox подтверждается обычным `ok`, а пометка живёт в локальном журнале адаптера (`ADAPTER_SHADOW_FILE`). Следствие: после перехода в бой старые сообщения заново не придут.

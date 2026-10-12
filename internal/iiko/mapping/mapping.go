@@ -205,11 +205,11 @@ func BuildDelivery(inv iiko.IncomingInvoice, units map[string]Unit, shelf map[st
 
 // Sale — строка продаж iiko: порции блюда в чеке.
 type Sale struct {
-	Date     string // yyyy-MM-dd
-	DishID   string
-	Portions int64
-	CheckID  string // id чека iiko; пусто, если выгрузка его не даёт
-	OpenTime string // yyyy-MM-ddTHH:mm:ss, время ресторана; пусто, если выгрузка его не даёт
+	Date      string // yyyy-MM-dd
+	DishID    string
+	Portions  int64
+	CheckID   string // id чека iiko; пусто, если выгрузка его не даёт
+	CloseTime string // yyyy-MM-ddTHH:mm:ss, время ресторана; пусто, если выгрузка его не даёт
 }
 
 // Order — тело POST /api/orders.
@@ -227,7 +227,7 @@ type OrderItem struct {
 }
 
 // BuildOrders собирает заказы `pos`: один на чек, а без id чека — один на строку выгрузки.
-// occurred_at — время открытия чека (в поясе loc); без времени поле не передаётся.
+// occurred_at — время закрытия чека (в поясе loc); без времени поле не передаётся.
 // id детерминированный (CheckOrderID, LineOrderID), поэтому повторная синхронизация — повтор, а не дубль.
 // Порядок — по времени, затем по id.
 func BuildOrders(sales []Sale, loc *time.Location) []Order {
@@ -252,7 +252,7 @@ func BuildOrders(sales []Sale, loc *time.Location) []Order {
 			groups[id] = g
 			ids = append(ids, id)
 		}
-		if at, err := time.ParseInLocation(iiko.DateTimeLayout, s.OpenTime, loc); err == nil && (g.at.IsZero() || at.Before(g.at)) {
+		if at, err := time.ParseInLocation(iiko.DateTimeLayout, s.CloseTime, loc); err == nil && (g.at.IsZero() || at.Before(g.at)) {
 			g.at = at
 		}
 		g.items[s.DishID] += s.Portions
@@ -287,7 +287,7 @@ func CheckOrderID(checkID string) string { return UUIDv5(Namespace, "iiko-check:
 
 // LineOrderID — id заказа по строке выгрузки без чека: UUID v5 от «iiko-line:<дата>|<время>|<блюдо>».
 func LineOrderID(s Sale) string {
-	return UUIDv5(Namespace, "iiko-line:"+s.Date+"|"+s.OpenTime+"|"+s.DishID)
+	return UUIDv5(Namespace, "iiko-line:"+s.Date+"|"+s.CloseTime+"|"+s.DishID)
 }
 
 // Namespace — пространство имён UUID v5 адаптера (фиксированная константа).

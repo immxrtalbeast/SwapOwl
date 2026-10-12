@@ -645,3 +645,29 @@ func TestBootstrapRetriesAfterFailure(t *testing.T) {
 		t.Fatalf("стоп-лист: %v", items)
 	}
 }
+
+// lateDeliveries отвечает 400 по occurred_at на любую поставку, как API за окном опоздания.
+type lateDeliveries struct{ *stubAPI }
+
+func (l lateDeliveries) ServeHTTP(w http.ResponseWriter, q *http.Request) {
+	if q.URL.Path == "/api/deliveries" {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"validation_error","message":"occurred_at must be within the window"}}`))
+		return
+	}
+	l.stubAPI.ServeHTTP(w, q)
+}
+
+func TestLateDeliveriesCounted(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	a, stub, _ := setup(t, time.Date(2026, 1, 2, 9, 30, 0, 0, loc))
+	s := httptest.NewServer(lateDeliveries{stub})
+	defer s.Close()
+	a.api.base = s.URL
+	if err := a.runOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if a.lateSeen == 0 {
+		t.Fatal("накладные за окном не посчитаны")
+	}
+}

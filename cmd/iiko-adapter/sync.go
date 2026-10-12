@@ -208,6 +208,10 @@ func (a *adapter) syncInvoices(ctx context.Context, st *state, today time.Time, 
 			}
 			if _, err := a.api.do(ctx, http.MethodPost, "/api/deliveries", d); err != nil {
 				if ae, ok := skippable(err); ok {
+					if isLate(ae) {
+						a.skipLate("накладная", inv.ID, ae)
+						continue
+					}
 					a.log.Printf("накладная %s пропущена: статус %d: %s", inv.ID, ae.Status, ae.Body)
 					continue
 				}
