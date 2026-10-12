@@ -1,4 +1,5 @@
-import { IconLogout } from "@tabler/icons-react";
+import { IconLogout, IconUser } from "@tabler/icons-react";
+import { useMediaQuery } from "@mantine/hooks";
 import { Pill } from "../components/Pill";
 import { TextButton } from "../components/Buttons";
 import { UrgencyCounter } from "../components/UrgencyCounter";
@@ -15,6 +16,25 @@ import { useConnection } from "./ConnectionContext";
 const connLabel = { online: "На связи", offline: "Нет связи", connecting: "Подключение…" } as const;
 const connColor = { online: "var(--urgency-ok-fg)", offline: "var(--urgency-critical-fg)", connecting: "var(--urgency-warn-fg)" } as const;
 
+export const USER_COLLAPSE_QUERY = "(max-width: 1439px)";
+
+/** Имя и роль; на узкой ширине — только иконка, текст в подсказке и aria-label. */
+export function UserBadge({ name, role, narrow, children }: { name: string; role: string; narrow: boolean; children?: React.ReactNode }) {
+  const full = `${name} · ${role}`;
+  return (
+    <span data-testid="user-badge" style={{ display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap", font: "var(--type-small)", color: "var(--text-muted)" }}>
+      {narrow ? (
+        <span title={full} aria-label={full} role="img" data-collapsed="true" style={{ display: "inline-flex" }}>
+          <IconUser size={18} aria-hidden="true" />
+        </span>
+      ) : (
+        full
+      )}
+      {children}
+    </span>
+  );
+}
+
 /** Белая шапка на каждом экране: время стенда, режим, счётчики, связь, роль. */
 export function AppHeader() {
   const { now, info } = useClock();
@@ -22,12 +42,14 @@ export function AppHeader() {
   const { state, logout } = useAuth();
   const { alerts, unconfirmed } = useBadges();
   const alertsTotal = alerts ? alerts.expiring + alerts.doomed + alerts.expired : 0;
+  // Первым при нехватке места сжимается «Гость · оператор»: до иконки с подсказкой.
+  const narrow = useMediaQuery(USER_COLLAPSE_QUERY) ?? false;
   const t = now && info ? formatClock(now, info.timezone) : null;
   return (
     <header
       data-testid="app-header"
       style={{
-        position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 16,
+        position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12, whiteSpace: "nowrap",
         minHeight: "var(--header-h)", padding: "8px var(--gutter)", background: "var(--surface)", boxShadow: "var(--shadow-top)",
       }}
     >
@@ -61,14 +83,13 @@ export function AppHeader() {
         ● {connLabel[conn]}
       </span>
       {state.kind === "user" && (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, font: "var(--type-small)", color: "var(--text-muted)" }}>
-          {state.login ?? "Гость"} · {roleLabel[state.role]}
+        <UserBadge name={state.login ?? "Гость"} role={roleLabel[state.role]} narrow={narrow}>
           {state.authRequired && (
             <TextButton size="compact-sm" onClick={() => void logout()} leftSection={<IconLogout size={16} aria-hidden="true" />}>
               Выйти
             </TextButton>
           )}
-        </span>
+        </UserBadge>
       )}
     </header>
   );
