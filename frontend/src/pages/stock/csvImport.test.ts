@@ -123,6 +123,7 @@ describe("id поставки", () => {
     expect(buildDelivery("НК-1", items, new Date(0))).toEqual(a);
     expect(buildDelivery("НК-1", items, new Date(1000)).id).toBe(a.id);
     expect(buildDelivery("НК-2", items).id).not.toBe(a.id);
+    expect(buildDelivery("НК-1", items, new Date(0), "123").id).not.toBe(a.id);
     expect(buildDelivery("НК-1", [{ ...items[0], quantity: "2" }]).id).not.toBe(a.id);
   });
 });

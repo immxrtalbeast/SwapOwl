@@ -12,6 +12,7 @@ import type { ParsedCsv } from "./csvImport";
 type Status = { kind: "idle" | "sending" } | { kind: "ok" | "error"; message: string };
 
 interface Loaded {
+  idSalt: string; // номер из имени файла не уникален: добавляем дату файла, чтобы пересохранённый шаблон был новой поставкой
   createdAt: Date; // дата изменения файла: у того же файла она та же, значит и тело запроса (BodyHash включает created_at)
   parsed: ParsedCsv;
   invoice: string;
@@ -34,7 +35,7 @@ export function CsvImport({ products, onReceived }: { products: readonly Product
     const parsed = parseCsv(decodeCsv(await file.arrayBuffer()));
     setOverrides({});
     setStatus({ kind: "idle" });
-    setLoaded({ createdAt: new Date(file.lastModified), parsed, invoice: parsed.invoice || invoiceFromFileName(file.name) });
+    setLoaded({ idSalt: parsed.invoice ? "" : String(file.lastModified), createdAt: new Date(file.lastModified), parsed, invoice: parsed.invoice || invoiceFromFileName(file.name) });
   }
 
   const rows = loaded ? loaded.parsed.rows.map((r) => resolveRow(r, products, overrides[r.line])) : [];
@@ -45,7 +46,7 @@ export function CsvImport({ products, onReceived }: { products: readonly Product
     if (!loaded || !canSend) return;
     setStatus({ kind: "sending" });
     try {
-      const r = await api.receiveDelivery(buildDelivery(loaded.invoice, rows.map((x) => x.item!), loaded.createdAt));
+      const r = await api.receiveDelivery(buildDelivery(loaded.invoice, rows.map((x) => x.item!), loaded.createdAt, loaded.idSalt));
       if (r.replayed) setStatus({ kind: "ok", message: "Эта накладная уже принята — остатки не изменились" });
       else {
         setStatus({ kind: "ok", message: `Поставка принята: партий ${r.batches.length}` });
