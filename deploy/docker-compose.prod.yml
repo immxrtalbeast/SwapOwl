@@ -23,13 +23,13 @@ services:
     depends_on:
       - api
       - web
-    mem_limit: 128m
+    mem_limit: ${CADDY_MEM:-128m}
     restart: unless-stopped
     logging: *logging
 
   web:
     image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/web:${IMAGE_TAG:-latest}
-    mem_limit: 64m
+    mem_limit: ${WEB_MEM:-64m}
     restart: unless-stopped
     logging: *logging
 
@@ -60,7 +60,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 20s
-    mem_limit: 256m
+    mem_limit: ${API_MEM:-256m}
     restart: unless-stopped
     logging: *logging
 
@@ -78,7 +78,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    mem_limit: 512m
+    mem_limit: ${PG_MEM:-512m}
     restart: unless-stopped
     logging: *logging
 
@@ -89,7 +89,7 @@ services:
     environment:
       FAKE_IIKO_LOGIN: ${IIKO_LOGIN:-demo}
       FAKE_IIKO_PASSWORD: ${IIKO_PASSWORD:-}
-    mem_limit: 64m
+    mem_limit: ${SIDECAR_MEM:-64m}
     restart: unless-stopped
     logging: *logging
 
@@ -109,7 +109,7 @@ services:
       ADAPTER_SHADOW_FILE: /data/iiko-adapter-shadow.json
     volumes:
       - adapter_data:/data
-    mem_limit: 64m
+    mem_limit: ${SIDECAR_MEM:-64m}
     restart: unless-stopped
     logging: *logging
 
@@ -122,9 +122,72 @@ services:
       API_KEY: ${NOTIFIER_API_KEY:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-    mem_limit: 64m
+    mem_limit: ${SIDECAR_MEM:-64m}
     restart: unless-stopped
     logging: *logging
+
+  # --- Общие сервисы (профили; в одиночном режиме не стартуют). Режим сети — docs/operations.md, «Много точек». ---
+
+  # Профиль ops: сторож (FS-117). В одиночном режиме: --profile ops; на много точек fleet.sh ставит свой на каждую.
+  watchdog:
+    profiles: ["ops"]
+    image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/watchdog:${IMAGE_TAG:-latest}
+    depends_on:
+      - api
+    environment:
+      WATCHDOG_API_URL: http://api:8080
+      WATCHDOG_ADAPTER_URL: ${WATCHDOG_ADAPTER_URL:-}
+      WATCHDOG_METRICS_TOKEN: ${METRICS_TOKEN:-}
+      WATCHDOG_TG_TOKEN: ${WATCHDOG_TG_TOKEN:-}
+      WATCHDOG_TG_CHAT: ${WATCHDOG_TG_CHAT:-}
+      WATCHDOG_EVERY: ${WATCHDOG_EVERY:-30s}
+      WATCHDOG_SYNC_MAX: ${WATCHDOG_SYNC_MAX:-15m}
+      WATCHDOG_OUTBOX_MAX: ${WATCHDOG_OUTBOX_MAX:-10m}
+      WATCHDOG_REPEAT: ${WATCHDOG_REPEAT:-1h}
+      WATCHDOG_DATA_DIR: ${WATCHDOG_DATA_DIR:-}
+    mem_limit: 32m
+    restart: unless-stopped
+    logging: *logging
+
+  # Профиль fleet (проект swapowl-edge): hub опрашивает точки по сети edge. Конфиг генерирует fleet.sh.
+  hub:
+    profiles: ["fleet"]
+    image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/hub:${IMAGE_TAG:-latest}
+    environment:
+      HUB_CONFIG: /etc/hub/hub.yml
+      HUB_TOKEN: ${HUB_TOKEN:-}
+      HUB_POLL: ${HUB_POLL:-60s}
+    volumes:
+      - ${EDGE_DIR:-./edge}/hub.yml:/etc/hub/hub.yml:ro
+    networks: [edge]
+    mem_limit: 32m
+    restart: unless-stopped
+    logging: *logging
+
+  # Профиль fleet: один Caddy на сервер, маршрут <slug>.<SITE_DOMAIN> на каждую точку (Caddyfile генерирует fleet.sh).
+  edge:
+    profiles: ["fleet"]
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+    volumes:
+      - ${EDGE_DIR:-./edge}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+    mem_limit: ${CADDY_MEM:-128m}
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  # Общая сеть сервера: точки подключают к ней api и web (алиасы api-<slug>, web-<slug>), edge и hub живут в ней.
+  # Создаёт fleet.sh; в одиночном режиме не используется.
+  edge:
+    name: swapowl-edge
+    external: true
 
 volumes:
   pgdata:

@@ -37,6 +37,8 @@ jobs:
           - { name: web, dockerfile: deploy/Dockerfile.web }
           - { name: iiko-adapter, dockerfile: deploy/Dockerfile.adapter }
           - { name: notifier, dockerfile: deploy/Dockerfile.notifier }
+          - { name: watchdog, dockerfile: deploy/Dockerfile.watchdog }
+          - { name: hub, dockerfile: deploy/Dockerfile.hub }
     steps:
       - uses: actions/checkout@v4
         with:
