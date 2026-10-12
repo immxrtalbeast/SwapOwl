@@ -334,7 +334,7 @@ cmd_ab_start() {
   # Одновременный старт: оба запроса уходят параллельно, разница моментов окончания замеряется.
   t0="$(date +%s%N)"
   for slug in "${pts[@]}"; do
-    ( ab_post "$slug" /api/demo/simulator '{"running":true}' "$tok" && date +%s%N > "$EDGE_DIR/.ab-start.$slug" ) &
+    ( ab_post "$slug" /api/demo/simulator '{"running":true}' "$(envval "$POINTS/$slug/.env" DEMO_TOKEN)" && date +%s%N > "$EDGE_DIR/.ab-start.$slug" ) &
     pids+=($!)
   done
   for p in "${pids[@]}"; do wait "$p" || { ab_pause "${pts[@]}"; die "старт генератора не удался, точки поставлены на паузу"; }; done

@@ -154,7 +154,8 @@ func (rt *Router) HandleRole(method, pattern string, min auth.Role, h http.Handl
 	rt.register(method, pattern, h, access{min: min})
 }
 
-// HandlePublic регистрирует маршрут без входа: только /healthz и POST /api/auth/login (2.9).
+// HandlePublic регистрирует маршрут без входа (2.9): /healthz, POST /api/auth/login, демо-ручки под
+// DEMO_TOKEN (demoAuth) и статичное описание API (/api/openapi.yaml, /api/docs).
 func (rt *Router) HandlePublic(method, pattern string, h http.HandlerFunc) {
 	rt.register(method, pattern, h, access{public: true})
 }
