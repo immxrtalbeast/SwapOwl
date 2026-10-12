@@ -211,3 +211,18 @@ func TestTargetTodayRespectsScheduleDaysAcrossMidnight(t *testing.T) {
 		t.Fatalf("sat 01:00: target_today = %d, want 16", got)
 	}
 }
+
+func TestTargetTodayLunchBreak(t *testing.T) {
+	days, err := domain.ParseSchedule("mon 11:00-15:00; mon 18:00-23:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sch := domain.Schedule{Location: time.UTC, OpenAt: 10 * time.Hour, CloseAt: 23 * time.Hour, Days: days}
+	until := time.Date(2026, 10, 12, 22, 0, 0, 0, time.UTC)
+	for _, h := range []int{10, 12, 16} {
+		snap := store.Snapshot{Now: time.Date(2026, 10, 12, h, 0, 0, 0, time.UTC), Schedule: sch}
+		if got := targetToday(80, until, snap); got != 80 {
+			t.Fatalf("%d:00: target_today = %d, want 80", h, got)
+		}
+	}
+}

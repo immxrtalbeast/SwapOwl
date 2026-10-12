@@ -137,6 +137,14 @@ func TestShiftEnd(t *testing.T) {
 		{d(10, 3), d(11, 2)}, // между сменами: суббота ещё впереди
 		{d(11, 3), d(11, 3)}, // воскресенье — выходной
 	}
+	lunch := Schedule{Location: time.UTC, Days: map[time.Weekday][]Interval{
+		time.Monday: {{Open: 11 * time.Hour, Close: 15 * time.Hour}, {Open: 18 * time.Hour, Close: 23 * time.Hour}},
+	}}
+	for _, h := range []int{11, 12, 16, 19} { // 2026-10-12 — понедельник
+		if got, want := ShiftEnd(time.Date(2026, 10, 12, h, 0, 0, 0, time.UTC), lunch), time.Date(2026, 10, 12, 23, 0, 0, 0, time.UTC); !got.Equal(want) {
+			t.Errorf("lunch break %d:00: got %v want %v", h, got, want)
+		}
+	}
 	for _, c := range cases {
 		if got := ShiftEnd(c.now, sch); !got.Equal(c.want) {
 			t.Errorf("now=%v: got %v want %v", c.now, got, c.want)

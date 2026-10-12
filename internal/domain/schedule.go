@@ -203,6 +203,12 @@ func ShiftEnd(now time.Time, sch Schedule) time.Time {
 	for _, d := range []time.Time{today.AddDate(0, 0, -1), today} {
 		for _, iv := range intervals(d.Weekday()) {
 			if a, b := at(d, iv.Open), at(d, iv.Close); !now.Before(a) && now.Before(b) {
+				// Перерыв внутри дня не обрывает смену: берём конец последнего интервала того же дня.
+				for _, o := range intervals(d.Weekday()) {
+					if e := at(d, o.Close); e.After(b) {
+						b = e
+					}
+				}
 				return b
 			}
 		}
