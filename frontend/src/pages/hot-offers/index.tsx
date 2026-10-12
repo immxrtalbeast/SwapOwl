@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { HotAlgo, HotOffer } from "../../api/types";
-import { HandNote, Card, ErrorState, LoadingState, EmptyState, ScreenTitle, SecondaryButton } from "../../components";
+import { Card, ErrorState, LoadingState, EmptyState, ScreenTitle, SecondaryButton } from "../../components";
 import { formatQty } from "../stock/format";
 import { productIdFromHash } from "./query";
 import { useHotOffers } from "./useHotOffers";
@@ -25,21 +25,26 @@ function OfferCard({ offer, note }: { offer: HotOffer; note?: string }) {
     >
       <h2 style={{ margin: 0, font: "var(--type-h3)" }}>{offer.dish_name}</h2>
       {hasTarget && (
-        <p style={{ margin: 0, display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
+        <p style={{ margin: 0, display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "2px 12px" }}>
           <span style={{ font: "var(--type-kpi)", fontSize: 32, lineHeight: 1.1, color: "var(--primary)" }}>
-            {offer.target_portions} <span style={{ font: "var(--type-label)", color: "var(--text)" }}>{portionsWord(offer.target_portions)}</span>
+            {offer.target_today > 0 ? offer.target_today : offer.target_portions}{" "}
+            <span style={{ font: "var(--type-label)", color: "var(--text)" }}>
+              {portionsWord(offer.target_today > 0 ? offer.target_today : offer.target_portions)}
+              {offer.target_today > 0 ? " сегодня" : " в ближайшую смену"}
+            </span>
           </span>
+          {note && <span style={{ font: "var(--type-label)", color: "var(--danger, var(--text))" }}>{note}</span>}
           <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>
-            обычно {offer.usual_portions} · <span title={new Date(offer.sell_until).toLocaleString("ru-RU")}>{formatUntil(offer.sell_until)}</span>
+            {offer.target_today > 0 && <>всего {offer.target_portions} </>}<span title={new Date(offer.sell_until).toLocaleString("ru-RU")}>{formatUntil(offer.sell_until)}</span> · обычно {offer.usual_portions}
           </span>
         </p>
       )}
       {!hasTarget && (
-        <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>
+        <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)", display: "flex", gap: 12, flexWrap: "wrap" }}>
           <span title={new Date(offer.sell_until).toLocaleString("ru-RU")}>{formatUntil(offer.sell_until)}</span>
+          {note && <span>{note}</span>}
         </p>
       )}
-      {note && <HandNote arrow="down">{note}</HandNote>}
       <ul style={{ margin: 0, paddingLeft: 18, font: "var(--type-body)" }}>
         {offer.reasons.map((r) => (
           <li key={`${r.product_id}-${r.batch_id}`}>

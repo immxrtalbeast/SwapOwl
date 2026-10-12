@@ -94,7 +94,7 @@ curl -i -X POST $API/api/deliveries -H 'Content-Type: application/json' -d '{
 | `DEMAND_WINDOW_DAYS`, `DEMAND_PRIOR_DAYS` | `14`, `3` | Оценка спроса |
 | `SUPPLY_COVER_DAYS`, `SUPPLY_MIN_PORTIONS` | `3`, `10` | Предложение поставок |
 | `HOTOFFERS_ALGO` | `b` | Алгоритм горячих предложений (`docs/bench.md`) |
-| `HOT_TOP_N`, `HOT_W_MIN_HOURS`, `HOT_COVER_HOURS`, `HOT_MAX_ITER` | `3`, `0.5`, `12`, `200` | Параметры алгоритмов |
+| `HOT_TOP_N`, `HOT_W_MIN_HOURS`, `HOT_COVER_HOURS`, `HOT_MAX_ITER`, `HOT_HORIZON_HOURS` | `3`, `0.5`, `12`, `200`, `24` | Параметры алгоритмов |
 | `LOG_LEVEL`, `DB_POOL_SIZE` | `info`, `20` | Журнал и пул соединений |
 
 Дальше: `docs/onboarding.md` — регламент подключения ресторана к iiko, `docs/iiko.md` — адаптер, `docs/operations.md` — резервные копии, `docs/notify.md` — уведомления, `docs/bench.md` — результат сравнения алгоритмов.

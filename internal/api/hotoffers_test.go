@@ -169,3 +169,60 @@ func TestRussianFormatting(t *testing.T) {
 		t.Error("portions plural")
 	}
 }
+
+func TestHotOffersTargetTodayWithinTarget(t *testing.T) {
+	// 10:00, закрытие 23:00 → W_today=13; срок через 5 ч → W=5 ≤ W_today, цель на сегодня = вся цель.
+	_, out, body := getHot(t, hotRouter(hotSnap(), "b"), "/api/hot-offers")
+	o := out.Offers[0]
+	if o.TargetPortions <= 0 || o.TargetToday != o.TargetPortions {
+		t.Fatalf("near expiry: %s", body)
+	}
+	// срок через 26 ч (W=13+... ) — часть цели на сегодня меньше цели
+	snap := hotSnap()
+	snap.RateHour = map[string]float64{"salmon": 50, "beef": 57.6}
+	snap.Batches[0].ExpiresAt = hotNow.Add(30 * time.Hour) // завтра 16:00 → W=13+6=19
+	rt := NewRouter(Deps{HotOffers: fakeSnap{snap}, Now: func() time.Time { return hotNow },
+		HotConfig: HotOffersConfig{DefaultAlgo: "b", Rank: hotoffers.Config{TopN: 3, WMin: 0.5, CoverHours: 12, MaxIter: 200}}})
+	_, out, body = getHot(t, rt, "/api/hot-offers")
+	if len(out.Offers) == 0 {
+		t.Fatal(body)
+	}
+	o = out.Offers[0]
+	if o.TargetToday <= 0 || o.TargetToday > o.TargetPortions {
+		t.Fatalf("today must be in (0, target]: %d/%d", o.TargetToday, o.TargetPortions)
+	}
+}
+
+func TestTargetTodayRespectsScheduleDaysAcrossMidnight(t *testing.T) {
+	days := map[time.Weekday][]domain.Interval{
+		time.Friday:   {{Open: 11 * time.Hour, Close: 26 * time.Hour}},
+		time.Saturday: {{Open: 11 * time.Hour, Close: 26 * time.Hour}},
+	}
+	sch := domain.Schedule{Location: time.UTC, OpenAt: 10 * time.Hour, CloseAt: 23 * time.Hour, Days: days}
+	until := time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC) // суббота
+	// пятница 22:00: W_today=4 (до 02:00), W=8 → 40
+	snap := store.Snapshot{Now: time.Date(2026, 10, 9, 22, 0, 0, 0, time.UTC), Schedule: sch}
+	if got := targetToday(80, until, snap); got != 40 {
+		t.Fatalf("fri 22:00: target_today = %d, want 40", got)
+	}
+	// суббота 01:00 — ещё пятничная смена: W_today=1, W=1+4=5 → 16
+	snap.Now = time.Date(2026, 10, 10, 1, 0, 0, 0, time.UTC)
+	if got := targetToday(80, until, snap); got != 16 {
+		t.Fatalf("sat 01:00: target_today = %d, want 16", got)
+	}
+}
+
+func TestTargetTodayLunchBreak(t *testing.T) {
+	days, err := domain.ParseSchedule("mon 11:00-15:00; mon 18:00-23:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sch := domain.Schedule{Location: time.UTC, OpenAt: 10 * time.Hour, CloseAt: 23 * time.Hour, Days: days}
+	until := time.Date(2026, 10, 12, 22, 0, 0, 0, time.UTC)
+	for _, h := range []int{10, 12, 16} {
+		snap := store.Snapshot{Now: time.Date(2026, 10, 12, h, 0, 0, 0, time.UTC), Schedule: sch}
+		if got := targetToday(80, until, snap); got != 80 {
+			t.Fatalf("%d:00: target_today = %d, want 80", h, got)
+		}
+	}
+}

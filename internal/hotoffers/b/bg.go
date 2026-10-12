@@ -151,6 +151,9 @@ func buildStates(in hotoffers.Input) map[string]*productState {
 			if w < in.Config.WMin {
 				continue // обречённая: вне проекции и вне рекомендаций
 			}
+			if h := in.Config.HorizonHours; h > 0 && w > h {
+				continue // дальше горизонта: виден в ленте предупреждений, цель не раздувает
+			}
 			cap := s.rate*w - used
 			if cap < 0 {
 				cap = 0

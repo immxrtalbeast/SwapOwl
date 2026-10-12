@@ -14,6 +14,9 @@ type Config struct {
 	WMin       float64 // HOT_W_MIN_HOURS
 	CoverHours float64 // HOT_COVER_HOURS
 	MaxIter    int     // HOT_MAX_ITER
+	// HorizonHours — HOT_HORIZON_HOURS: в Bg участвуют партии, до срока которых не больше стольких
+	// рабочих часов. 0 — без горизонта.
+	HorizonHours float64
 }
 
 // Input — снимок для ранжирования. Чистые функции от Input.

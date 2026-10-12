@@ -33,6 +33,7 @@ type OfferJSON struct {
 	DishName       string          `json:"dish_name"`
 	Priority       float64         `json:"priority"`
 	TargetPortions int64           `json:"target_portions"`
+	TargetToday    int64           `json:"target_today"`
 	UsualPortions  int64           `json:"usual_portions"`
 	SellUntil      time.Time       `json:"sell_until"`
 	Reasons        []HotReasonJSON `json:"reasons"`
@@ -131,6 +132,7 @@ func buildHotOffers(snap store.Snapshot, algo string, cfg hotoffers.Config) HotO
 			row.UsualPortions = int64(math.Round(snap.Lambda[o.DishID] / dayHours *
 				domain.WorkingHours(snap.Now, row.SellUntil, snap.Schedule)))
 		}
+		row.TargetToday = targetToday(o.TargetPortions, row.SellUntil, snap)
 		row.Explanation = explainOffer(row, algo)
 		resp.Offers = append(resp.Offers, row)
 	}
@@ -151,6 +153,25 @@ func buildHotOffers(snap store.Snapshot, algo string, cfg hotoffers.Config) HotO
 		resp.Excluded = append(resp.Excluded, ExcludedJSON{DishID: e.DishID, ProductID: e.ProductID, Why: why})
 	}
 	return resp
+}
+
+// targetToday — часть цели, которую нужно продать до закрытия сегодня, пропорционально
+// рабочим часам: ceil(target × min(W_today, W(now,e*)) / W(now,e*)).
+func targetToday(target int64, sellUntil time.Time, snap store.Snapshot) int64 {
+	if target <= 0 || sellUntil.IsZero() {
+		return 0
+	}
+	closeToday := domain.ShiftEnd(snap.Now, snap.Schedule)
+	wAll := domain.WorkingHours(snap.Now, sellUntil, snap.Schedule)
+	if wAll <= 0 {
+		return target
+	}
+	wToday := math.Min(domain.WorkingHours(snap.Now, closeToday, snap.Schedule), wAll)
+	t := int64(math.Ceil(float64(target)*wToday/wAll - 1e-9))
+	if t > target {
+		t = target
+	}
+	return t
 }
 
 // explainOffer — объяснение по-русски с числами: продукт, партия, количество, рабочие часы.

@@ -265,3 +265,28 @@ func TestPropertyMonotoneByExpiry(t *testing.T) {
 		t.Fatal("property never exercised")
 	}
 }
+
+// Партия со сроком через 300 рабочих часов вне горизонта: рекомендации нет.
+func TestHorizonExcludesFarBatch(t *testing.T) {
+	c := cfg()
+	c.HorizonHours = 24
+	in := hotoffers.Input{
+		Now:      now,
+		Batches:  []domain.Batch{{ID: 1, ProductID: "potato", Remaining: 5600, ExpiresAt: now.Add(300 / 13 * 24 * time.Hour)}},
+		Dishes:   []domain.Dish{dish("steak", "potato", 100)},
+		Price:    map[string]int64{"potato": 100},
+		RateHour: map[string]float64{"potato": 1},
+		Schedule: sched(),
+		Config:   c,
+	}
+	if w := workingHours(in.Now, in.Batches[0].ExpiresAt, in.Schedule); w < 290 || w > 320 {
+		t.Fatalf("setup: W=%v", w)
+	}
+	if offers, _ := Rank(in); len(offers) != 0 {
+		t.Fatalf("far batch must not produce offers: %+v", offers)
+	}
+	in.Config.HorizonHours = 0
+	if offers, _ := Rank(in); len(offers) == 0 {
+		t.Fatal("without horizon the offer must exist")
+	}
+}

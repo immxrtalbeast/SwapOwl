@@ -257,6 +257,7 @@ export interface HotOffer {
   dish_name: string;
   priority: number;
   target_portions: number;
+  target_today: number;
   usual_portions: number;
   sell_until: string;
   reasons: HotReason[];

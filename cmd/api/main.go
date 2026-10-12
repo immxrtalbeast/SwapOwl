@@ -154,10 +154,10 @@ func run() error {
 			Snap: store.Snapshotter{DB: db, Params: store.SnapshotParams{
 				WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}}},
 		HotConfig: api.HotOffersConfig{DefaultAlgo: cfg.HotOffersAlgo, Rank: hotoffers.Config{
-			TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter}}})
+			TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter, HorizonHours: cfg.HotHorizon}}})
 	go newHotWatcher(bus, store.Snapshotter{DB: db, Params: store.SnapshotParams{
 		WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
-		hotoffers.Config{TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter},
+		hotoffers.Config{TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter, HorizonHours: cfg.HotHorizon},
 		now, log).run(ctx)
 
 	srv := &http.Server{

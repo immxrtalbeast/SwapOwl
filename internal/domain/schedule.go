@@ -177,3 +177,47 @@ func WorkingHours(from, to time.Time, sch Schedule) float64 {
 	}
 	return total
 }
+
+// ShiftEnd — конец текущей смены: Close интервала, содержащего now (в том числе начавшегося вчера
+// и идущего через полночь), иначе конец последнего интервала открытия сегодняшнего дня после now.
+// Если больше нет рабочего времени сегодня — now. Выбор интервалов тот же, что в WorkingHours.
+func ShiftEnd(now time.Time, sch Schedule) time.Time {
+	loc := sch.Location
+	if loc == nil {
+		loc = time.UTC
+	}
+	now = now.In(loc)
+	intervals := func(wd time.Weekday) []Interval {
+		if len(sch.Days) > 0 {
+			return sch.Days[wd]
+		}
+		if sch.CloseAt <= sch.OpenAt {
+			return nil
+		}
+		return []Interval{{sch.OpenAt, sch.CloseAt}}
+	}
+	at := func(d time.Time, off time.Duration) time.Time {
+		return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, int(off/time.Second), 0, loc)
+	}
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	for _, d := range []time.Time{today.AddDate(0, 0, -1), today} {
+		for _, iv := range intervals(d.Weekday()) {
+			if a, b := at(d, iv.Open), at(d, iv.Close); !now.Before(a) && now.Before(b) {
+				// Перерыв внутри дня не обрывает смену: берём конец последнего интервала того же дня.
+				for _, o := range intervals(d.Weekday()) {
+					if e := at(d, o.Close); e.After(b) {
+						b = e
+					}
+				}
+				return b
+			}
+		}
+	}
+	end := now
+	for _, iv := range intervals(today.Weekday()) {
+		if a, b := at(today, iv.Open), at(today, iv.Close); a.After(now) && b.After(end) {
+			end = b
+		}
+	}
+	return end
+}
