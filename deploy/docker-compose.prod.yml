@@ -1,0 +1,134 @@
+# Прод-стенд (VPS 1 vCPU / 2 ГБ). Запуск: deploy/scripts/deploy.sh <tag>.
+# Наружу открыты только 80 и 443 caddy. Не пересекается с чужим контейнером postgres на сервере.
+name: swapowl
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+    mem_limit: 128m
+    restart: unless-stopped
+    logging: *logging
+
+  web:
+    image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/web:${IMAGE_TAG:-latest}
+    mem_limit: 64m
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/api:${IMAGE_TAG:-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-umirhack}:${POSTGRES_PASSWORD:-}@postgres:5432/${POSTGRES_DB:-umirhack}?sslmode=disable
+      PORT: "8080"
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+      RESTAURANT_TZ: ${RESTAURANT_TZ:-Europe/Moscow}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      CLOCK_MODE: ${CLOCK_MODE:-real}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
+      ADMIN_LOGIN: ${ADMIN_LOGIN:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      DEMO_TOKEN: ${DEMO_TOKEN:-}
+      SEED_ON_EMPTY: ${SEED_ON_EMPTY:-true}
+      LATE_EVENTS_HOURS: ${LATE_EVENTS_HOURS:-2}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    mem_limit: 256m
+    restart: unless-stopped
+    logging: *logging
+
+  postgres:
+    image: postgres:16-alpine
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=50"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-umirhack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: ${POSTGRES_DB:-umirhack}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 512m
+    restart: unless-stopped
+    logging: *logging
+
+  fake-iiko:
+    image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/iiko-adapter:${IMAGE_TAG:-latest}
+    entrypoint: ["/usr/local/bin/fake-iiko"]
+    command: ["-addr", ":8081"]
+    environment:
+      FAKE_IIKO_LOGIN: ${IIKO_LOGIN:-demo}
+      FAKE_IIKO_PASSWORD: ${IIKO_PASSWORD:-}
+    mem_limit: 64m
+    restart: unless-stopped
+    logging: *logging
+
+  iiko-adapter:
+    image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/iiko-adapter:${IMAGE_TAG:-latest}
+    depends_on:
+      - api
+      - fake-iiko
+    environment:
+      IIKO_URL: http://fake-iiko:8081
+      IIKO_LOGIN: ${IIKO_LOGIN:-demo}
+      IIKO_PASSWORD: ${IIKO_PASSWORD:-}
+      API_URL: http://api:8080
+      API_KEY: ${ADAPTER_API_KEY:-}
+      ADAPTER_MODE: ${ADAPTER_MODE:-shadow}
+      ADAPTER_STATE_FILE: /data/iiko-adapter-state.json
+      ADAPTER_SHADOW_FILE: /data/iiko-adapter-shadow.json
+    volumes:
+      - adapter_data:/data
+    mem_limit: 64m
+    restart: unless-stopped
+    logging: *logging
+
+  notifier:
+    image: ${IMAGE_REPO:-ghcr.io/immxrtalbeast/umirhack-2026}/notifier:${IMAGE_TAG:-latest}
+    depends_on:
+      - api
+    environment:
+      API_URL: http://api:8080
+      API_KEY: ${NOTIFIER_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    mem_limit: 64m
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  pgdata:
+  adapter_data:
+  caddy_data:
+  caddy_config:

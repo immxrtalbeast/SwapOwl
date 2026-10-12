@@ -1,0 +1,54 @@
+# Обратный прокси стенда. SITE_DOMAIN — домен (Let's Encrypt выпускается сам) или localhost (локальный запуск, HTTP).
+{
+	email {$ACME_EMAIL:}
+}
+
+(site) {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+
+	# SSE: без буферизации события приходят пачками.
+	handle /events {
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle /healthz {
+		reverse_proxy api:8080
+	}
+
+	# /metrics: только с loopback/частных адресов; сверх этого API требует Bearer METRICS_TOKEN.
+	@metrics_outside {
+		path /metrics
+		not remote_ip 127.0.0.1 ::1 172.16.0.0/12
+	}
+	handle @metrics_outside {
+		respond "not found" 404
+	}
+	handle /metrics {
+		reverse_proxy api:8080
+	}
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}
+
+# Боевой домен / localhost (HTTPS, редирект с HTTP). Отдельный http://localhost — локальный запуск без редиректа.
+{$SITE_DOMAIN:localhost} {
+	import site
+}
+
+http://localhost {
+	import site
+}
