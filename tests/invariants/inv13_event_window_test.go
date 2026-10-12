@@ -12,6 +12,8 @@ func TestInv13EventWindow(t *testing.T) {
 	s := newStand(t, standOpts{Dishes: map[string]map[string]int64{"d": {"p": 100}}, Env: []string{"LATE_EVENTS_HOURS=2"}})
 	s.pause()
 	s.mustDeliver("p", 100000, 240)
+	// Склад принят до начала окна: иначе заказ задним числом не находит партию, принятую «сейчас».
+	s.jump(3 * time.Hour)
 	now := s.now()
 	at := func(d time.Duration) string { return now.Add(d).UTC().Format(time.RFC3339Nano) }
 	seq := 0
@@ -41,8 +43,12 @@ func TestInv13EventWindow(t *testing.T) {
 		{"ровно now", 0, true},
 	} {
 		before := s.batchesSnapshot()
-		for kind, call := range map[string]func(string) (int, []byte){"поставка": delivery, "заказ": order} {
-			st, b := call(at(c.d))
+		for _, k := range []struct {
+			kind string
+			call func(string) (int, []byte)
+		}{{"поставка", delivery}, {"заказ", order}} {
+			kind := k.kind
+			st, b := k.call(at(c.d))
 			if c.ok {
 				if st != 201 {
 					t.Errorf("%s, %s: ожидался приём, %d %s", kind, c.name, st, b)
