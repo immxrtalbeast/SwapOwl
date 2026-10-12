@@ -1,12 +1,14 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
-import type { DeliveryInput, SupplySuggestion } from "../../api/types";
+import type { DeliveryInput, SupplyOrder, SupplySuggestion } from "../../api/types";
+import { RoleGate } from "../../auth/AuthContext";
 import { Card, DataTable, EmptyState, ErrorState, LoadingState, PrimaryButton, ScreenTitle, SecondaryButton, UrgencyBadge } from "../../components";
 import type { Column } from "../../components";
 import { SUPPLY_STATES } from "../../lib/urgency";
 import { formatQty } from "../stock/format";
 import { buildAcceptBody, offerKey, outcomeFromError, outcomeFromResult } from "./accept";
 import type { AcceptOutcome } from "./accept";
+import { ORDER_STATUS_TEXT, buildOrderBody, needsPolling, selectionKey } from "./order";
 import { formatStockout } from "./urgency";
 import { useSupply } from "./useSupply";
 
@@ -59,9 +61,55 @@ function AcceptCell({ row, pending, onSent }: { row: SupplySuggestion; pending: 
   );
 }
 
+const ORDER_POLL_MS = 3000;
+
+interface SentOrder {
+  order?: SupplyOrder;
+  /** Ошибка запроса статуса или отправки — не путать с «ошибкой доставки» от адаптера. */
+  failure?: string;
+}
+
 export function SupplyPage() {
   const [state, reload] = useSupply();
   const nowMs = Date.now();
+  // Заказ поставщику в iiko: выбранные строки → POST /api/supply-orders → статус по подтверждению outbox.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [ordering, setOrdering] = useState(false);
+  const [placed, setPlaced] = useState<SentOrder | null>(null);
+  // id заказа живёт, пока выбор тот же: повтор отправки — тот же заказ, без дубля в iiko.
+  const orderIds = useRef(new Map<string, string>());
+  const rows = state.kind === "ready" ? state.rows : [];
+  const chosen = rows.filter((r) => selected.has(offerKey(r)));
+  async function placeOrder() {
+    if (chosen.length === 0) return;
+    const key = selectionKey(chosen);
+    let id = orderIds.current.get(key);
+    if (!id) {
+      id = crypto.randomUUID();
+      orderIds.current.set(key, id);
+    }
+    setOrdering(true);
+    try {
+      const order = await api.createSupplyOrder(buildOrderBody(chosen, id));
+      setPlaced({ order });
+    } catch (e) {
+      setPlaced((prev) => ({ order: prev?.order, failure: e instanceof Error ? e.message : "Не удалось отправить заказ" }));
+    } finally {
+      setOrdering(false);
+    }
+  }
+  const placedId = placed?.order?.id;
+  const placedStatus = placed?.order?.status;
+  useEffect(() => {
+    if (!placedId || !placedStatus || !needsPolling(placedStatus)) return;
+    const t = setInterval(() => {
+      api.supplyOrder(placedId).then(
+        (order) => setPlaced({ order }),
+        () => undefined, // следующий опрос повторит
+      );
+    }, ORDER_POLL_MS);
+    return () => clearInterval(t);
+  }, [placedId, placedStatus]);
   // Отправленное тело хранится на уровне страницы: повтор не зависит от пересчёта строк после SSE.
   const [sent, setSent] = useState<Sent | null>(null);
   const [resending, setResending] = useState(false);
@@ -94,6 +142,25 @@ export function SupplyPage() {
   };
   const columns: Column<SupplySuggestion>[] = [
     {
+      key: "select",
+      header: "Выбор",
+      cell: (r) => (
+        <input
+          type="checkbox"
+          aria-label={`Выбрать ${r.product_name} для заказа в iiko`}
+          checked={selected.has(offerKey(r))}
+          onChange={(e) =>
+            setSelected((prev) => {
+              const next = new Set(prev);
+              if (e.target.checked) next.add(offerKey(r));
+              else next.delete(offerKey(r));
+              return next;
+            })
+          }
+        />
+      ),
+    },
+    {
       key: "product",
       header: "Продукт",
       cell: (r) => (
@@ -123,6 +190,21 @@ export function SupplyPage() {
           <SecondaryButton size="compact-sm" onClick={() => void resend()} disabled={resending}>Отправить ещё раз</SecondaryButton>
         </div>
       )}
+      <RoleGate min="operator">
+        <div style={{ margin: "0 0 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", font: "var(--type-body)" }}>
+          <PrimaryButton size="compact-md" onClick={() => void placeOrder()} disabled={ordering || chosen.length === 0} loading={ordering}>
+            Отправить заказ в iiko
+          </PrimaryButton>
+          <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>Выбрано строк: {chosen.length}</span>
+          {placed?.order && (
+            <span role={placed.order.status === "error" ? "alert" : "status"}>
+              Заказ поставщику: {ORDER_STATUS_TEXT[placed.order.status]}
+              {placed.order.status === "error" && placed.order.last_error ? ` (${placed.order.last_error}); адаптер повторит` : ""}
+            </span>
+          )}
+          {placed?.failure && <span role="alert">{placed.failure}</span>}
+        </div>
+      </RoleGate>
       <Card flush>
         {state.kind === "loading" && <div style={{ padding: 16 }}><LoadingState label="Загрузка поставок" /></div>}
         {state.kind === "error" && <ErrorState what="поставки" reason={state.message} onRetry={() => void reload()} />}

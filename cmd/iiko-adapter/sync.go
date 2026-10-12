@@ -73,7 +73,9 @@ type adapter struct {
 	retryBase    time.Duration // первая пауза после ошибки iiko; дальше удваивается
 	retryMax     time.Duration
 	retryAt      map[int64]time.Time // id строки outbox → не повторять раньше этого момента
-	bootstrapped bool                // в боевом режиме стоп-лист iiko приведён к текущему (раз за запуск)
+	supplierID   string              // поставщик и склад документа «Заказ поставщику» (ADAPTER_SUPPLIER_ID, ADAPTER_STORE_ID)
+	storeID      string
+	bootstrapped bool // в боевом режиме стоп-лист iiko приведён к текущему (раз за запуск)
 }
 
 // skippable — ответ API, который повтором не исправить: 4xx, кроме 401/403/429.

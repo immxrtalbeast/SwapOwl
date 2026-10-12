@@ -42,11 +42,12 @@ type Options struct {
 
 // Server — фейковый iikoServer.
 type Server struct {
-	opt   Options
-	loc   *time.Location
-	token string
-	mu    sync.Mutex
-	stop  []iiko.StopItem
+	opt    Options
+	loc    *time.Location
+	token  string
+	mu     sync.Mutex
+	stop   []iiko.StopItem
+	orders []iiko.PurchaseOrder // принятые заказы поставщику, по порядку первого импорта
 }
 
 // New создаёт сервер.
@@ -72,6 +73,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(iiko.PathProducts, s.keyed(s.products))
 	mux.HandleFunc(iiko.PathAssemblyCharts, s.keyed(s.charts))
 	mux.HandleFunc(iiko.PathIncomingInvoice, s.keyed(s.invoices))
+	mux.HandleFunc(iiko.PathPurchaseImport, s.keyed(s.importPurchase))
+	mux.HandleFunc(iiko.PathPurchaseExport, s.keyed(s.exportPurchase))
 	mux.HandleFunc(iiko.PathOLAP, s.keyed(s.olap))
 	mux.HandleFunc(iiko.PathBalanceStores, s.keyed(s.balance))
 	mux.HandleFunc(iiko.PathStopLists, s.keyed(s.stopList))
@@ -447,4 +450,79 @@ func (s *Server) stopList(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func writeValidation(w http.ResponseWriter, res iiko.DocumentValidationResult) {
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	fmt.Fprint(w, xml.Header)
+	_ = xml.NewEncoder(w).Encode(res)
+}
+
+// importPurchase принимает документ «Заказ поставщику» (POST, XML). Документ с уже известным id
+// заменяет прежний: дубля нет. [ПРЕДПОЛОЖЕНО]
+func (s *Server) importPurchase(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var doc iiko.PurchaseOrder
+	if err := xml.NewDecoder(r.Body).Decode(&doc); err != nil {
+		bad(w, "некорректный XML: "+err.Error())
+		return
+	}
+	invalid := func(msg string) {
+		writeValidation(w, iiko.DocumentValidationResult{Valid: false, DocumentNumber: doc.DocumentNumber, ErrorMessage: msg})
+	}
+	if doc.ID == "" || doc.Supplier == "" || doc.DefaultStore == "" || len(doc.Items) == 0 {
+		invalid("нужны id, supplier, defaultStore и хотя бы одна позиция")
+		return
+	}
+	known := map[string]bool{}
+	for _, p := range seed.Products() {
+		known[p.ID] = true
+	}
+	for _, it := range doc.Items {
+		if !known[it.Product] {
+			invalid("неизвестный продукт " + it.Product)
+			return
+		}
+		if it.Amount <= 0 {
+			invalid("количество должно быть положительным: " + it.Product)
+			return
+		}
+	}
+	s.mu.Lock()
+	replaced := false
+	for i := range s.orders {
+		if s.orders[i].ID == doc.ID {
+			s.orders[i], replaced = doc, true
+		}
+	}
+	if !replaced {
+		s.orders = append(s.orders, doc)
+	}
+	s.mu.Unlock()
+	writeValidation(w, iiko.DocumentValidationResult{Valid: true, DocumentNumber: doc.DocumentNumber})
+}
+
+// exportPurchase возвращает принятые заказы поставщику (GET, XML), для проверки; ?id= — один документ.
+func (s *Server) exportPurchase(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	want := r.URL.Query().Get("id")
+	out := iiko.PurchaseOrders{}
+	s.mu.Lock()
+	for _, d := range s.orders {
+		if want == "" || d.ID == want {
+			out.Documents = append(out.Documents, d)
+		}
+	}
+	s.mu.Unlock()
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	fmt.Fprint(w, xml.Header)
+	enc := xml.NewEncoder(w)
+	enc.Indent("", "  ")
+	_ = enc.Encode(out)
 }

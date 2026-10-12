@@ -52,6 +52,8 @@ type Deps struct {
 	HotConfig HotOffersConfig
 	// Supply — предложение поставок (2.6). nil — маршрут не регистрируется.
 	Supply SupplySource
+	// SupplyOrders — заказ поставщику через outbox (FS-121). nil — маршруты не регистрируются.
+	SupplyOrders SupplyOrders
 	// Outbox — очередь исходящих сообщений для адаптера (8.0а). nil — маршруты не регистрируются.
 	Outbox Outbox
 	// Analytics — деньги: списания и расхождения кассы (7.4). nil — маршруты не регистрируются.
@@ -125,6 +127,7 @@ func (rt *Router) Routes() {
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()
 	rt.supplyRoutes()
+	rt.supplyOrderRoutes()
 	rt.analyticsRoutes()
 	rt.eventsRoutes()
 	rt.outboxRoutes()

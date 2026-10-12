@@ -23,6 +23,7 @@ type (
 	allMenu        struct{ MenuSource }
 	allHot         struct{ HotOffersSource }
 	allSupply      struct{ SupplySource }
+	allSupplyOrd   struct{ SupplyOrders }
 	allOutbox      struct{ Outbox }
 	allAnalytics   struct{ Analytics }
 	allMonitor     struct{ Monitor }
@@ -37,7 +38,7 @@ func routerPairs() map[string]bool {
 	rt := NewRouter(Deps{
 		Auth: &auth.Service{}, Audit: allAudit{}, Stock: allStock{}, Catalog: allCatalog{},
 		Orders: allOrders{}, Corrections: allCorrections{}, Menu: allMenu{}, HotOffers: allHot{},
-		Supply: allSupply{}, Outbox: allOutbox{}, Analytics: allAnalytics{}, Monitor: allMonitor{},
+		Supply: allSupply{}, SupplyOrders: allSupplyOrd{}, Outbox: allOutbox{}, Analytics: allAnalytics{}, Monitor: allMonitor{},
 		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(),
 	})
 	out := map[string]bool{}

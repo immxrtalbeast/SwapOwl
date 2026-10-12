@@ -16,8 +16,9 @@ const (
 	modeShadow = "shadow"
 	modeLive   = "live"
 
-	kindStoplist = "stoplist" // store.OutboxStoplist; адаптер store не импортирует
-	outboxBatch  = 1000       // store.MaxOutboxLimit
+	kindStoplist    = "stoplist"     // store.OutboxStoplist; адаптер store не импортирует
+	kindSupplyOrder = "supply_order" // store.OutboxSupplyOrder
+	outboxBatch     = 1000           // store.MaxOutboxLimit
 )
 
 // backoff — пауза после n-й подряд неудачной доставки: base·2^(n−1), не больше max.
@@ -57,14 +58,23 @@ func (a *adapter) processOutbox(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var stops []outboxEntry
+	var stops, orders []outboxEntry
 	for _, e := range entries {
-		if e.Kind != kindStoplist {
+		switch e.Kind {
+		case kindStoplist:
+			stops = append(stops, e)
+		case kindSupplyOrder:
+			orders = append(orders, e)
+		default:
 			a.log.Printf("outbox %d: вид %q адаптер не обрабатывает, пропущено", e.ID, e.Kind)
-			continue
 		}
-		stops = append(stops, e)
 	}
+	// Заказы поставщику независимы друг от друга и от стоп-листа: сбой одного не задерживает остальное.
+	return errors.Join(a.processStoplist(ctx, stops), a.processSupplyOrders(ctx, orders))
+}
+
+// processStoplist доставляет стоп-лист (последнее сообщение; ранние вытесняются).
+func (a *adapter) processStoplist(ctx context.Context, stops []outboxEntry) error {
 	if len(stops) == 0 {
 		return a.bootstrapStopList(ctx)
 	}
@@ -147,4 +157,74 @@ func (a *adapter) bootstrapStopList(ctx context.Context) error {
 	}
 	a.bootstrapped = true
 	return nil
+}
+
+// supplyOrderPayload — payload сообщения supply_order (store.supplyOrderPayload); количество в базовых единицах.
+type supplyOrderPayload struct {
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	Items     []struct {
+		ProductID string `json:"product_id"`
+		Qty       int64  `json:"qty"`
+		Unit      string `json:"unit"`
+	} `json:"items"`
+}
+
+// purchaseOrderDoc собирает документ «Заказ поставщику». Id документа — id нашего заказа, поэтому
+// повтор доставки (не дошёл ack) заменяет документ в iiko, а не создаёт второй.
+func (a *adapter) purchaseOrderDoc(p supplyOrderPayload) (iiko.PurchaseOrder, error) {
+	if a.mode == modeLive && (a.supplierID == "" || a.storeID == "") {
+		return iiko.PurchaseOrder{}, errors.New("не заданы ADAPTER_SUPPLIER_ID и ADAPTER_STORE_ID")
+	}
+	short := p.ID
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	doc := iiko.PurchaseOrder{ID: p.ID, DocumentNumber: "ЗП-" + short, DateIncoming: p.CreatedAt.In(a.loc).Format(iiko.DateTimeLayout),
+		Supplier: a.supplierID, DefaultStore: a.storeID}
+	for i, it := range p.Items {
+		k := 1.0
+		if it.Unit == "g" || it.Unit == "ml" { // основная единица iiko — кг и л
+			k = 1000
+		}
+		doc.Items = append(doc.Items, iiko.PurchaseOrderItem{Num: i + 1, Product: it.ProductID, Amount: float64(it.Qty) / k})
+	}
+	return doc, nil
+}
+
+// processSupplyOrders доставляет заказы поставщику по одному. Боевой режим — документ в iiko; теневой —
+// только строка в журнале адаптера «отправил бы», сообщение подтверждается. Неудача — ack с ошибкой и пауза с удвоением.
+func (a *adapter) processSupplyOrders(ctx context.Context, orders []outboxEntry) error {
+	var errs []error
+	for _, e := range orders {
+		if at, ok := a.retryAt[e.ID]; ok && a.now().Before(at) {
+			continue
+		}
+		var p supplyOrderPayload
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			errs = append(errs, a.failOutbox(ctx, e, fmt.Errorf("payload: %w", err)))
+			continue
+		}
+		doc, err := a.purchaseOrderDoc(p)
+		if err == nil {
+			if a.mode == modeLive {
+				err = a.iiko.ImportPurchaseOrder(ctx, doc)
+			} else {
+				a.log.Printf("теневой режим: заказ поставщику не отправлен в iiko, отправил бы: заказ %s, %d позиций (outbox %d)", p.ID, len(doc.Items), e.ID)
+			}
+		}
+		if err != nil {
+			errs = append(errs, a.failOutbox(ctx, e, err))
+			continue
+		}
+		if a.mode == modeLive {
+			a.log.Printf("заказ поставщику %s в iiko: %d позиций", p.ID, len(doc.Items))
+		}
+		if err := a.api.ackOutbox(ctx, e.ID, true, ""); err != nil {
+			errs = append(errs, fmt.Errorf("ack %d: %w", e.ID, err))
+			continue
+		}
+		delete(a.retryAt, e.ID)
+	}
+	return errors.Join(errs...)
 }

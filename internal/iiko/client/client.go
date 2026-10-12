@@ -149,7 +149,11 @@ func (c *Client) send(ctx context.Context, method, rawURL string, payload []byte
 			return 0, nil, err
 		}
 		if payload != nil {
-			req.Header.Set("Content-Type", "application/json")
+			ct := "application/json"
+			if payload[0] == '<' {
+				ct = "application/xml"
+			}
+			req.Header.Set("Content-Type", ct)
 		}
 		resp, err := c.hc.Do(req)
 		var status int
@@ -231,6 +235,11 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 			return nil, err
 		}
 	}
+	return c.doRaw(ctx, method, path, q, payload)
+}
+
+// doRaw — как do, но тело уже готово (XML или JSON).
+func (c *Client) doRaw(ctx context.Context, method, path string, q url.Values, payload []byte) ([]byte, error) {
 	for attempt := 0; attempt < 2; attempt++ {
 		if c.key() == "" {
 			if err := c.auth(ctx); err != nil {
@@ -348,4 +357,40 @@ func (c *Client) Balance(ctx context.Context, at time.Time) ([]iiko.BalanceItem,
 	}
 	var out []iiko.BalanceItem
 	return out, json.Unmarshal(b, &out)
+}
+
+// ImportPurchaseOrder передаёт в iiko документ «Заказ поставщику». Повтор с тем же id документа
+// заменяет его, а не создаёт второй. Ответ iiko valid=false — ошибка. [ПРЕДПОЛОЖЕНО]: путь не сверен.
+func (c *Client) ImportPurchaseOrder(ctx context.Context, doc iiko.PurchaseOrder) error {
+	b, err := xml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	resp, err := c.doRaw(ctx, http.MethodPost, iiko.PathPurchaseImport, nil, b)
+	if err != nil {
+		return err
+	}
+	var res iiko.DocumentValidationResult
+	if err := xml.Unmarshal(resp, &res); err != nil {
+		return fmt.Errorf("iiko purchaseOrder: ответ: %w", err)
+	}
+	if !res.Valid {
+		return fmt.Errorf("iiko purchaseOrder: документ отклонён: %s", res.ErrorMessage)
+	}
+	return nil
+}
+
+// PurchaseOrders читает заказы поставщику (id пустой — все). Есть у фейка; в настоящем iiko путь
+// не сверен [ПРЕДПОЛОЖЕНО], используется для проверки в тестах и стенде.
+func (c *Client) PurchaseOrders(ctx context.Context, id string) ([]iiko.PurchaseOrder, error) {
+	q := url.Values{}
+	if id != "" {
+		q.Set("id", id)
+	}
+	b, err := c.do(ctx, http.MethodGet, iiko.PathPurchaseExport, q, nil)
+	if err != nil {
+		return nil, err
+	}
+	var out iiko.PurchaseOrders
+	return out.Documents, xml.Unmarshal(b, &out)
 }
