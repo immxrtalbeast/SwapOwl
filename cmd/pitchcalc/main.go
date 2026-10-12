@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"umirhack/internal/domain"
-	"umirhack/internal/domain/units"
-	"umirhack/internal/generator"
 	"umirhack/internal/hotoffers"
 	hotbg "umirhack/internal/hotoffers/b"
 	"umirhack/internal/seed"
@@ -24,6 +22,13 @@ func main() {
 	runs := flag.Int("runs", 20, "число прогонов (сидов)")
 	seed0 := flag.Int64("seed0", 1, "первый сид; прогоны идут с сидами seed0 … seed0+runs−1")
 	accept := flag.String("accept", "0,30,60", "доля горячих предложений, которые гость берёт, %, через запятую")
+	pf := defaultProfile()
+	flag.IntVar(&pf.Checks, "checks", pf.Checks, "чеков в сутки в среднем")
+	flag.Float64Var(&pf.CoverDays, "cover-days", pf.CoverDays, "закупка: запас в сутках сверх интервала между поставками")
+	flag.Float64Var(&pf.Reserve, "reserve", pf.Reserve, "закупка: запас сверх прогноза, доля (0.10 = 10 %)")
+	flag.Float64Var(&pf.ForecastErr, "forecast-err", pf.ForecastErr, "закупка: ошибка прогноза спроса, ± доля")
+	flag.IntVar(&pf.ShortShare, "short-share", pf.ShortShare, "доля поставки с коротким сроком (остатки поставщика), %")
+	flag.Float64Var(&pf.ShortFactor, "short-factor", pf.ShortFactor, "короткий срок = срок × коэффициент")
 	flag.Parse()
 
 	acc, err := parseAccept(*accept)
@@ -35,7 +40,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "pitchcalc: -days и -runs должны быть ≥ 1")
 		os.Exit(2)
 	}
-	rep, err := compute(*days, *runs, *seed0, acc)
+	rep, err := compute(*days, *runs, *seed0, acc, pf)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "pitchcalc:", err)
 		os.Exit(1)
@@ -77,7 +82,9 @@ type result struct {
 	Orders, Rejected int
 	HotTaken         int
 	Writeoff         int64   // копейки по закупочной цене
-	Received         int64   // копейки
+	Received         int64   // копейки, закуплено
+	Revenue          int64   // копейки, выручка по ценам блюд обслуженных заказов
+	COGS             int64   // копейки, себестоимость продуктов в проданных блюдах
 	StopDishHours    float64 // блюдо-часов в стоп-листе в часы работы
 	StockOuts        int     // переходов «продукт был → продукта нет»
 }
@@ -170,11 +177,11 @@ func before(o order, x, y domain.Batch) bool {
 }
 
 // consume атомарно списывает потребность в порядке режима; при нехватке склад не меняется.
-func (w *warehouse) consume(o order, needs map[string]domain.Qty, now time.Time) bool {
+func (w *warehouse) consume(o order, needs map[string]domain.Qty, now time.Time, price map[string]int64) (int64, bool) {
 	stock := w.stock(now)
 	for p, q := range needs {
 		if stock[p] < q {
-			return false
+			return 0, false
 		}
 	}
 	var idx []int
@@ -193,6 +200,7 @@ func (w *warehouse) consume(o order, needs map[string]domain.Qty, now time.Time)
 	for p, q := range needs {
 		left[p] = q
 	}
+	var spent int64
 	for _, i := range idx {
 		b := &w.batches[i]
 		take := left[b.ProductID]
@@ -204,8 +212,9 @@ func (w *warehouse) consume(o order, needs map[string]domain.Qty, now time.Time)
 		}
 		b.Remaining -= take
 		left[b.ProductID] -= take
+		spent += cost(take, price[b.ProductID])
 	}
-	return true
+	return spent, true
 }
 
 func cost(q domain.Qty, pricePer1000 int64) int64 { return int64(q) * pricePer1000 / 1000 }
@@ -221,55 +230,50 @@ func hash(a, b, c int64) uint64 {
 
 func unit(h uint64) float64 { return float64(h>>11) / (1 << 53) }
 
-// run гонит поток событий через склад в режиме v. Результат зависит только от сида и режима.
-func run(v variant, seedValue int64, days int, events []generator.Event, t0 time.Time, loc *time.Location) (result, error) {
+// run гонит поток чеков через склад в режиме v; поставки идут по правилу закупки профиля.
+// Результат зависит только от сида и режима.
+func run(v variant, seedValue int64, days int, pf profile, checks []check, t0 time.Time, loc *time.Location) (result, error) {
 	end := t0.Add(time.Duration(days) * 24 * time.Hour)
 	hours := seed.WorkingHours()
 	sch := domain.Schedule{Location: loc, OpenAt: hours.OpenAt, CloseAt: hours.CloseAt}
 
-	products := map[string]seed.Product{}
 	price := map[string]int64{}
+	products := map[string]seed.Product{}
 	for _, pr := range seed.Products() {
 		products[pr.ID] = pr
 		price[pr.ID] = pr.PriceMinorPer1000
 	}
 	var dishes []domain.Dish
 	recipes := map[string]map[string]domain.Qty{}
-	priors := map[string]float64{}
+	dishPrice := map[string]int64{}
+	priors := pf.dishPerDay()
 	for _, d := range seed.Dishes() {
 		dishes = append(dishes, domain.Dish{ID: d.ID, Name: d.Name, Recipe: d.Recipe})
-		priors[d.ID] = d.PriorDaily
+		dishPrice[d.ID] = d.PriceMinor
 		r := map[string]domain.Qty{}
 		for _, it := range d.Recipe {
 			r[it.ProductID] += it.Quantity
 		}
 		recipes[d.ID] = r
 	}
+	need := pf.productNeed()
 
 	var res result
 	w := &warehouse{}
 	account := func(b domain.Batch) { res.Writeoff += cost(b.Remaining, price[b.ProductID]) }
-	receive := func(d seed.Delivery, at time.Time) error {
-		for _, it := range d.Items {
-			pr, ok := products[it.ProductID]
-			if !ok {
-				return fmt.Errorf("неизвестный продукт %q", it.ProductID)
-			}
-			uq, err := units.Parse(it.Quantity, it.Unit, units.Unit(pr.Unit))
-			if err != nil {
-				return fmt.Errorf("поставка %s: %w", d.ID, err)
-			}
-			q := domain.Qty(uq)
-			w.receive(pr.ID, q, at, time.Duration(it.ShelfLifeHours)*time.Hour)
-			res.Received += cost(q, pr.PriceMinorPer1000)
-		}
-		return nil
-	}
-	for _, d := range seed.StartingDeliveries(t0) {
-		if err := receive(d, t0.Add(-time.Second)); err != nil {
-			return res, err
+
+	// Первая поставка — утром первого дня, за 2 часа до открытия t0.
+	nextDelivery := t0.Add(-(hours.OpenAt - deliveryAt))
+	dayIdx := 0
+	deliverUntil := func(t time.Time) {
+		for !nextDelivery.After(t) {
+			w.expire(nextDelivery, account)
+			res.Received += pf.procure(w, nextDelivery, dayIdx, seedValue, need, price)
+			dayIdx++
+			nextDelivery = nextDelivery.AddDate(0, 0, 1)
 		}
 	}
+	deliverUntil(t0)
 
 	hadStock := map[string]bool{}
 	for p := range products {
@@ -303,6 +307,7 @@ func run(v variant, seedValue int64, days int, events []generator.Event, t0 time
 	nextTick := t0
 	tick := func(until time.Time) {
 		for ; nextTick.Before(until); nextTick = nextTick.Add(tickStep) {
+			deliverUntil(nextTick)
 			w.expire(nextTick, account)
 			observe(nextTick)
 			if inHours(nextTick) {
@@ -312,51 +317,49 @@ func run(v variant, seedValue int64, days int, events []generator.Event, t0 time
 	}
 
 	var history []domain.OrderedDish
-	orderIdx := 0
-	for _, ev := range events {
-		if !ev.At.Before(end) {
+	for orderIdx, ch := range checks {
+		if !ch.At.Before(end) {
 			break
 		}
-		tick(ev.At)
-		w.expire(ev.At, account)
-		switch ev.Kind {
-		case generator.KindDelivery:
-			if err := receive(*ev.Delivery, ev.At); err != nil {
+		tick(ch.At)
+		deliverUntil(ch.At)
+		w.expire(ch.At, account)
+
+		var offers []hotoffers.Offer
+		if v.Hot && v.Accept > 0 {
+			var err error
+			offers, err = rankOffers(ch.At, w, dishes, stopped(ch.At), recipes, priors, price, history, sch)
+			if err != nil {
 				return res, err
 			}
-		case generator.KindOrder:
-			var offers []hotoffers.Offer
-			if v.Hot && v.Accept > 0 {
-				var err error
-				offers, err = rankOffers(ev.At, w, dishes, stopped(ev.At), recipes, priors, price, history, sch)
-				if err != nil {
-					return res, err
-				}
-			}
-			needs := map[string]domain.Qty{}
-			for li, it := range ev.Order.Items {
-				id := it.DishID
-				// Гостю предлагают одно горячее блюдо на заказ (на первой позиции);
-				// предложение из тройки выбирается по хэшу, берёт гость с вероятностью Accept %.
-				if li == 0 && len(offers) > 0 {
-					h := hash(seedValue, int64(orderIdx), 1)
-					if unit(h) < float64(v.Accept)/100 {
-						id = offers[int(hash(int64(h), 3, 4)%uint64(len(offers)))].DishID
-						res.HotTaken++
-					}
-				}
-				history = append(history, domain.OrderedDish{At: ev.At, DishID: id, Portions: int64(it.Portions)})
-				for pid, q := range recipes[id] {
-					needs[pid] += q * domain.Qty(it.Portions)
-				}
-			}
-			res.Orders++
-			if !w.consume(v.Order, needs, ev.At) {
-				res.Rejected++
-			}
-			orderIdx++
 		}
-		observe(ev.At)
+		needs := map[string]domain.Qty{}
+		var revenue int64
+		for li, it := range ch.Items {
+			id := it.DishID
+			// Гостю предлагают одно горячее блюдо на заказ (на первой позиции);
+			// предложение из тройки выбирается по хэшу, берёт гость с вероятностью Accept %.
+			if li == 0 && len(offers) > 0 {
+				h := hash(seedValue, int64(orderIdx), 1)
+				if unit(h) < float64(v.Accept)/100 {
+					id = offers[int(hash(int64(h), 3, 4)%uint64(len(offers)))].DishID
+					res.HotTaken++
+				}
+			}
+			history = append(history, domain.OrderedDish{At: ch.At, DishID: id, Portions: int64(it.Portions)})
+			revenue += dishPrice[id] * int64(it.Portions)
+			for pid, q := range recipes[id] {
+				needs[pid] += q * domain.Qty(it.Portions)
+			}
+		}
+		res.Orders++
+		if spent, ok := w.consume(v.Order, needs, ch.At, price); ok {
+			res.Revenue += revenue
+			res.COGS += spent
+		} else {
+			res.Rejected++
+		}
+		observe(ch.At)
 	}
 	tick(end)
 	w.expire(end, account)
