@@ -24,7 +24,7 @@ type BatchView struct {
 }
 
 // ListBatches — партии без списанных в ноль, порядок (expires_at, id).
-// productID и status ("ok" | "expired") — необязательные фильтры.
+// productID и status ("ok" | "expiring" | "expired") — необязательные фильтры.
 func (d *DB) ListBatches(ctx context.Context, now time.Time, productID, status string) ([]BatchView, error) {
 	rows, err := d.Pool.Query(ctx, `
 		SELECT b.id, b.product_id, b.delivery_id, dl.created_at, b.quantity, b.remaining,
@@ -34,7 +34,7 @@ func (d *DB) ListBatches(ctx context.Context, now time.Time, productID, status s
 		JOIN products p ON p.id = b.product_id
 		WHERE b.remaining > 0
 		  AND ($2 = '' OR b.product_id = $2)
-		  AND ($3 = '' OR ($3 = 'ok' AND b.expires_at > $1) OR ($3 = 'expired' AND b.expires_at <= $1))
+		  AND ($3 = '' OR ($3 IN ('ok','expiring') AND b.expires_at > $1) OR ($3 = 'expired' AND b.expires_at <= $1))
 		ORDER BY b.expires_at, b.id`, now, productID, status)
 	if err != nil {
 		return nil, fmt.Errorf("store: list batches: %w", err)
@@ -50,9 +50,10 @@ func (d *DB) ListBatches(ctx context.Context, now time.Time, productID, status s
 		}
 		b.Quantity.Unit, b.Remaining.Unit = domain.Unit(u), domain.Unit(u)
 		b.TimeLeftSeconds = int64(b.ExpiresAt.Sub(now) / time.Second)
-		b.Status = "ok"
-		if !now.Before(b.ExpiresAt) {
-			b.Status = "expired"
+		// Статус — только через domain.Status, фильтр применяется после него (без расхождения с ним).
+		b.Status = string(domain.Status(domain.Batch{ReceivedAt: b.ReceivedAt, ExpiresAt: b.ExpiresAt}, now, d.Expiry))
+		if status != "" && b.Status != status {
+			continue
 		}
 		out = append(out, b)
 	}
