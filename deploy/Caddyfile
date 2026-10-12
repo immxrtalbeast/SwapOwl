@@ -1,8 +1,4 @@
 # Обратный прокси стенда. SITE_DOMAIN — домен (Let's Encrypt выпускается сам) или localhost (локальный запуск, HTTP).
-{
-	email {$ACME_EMAIL:}
-}
-
 (site) {
 	encode zstd gzip
 
