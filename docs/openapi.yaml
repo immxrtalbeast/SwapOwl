@@ -202,7 +202,7 @@ paths:
         Одна транзакция под блокировкой продукта. Идемпотентна по `id`: тот же `id` и тело — `200`, `replayed: true`;
         другое тело — `409 correction_conflict`. Баланс партий — docs/opened.md.
 
-        `qty` не передан: одна упаковка (`pack_size` продукта, если задан `pack_unit`, но не больше остатка),
+        `qty` не передан: одна упаковка (`pack_size` продукта при `pack_size > 1`, но не больше остатка),
         иначе вся партия.
       parameters:
         - {name: id, in: path, required: true, schema: {type: integer, minimum: 1}}

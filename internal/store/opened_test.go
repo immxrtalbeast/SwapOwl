@@ -16,7 +16,7 @@ func openedDB(t *testing.T) (*DB, *clock.Fixed) {
 	t.Helper()
 	db, clk := orderDB(t)
 	if _, err := db.Pool.Exec(context.Background(),
-		`UPDATE products SET shelf_after_open_hours = 48, pack_size = 1000, pack_unit = 'уп' WHERE id = 'cream'`); err != nil {
+		`UPDATE products SET shelf_after_open_hours = 48, pack_size = 1000 WHERE id = 'cream'`); err != nil {
 		t.Fatal(err)
 	}
 	return db, clk
@@ -162,11 +162,11 @@ func TestOpenBatchExplicitQtyAndWholeBatch(t *testing.T) {
 	balanceHoldsOpened(t, db)
 }
 
-func TestOpenBatchDefaultsToWholeBatchWithoutPack(t *testing.T) {
+func TestOpenBatchDefaultsToWholeBatchWithoutPackSize(t *testing.T) {
 	db, clk := openedDB(t)
 	ctx := context.Background()
 	receiveCream(t, db, clk, "D1", 2500, 240)
-	if _, err := db.Pool.Exec(ctx, `UPDATE products SET pack_unit = NULL WHERE id = 'cream'`); err != nil {
+	if _, err := db.Pool.Exec(ctx, `UPDATE products SET pack_size = 1 WHERE id = 'cream'`); err != nil {
 		t.Fatal(err)
 	}
 	res, err := db.OpenBatch(ctx, OpenInput{ID: "o1", BatchID: 1}, clk.Now)
