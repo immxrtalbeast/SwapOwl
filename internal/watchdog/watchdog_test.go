@@ -3,6 +3,7 @@ package watchdog
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -60,7 +61,7 @@ func setup(t *testing.T, cfg Config) (*Watchdog, *fakeAPI, *rec, *clock.Fixed) {
 	cfg.APIURL = srv.URL
 	clk := clock.NewFixed(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
 	r := &rec{}
-	return New(cfg, srv.Client(), clk, r), api, r, clk
+	return New(cfg, srv.Client(), clk, r, nil), api, r, clk
 }
 
 func TestAPIDownTwiceThenRecover(t *testing.T) {
@@ -178,3 +179,22 @@ func TestTelegramFailureRetries(t *testing.T) {
 		t.Fatalf("got=%v", got)
 	}
 }
+
+func TestErrorsAreLogged(t *testing.T) {
+	var buf strings.Builder
+	w, api, _, _ := setup(t, Config{APIFailures: 1, MetricsToken: "wrong"})
+	w.log = slog.New(slog.NewTextHandler(&buf, nil))
+	w.notify = failing{}
+	api.set(false, "")
+	w.Check(context.Background())
+	api.set(true, "")
+	w.Check(context.Background())
+	out := buf.String()
+	if !strings.Contains(out, "Telegram") || !strings.Contains(out, "/metrics") {
+		t.Fatalf("лог: %q", out)
+	}
+}
+
+type failing struct{}
+
+func (failing) Send(context.Context, string) error { return fmt.Errorf("boom") }

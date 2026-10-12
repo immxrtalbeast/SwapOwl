@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -50,6 +51,7 @@ type Watchdog struct {
 	http   *http.Client
 	clk    clock.Clock
 	notify Notifier
+	log    *slog.Logger
 	disk   func(string) (float64, error)
 
 	apiFails int
@@ -62,7 +64,10 @@ type ruleState struct {
 }
 
 // New собирает сторожа; клиент, часы и диск подменяются в тестах.
-func New(cfg Config, hc *http.Client, clk clock.Clock, n Notifier) *Watchdog {
+func New(cfg Config, hc *http.Client, clk clock.Clock, n Notifier, log *slog.Logger) *Watchdog {
+	if log == nil {
+		log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
 	if cfg.DiskMinFree <= 0 {
 		cfg.DiskMinFree = 0.10
 	}
@@ -72,7 +77,7 @@ func New(cfg Config, hc *http.Client, clk clock.Clock, n Notifier) *Watchdog {
 	if hc == nil {
 		hc = &http.Client{Timeout: 5 * time.Second}
 	}
-	return &Watchdog{cfg: cfg, http: hc, clk: clk, notify: n, disk: DiskFreeFraction, rules: map[string]*ruleState{}}
+	return &Watchdog{cfg: cfg, http: hc, clk: clk, notify: n, log: log, disk: DiskFreeFraction, rules: map[string]*ruleState{}}
 }
 
 // SetDisk подменяет источник доли свободного места.
@@ -103,7 +108,10 @@ func (w *Watchdog) Check(ctx context.Context) {
 
 	if w.cfg.MetricsToken != "" && apiErr == nil {
 		m := map[string]float64{}
-		if err := w.get(ctx, w.cfg.APIURL, "/metrics", w.cfg.MetricsToken, func(r io.Reader) { m = parseMetrics(r) }); err == nil {
+		merr := w.get(ctx, w.cfg.APIURL, "/metrics", w.cfg.MetricsToken, func(r io.Reader) { m = parseMetrics(r) })
+		if merr != nil {
+			w.log.Warn("watchdog: запрос /metrics не удался, правила sync и outbox пропущены (проверьте WATCHDOG_METRICS_TOKEN)", "err", merr)
+		} else {
 			if v, ok := m[MetricSyncAge]; ok && w.cfg.SyncMax > 0 {
 				res["sync"] = verdict{v > w.cfg.SyncMax.Seconds(),
 					fmt.Sprintf("нет синхронизации адаптера уже %s (порог %s)", dur(v), w.cfg.SyncMax)}
@@ -165,7 +173,11 @@ var ruleTitle = map[string]string{
 
 // send при ошибке доставки возвращает false: состояние не меняется, следующая проверка повторит.
 func (w *Watchdog) send(ctx context.Context, text string) bool {
-	return w.notify.Send(ctx, text) == nil
+	if err := w.notify.Send(ctx, text); err != nil {
+		w.log.Warn("watchdog: доставка в Telegram не удалась (проверьте WATCHDOG_TG_TOKEN и WATCHDOG_TG_CHAT)", "err", err)
+		return false
+	}
+	return true
 }
 
 // Run проверяет каждые every до отмены ctx.

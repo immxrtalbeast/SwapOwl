@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
@@ -69,7 +70,7 @@ func run() error {
 		cfg.DiskMinFree = f
 	}
 	tg := watchdog.Telegram{Token: os.Getenv("WATCHDOG_TG_TOKEN"), Chat: os.Getenv("WATCHDOG_TG_CHAT")}
-	w := watchdog.New(cfg, nil, clock.Real{}, tg)
+	w := watchdog.New(cfg, nil, clock.Real{}, tg, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	w.Run(ctx, every)
