@@ -1,0 +1,7 @@
+{"knownRevision":7,"assemblyCharts":[
+  {"id":"33333333-0000-0000-0000-000000000001","assembledProductId":"22222222-0000-0000-0000-000000000001","dateFrom":"2026-01-01","dateTo":null,"assembledAmount":1,
+   "items":[
+     {"sortWeight":0,"productId":"11111111-0000-0000-0000-000000000001","amountIn":0.1,"amountMiddle":0.1,"amountOut":0.1,"packageCount":0},
+     {"sortWeight":1,"productId":"11111111-0000-0000-0000-000000000002","amountIn":0.2,"amountMiddle":0.2,"amountOut":0.2,"packageCount":0}
+   ]}
+]}

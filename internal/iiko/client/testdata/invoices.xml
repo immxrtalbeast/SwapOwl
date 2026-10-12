@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<incomingInvoiceDtoes>
+  <document>
+    <id>44444444-0000-0000-0000-000000000001</id>
+    <documentNumber>ПН-0001</documentNumber>
+    <dateIncoming>2026-10-10T10:00:00</dateIncoming>
+    <status>PROCESSED</status>
+    <supplier>55555555-0000-0000-0000-000000000001</supplier>
+    <defaultStore>66666666-0000-0000-0000-000000000001</defaultStore>
+    <items>
+      <item><num>1</num><product>11111111-0000-0000-0000-000000000001</product><amount>25</amount><price>48.5</price><sum>1212.5</sum></item>
+      <item><num>2</num><product>11111111-0000-0000-0000-000000000002</product><amount>30</amount><price>70</price><sum>2100</sum></item>
+    </items>
+  </document>
+</incomingInvoiceDtoes>

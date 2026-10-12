@@ -1,0 +1,8 @@
+[
+  {"id":"11111111-0000-0000-0000-000000000001","name":"Мука пшеничная","num":"00001","type":"GOODS","mainUnit":"кг","deleted":false,"shelfLifeHours":4320},
+  {"id":"11111111-0000-0000-0000-000000000002","name":"Молоко 3.2%","num":"00002","type":"GOODS","mainUnit":"л","deleted":false},
+  {"id":"11111111-0000-0000-0000-000000000003","name":"Яйцо куриное","num":"00003","type":"GOODS","mainUnit":"шт","deleted":false,"shelfLifeHours":600},
+  {"id":"11111111-0000-0000-0000-000000000004","name":"Специи","num":"00004","type":"GOODS","mainUnit":"упак","deleted":false},
+  {"id":"22222222-0000-0000-0000-000000000001","name":"Блин","num":"10001","type":"DISH","mainUnit":"порц","defaultSalePrice":150,"deleted":false},
+  {"id":"22222222-0000-0000-0000-000000000002","name":"Старое блюдо","num":"10002","type":"DISH","mainUnit":"порц","defaultSalePrice":99,"deleted":true}
+]
