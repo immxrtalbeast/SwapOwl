@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { RoleGate } from "../../auth/AuthContext";
 import { api } from "../../api/client";
@@ -7,11 +8,12 @@ import { useConnection } from "../../app/ConnectionContext";
 import { useStandFormat } from "../../app/useStandFormat";
 import { ApiError } from "../../api/types";
 import type { Alert, Batch, ProductStock } from "../../api/types";
-import { Card, DataTable, ScreenStates, ScreenTitle, UrgencyBadge } from "../../components";
+import { Card, DataTable, ScreenStates, ScreenTitle, SecondaryButton, UrgencyBadge } from "../../components";
 import type { Column } from "../../components";
 import { formatQty } from "../../lib/format";
 import { BATCH_STATES } from "../../lib/urgency";
 import { DeliveryForm } from "./DeliveryForm";
+import { StockCards } from "./StockCards";
 import { buildRows, changedKeys, signature } from "./view";
 import type { StockRow } from "./view";
 
@@ -33,6 +35,9 @@ export function StockPage() {
   const [changed, setChanged] = useState<ReadonlySet<string>>(new Set());
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const f = useStandFormat();
+  // < 640 px: карточки вместо таблицы, форма приёма поставки — под списком и свёрнута.
+  const narrow = useMediaQuery("(max-width: 639px)") ?? false;
+  const [formOpen, setFormOpen] = useState(false);
   const conn = useConnection();
   const prevSig = useRef<Map<string, string> | null>(null);
   const expandedRef = useRef(expanded);
@@ -158,6 +163,9 @@ export function StockPage() {
               <ScreenStates.Empty title="Продуктов пока нет" text="Примите первую поставку — партии появятся на складе." />
             )}
             {state.kind === "ready" && state.products.length > 0 && (
+              narrow ? (
+                <StockCards rows={rows} changed={changed} expiresText={f.dateTime} exactText={f.exact} onToggle={toggle} />
+              ) : (
               <DataTable
                 caption="Продукты склада с раскрытием до партий"
                 columns={columns}
@@ -166,12 +174,22 @@ export function StockPage() {
                 rowTone={(r) => BATCH_STATES[r.state].tone}
                 changed={changed}
               />
+              )
             )}
           </Card>
         </div>
         <RoleGate min="operator">
           <div style={{ flex: "0 1 380px", minWidth: "min(100%, 300px)" }}>
-            <DeliveryForm products={state.kind === "ready" ? state.products : []} onReceived={load} />
+            {narrow && (
+              <SecondaryButton aria-expanded={formOpen} aria-controls="delivery-form" onClick={() => setFormOpen((o) => !o)} style={{ marginBottom: 12 }}>
+                {formOpen ? "Скрыть приём поставки" : "Приём поставки"}
+              </SecondaryButton>
+            )}
+            {(!narrow || formOpen) && (
+              <div id="delivery-form">
+                <DeliveryForm products={state.kind === "ready" ? state.products : []} onReceived={load} />
+              </div>
+            )}
           </div>
         </RoleGate>
       </div>

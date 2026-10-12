@@ -33,7 +33,7 @@ export function AnalyticsPage() {
       )}
       <div role="group" aria-label="Период" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {PERIODS.map((p) => (
-          <SecondaryButton key={p.days} aria-pressed={p.days === days} onClick={() => setDays(p.days)} style={p.days === days ? { background: "var(--brand-tint)" } : undefined}>
+          <SecondaryButton key={p.days} aria-pressed={p.days === days} onClick={() => setDays(p.days)}>
             {p.label}
           </SecondaryButton>
         ))}

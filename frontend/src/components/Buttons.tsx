@@ -17,13 +17,21 @@ export function PrimaryButton(props: Props) {
   );
 }
 
-/** Вторичная: контур 2 px --brand-ink, прозрачный фон. */
+/**
+ * Вторичная: контур 2 px --brand-ink, прозрачный фон.
+ * Как переключатель (aria-pressed="true", «Сутки / 7 дней / 30 дней», «Алгоритм A / B») выбранная
+ * заливается --primary с белым текстом (design-system.md); остальные остаются контурными.
+ */
 export function SecondaryButton(props: Props) {
+  const pressed = props["aria-pressed"] === true || props["aria-pressed"] === "true";
+  const look = pressed
+    ? { border: "2px solid var(--primary)", color: "var(--on-primary)", background: "var(--primary)" }
+    : { border: "2px solid var(--brand-ink)", color: "var(--brand-ink)", background: "transparent" };
   return (
     <Button
       {...props}
       variant="outline"
-      styles={{ root: { ...base, border: "2px solid var(--brand-ink)", color: "var(--brand-ink)", background: "transparent" }, label: { font: "var(--type-button)" } }}
+      styles={{ root: { ...base, ...look }, label: { font: "var(--type-button)" } }}
     />
   );
 }

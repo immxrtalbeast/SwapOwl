@@ -3,7 +3,7 @@ import { MantineProvider } from "@mantine/core";
 import { describe, expect, it } from "vitest";
 import { theme } from "../theme/theme";
 import { BATCH_STATES, SUPPLY_STATES } from "../lib/urgency";
-import { Card, DataTable, EmptyState, ErrorState, ForbiddenState, HandNote, Logo, Pill, UrgencyBadge, UrgencyCounter } from ".";
+import { Card, DataTable, SecondaryButton, EmptyState, ErrorState, ForbiddenState, HandNote, Logo, Pill, UrgencyBadge, UrgencyCounter } from ".";
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(<MantineProvider theme={theme}>{node}</MantineProvider>);
 
@@ -14,6 +14,14 @@ describe("общие компоненты", () => {
     expect(out).toContain("<svg");
     expect(out).toContain("--urgency-risk-bg");
     expect(html(<UrgencyBadge def={SUPPLY_STATES.now} />)).toContain("Заказать сейчас");
+  });
+  it("переключатель: выбранный залит --primary, остальные контурные", () => {
+    const on = html(<SecondaryButton aria-pressed>7 дней</SecondaryButton>);
+    const off = html(<SecondaryButton aria-pressed={false}>Сутки</SecondaryButton>);
+    expect(on).toMatch(/background:\s*var\(--primary\)/);
+    expect(on).toContain("var(--on-primary)");
+    expect(off).toMatch(/background:\s*transparent/);
+    expect(off).not.toContain("var(--on-primary)");
   });
   it("счётчик срочности", () => {
     const out = html(<UrgencyCounter def={BATCH_STATES.expiring} n={3} text="истекают" href="#/alerts" />);
