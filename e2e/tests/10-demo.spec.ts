@@ -112,7 +112,7 @@ test("5. Залп из 10 заказов на крем-суп: ровно S пр
   expect(s, "сливок осталось на 1…5 порций крем-супа").toBeGreaterThanOrEqual(1);
   expect(s).toBeLessThanOrEqual(5);
 
-  const r = await stand.post("/api/demo/burst", { dish_id: ids.soup, orders: 10 });
+  const r = await stand.post("/api/demo/burst", { dish_id: ids.soup, orders: 10 }, true);
   expect(r.status, r.text).toBe(200);
   expect(r.json.accepted, "принято ровно S").toBe(s);
   expect(r.json.rejected, "отклонено 10 − S").toBe(10 - s);
