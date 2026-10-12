@@ -138,9 +138,24 @@ func (s *Stand) abAnchor() time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.anchor.IsZero() {
-		s.anchor = T0(s.Now(), s.Loc)
+		s.anchor = s.restoreABAnchor()
 	}
 	return s.anchor
+}
+
+// restoreABAnchor — T0 сброса после перезапуска процесса. Стартовые поставки профиля ab принимаются
+// за секунду до T0 (loadABStart), поэтому T0 = самая ранняя приёмка партии + 1 с. Без партий (БД пуста
+// или недоступна) — T0 текущих суток стенда, как при сбросе. Иначе генератор заново проиграл бы прошедшие
+// дни с теми же id заказов и поставок, и точка осталась бы без продаж и подвоза.
+func (s *Stand) restoreABAnchor() time.Time {
+	if s.DB != nil {
+		var first *time.Time
+		err := s.DB.Pool.QueryRow(context.Background(), `SELECT min(received_at) FROM batches`).Scan(&first)
+		if err == nil && first != nil {
+			return first.Add(time.Second).UTC()
+		}
+	}
+	return T0(s.Now(), s.Loc)
 }
 
 // abSource — поток событий сценария bench, привязанный к T0 сброса. Спрос подъёмом веса не

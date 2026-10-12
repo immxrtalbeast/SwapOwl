@@ -85,3 +85,24 @@ func TestSeedProfileReported(t *testing.T) {
 		t.Fatal("SeedProfile: пусто и demo — demo, ab — ab")
 	}
 }
+
+// После перезапуска процесса якорь событий ab восстанавливается из БД (T0 сброса), а не берётся
+// от текущих суток стенда: иначе генератор заново проиграл бы прошедшие дни с теми же id.
+func TestABAnchorRestoredAfterRestart(t *testing.T) {
+	s, _ := newStandProfile(t, ProfileAB)
+	ctx := context.Background()
+	s.UseProfile(ProfileAB)
+	if err := s.Reset(ctx); err != nil {
+		t.Fatal(err)
+	}
+	want := s.abAnchor()
+	if _, err := s.Jump(ctx, 30); err != nil { // следующий день стенда
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.anchor = time.Time{} // как новый процесс над той же БД
+	s.mu.Unlock()
+	if got := s.abAnchor(); !got.Equal(want) {
+		t.Fatalf("якорь после перезапуска %v, ожидался T0 сброса %v", got, want)
+	}
+}
