@@ -34,13 +34,19 @@ describe("NetworkView", () => {
     expect(out).toContain('data-offline="true"');
     expect(out).toContain("Нет связи 12 мин");
     expect(out).toContain("данные последнего опроса");
-    expect(out).toContain("1\u00a0000"); // истекающее из кэша, ₽
+    expect(out).toContain("1000\u00a0₽"); // истекающее из кэша, ₽
   });
   it("стоп-лист, горячее предложение и итог по сети", () => {
     expect(out).toContain("1: Паста");
     expect(out).toContain("Стейк из лосося");
     expect(out).toContain("Итого по сети");
     expect(out).toContain("на связи 2 из 3");
+  });
+  it("подробности без загруженных лент не выдают пустые ленты", () => {
+    const d = html(<NetworkView summary={summary} cache={cache} nowMs={NOW} selected="lenin" onSelect={() => {}} detail={null} />);
+    expect(d).toContain("Ленты недоступны");
+    expect(d).not.toContain("Стоп-лист пуст");
+    expect(d).not.toContain("Нет предупреждений");
   });
   it("подробности: ленты и ссылка «Открыть точку»", () => {
     const detail: HubPoint = {

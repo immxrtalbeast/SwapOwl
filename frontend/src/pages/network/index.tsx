@@ -19,7 +19,7 @@ function Link({ row }: { row: PointRow }) {
   const url = row.point.url ?? row.data?.url;
   if (!url) return null;
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" style={{ font: "var(--type-button)", color: "var(--primary)" }}>
+    <a href={url} target="_blank" rel="noopener noreferrer" style={{ font: "var(--type-button)", color: "var(--brand-ink)" }}>
       Открыть точку
     </a>
   );
@@ -45,7 +45,7 @@ function columns(onSelect: (id: string) => void, selected: string | null): Colum
             type="button"
             onClick={(e) => { e.stopPropagation(); onSelect(r.point.id); }}
             aria-pressed={selected === r.point.id}
-            style={{ all: "unset", cursor: "pointer", font: "var(--type-body-strong)", color: r.online ? "var(--primary)" : "var(--text-subtle)", textDecoration: "underline" }}
+            style={{ all: "unset", cursor: "pointer", font: "var(--type-body-strong)", color: r.online ? "var(--brand-ink)" : "var(--text-subtle)", textDecoration: "underline" }}
           >
             {r.point.name}
           </button>
@@ -83,17 +83,20 @@ function columns(onSelect: (id: string) => void, selected: string | null): Colum
 function Detail({ row, detail }: { row: PointRow; detail: HubPoint | null }) {
   const alerts = detail?.alerts ?? [];
   const stop = detail?.stop_list ?? [];
+  const missing = detail === null;
   return (
     <Card title={`Подробности: ${row.point.name}`} actions={<Link row={row} />}>
       {!row.online && (
         <p style={{ margin: "0 0 12px", color: "var(--text-muted)" }}>
-          Точка недоступна — ленты показаны по данным последнего опроса{row.lastSuccessAt ? ` в ${clockText(row.lastSuccessAt)}` : ""}.
+          Точка недоступна — ленты (если есть) показаны по данным последнего опроса{row.lastSuccessAt ? ` в ${clockText(row.lastSuccessAt)}` : ""}.
         </p>
       )}
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
         <section aria-label="Предупреждения">
           <h3 style={{ margin: "0 0 8px", font: "var(--type-h3)" }}>Предупреждения</h3>
-          {alerts.length === 0 ? (
+          {missing ? (
+            <p style={{ margin: 0, color: "var(--text-muted)" }}>Ленты недоступны — нет данных последнего опроса.</p>
+          ) : alerts.length === 0 ? (
             <p style={{ margin: 0, color: "var(--text-muted)" }}>Нет предупреждений.</p>
           ) : (
             <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
@@ -110,7 +113,9 @@ function Detail({ row, detail }: { row: PointRow; detail: HubPoint | null }) {
         </section>
         <section aria-label="Стоп-лист">
           <h3 style={{ margin: "0 0 8px", font: "var(--type-h3)" }}>Стоп-лист</h3>
-          {stop.length === 0 ? (
+          {missing ? (
+            <p style={{ margin: 0, color: "var(--text-muted)" }}>Ленты недоступны — нет данных последнего опроса.</p>
+          ) : stop.length === 0 ? (
             <p style={{ margin: 0, color: "var(--text-muted)" }}>Стоп-лист пуст.</p>
           ) : (
             <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>

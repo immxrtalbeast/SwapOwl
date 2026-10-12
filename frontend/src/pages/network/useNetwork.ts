@@ -33,9 +33,11 @@ export function useNetwork(selected: string | null): [NetworkState, () => Promis
           /* подробности необязательны: остаётся прошлая лента */
         }
       }
+      // Выбор мог смениться, пока шёл опрос: подробности берём для текущего выбора, а не для начатого.
+      const cur = sel.current;
       setState({
         kind: "ready", summary, cache: cache.current,
-        detail: id ? detailCache.current[id] ?? null : null, at: Date.now(),
+        detail: cur ? detailCache.current[cur] ?? null : null, at: Date.now(),
       });
     } catch (e) {
       setState((prev) => (prev.kind === "ready" ? prev : { kind: "error", message: e instanceof Error ? e.message : "Hub не отвечает." }));

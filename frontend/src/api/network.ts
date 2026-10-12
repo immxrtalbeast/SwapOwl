@@ -1,7 +1,8 @@
 import type { Qty } from "./types";
 
-// Клиент hub (cmd/hub, docs/network.md): сводка по точкам сети. Адрес и токен — из окружения сборки.
-// Контракты точек не меняются: hub сам опрашивает их по HTTP.
+// Клиент hub (cmd/hub, docs/network.md): сводка по точкам сети. Контракты точек не меняются: hub сам опрашивает их по HTTP.
+// Токен hub во фронт не попадает (бандл открыт без логина): заголовок Authorization подставляет обратный прокси на
+// том же origin (в dev — vite.config.ts). Hub не отвечает на CORS preflight, поэтому прямой cross-origin запрос не работает.
 
 export interface HubAlert {
   batch_id: number;
@@ -68,21 +69,18 @@ export interface HubSummary {
 type Env = Record<string, string | undefined>;
 const env = (): Env => ((import.meta as unknown as { env?: Env }).env ?? {});
 
-/** Адрес hub: VITE_HUB_URL либо тот же origin (hub за общим прокси). Без хвостового «/». */
+/** Адрес hub: по умолчанию тот же origin (hub за прокси, `VITE_HUB_URL=/`). Без хвостового «/». */
 export function hubBase(e: Env = env()): string {
   return (e.VITE_HUB_URL ?? "").replace(/\/+$/, "");
 }
 
-/** Пункт «Сеть» виден сразу, если адрес hub задан при сборке. */
+/** Пункт «Сеть» виден сразу, если при сборке задан VITE_HUB_URL (флаг: hub за прокси на этом origin). */
 export function hubConfigured(e: Env = env()): boolean {
   return Boolean(e.VITE_HUB_URL);
 }
 
 async function hubGet<T>(path: string): Promise<T> {
-  const token = env().VITE_HUB_TOKEN;
-  const res = await fetch(`${hubBase()}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
+  const res = await fetch(`${hubBase()}${path}`);
   if (!res.ok) throw new Error(res.status === 401 ? "Hub не принял токен (401)." : `Hub ответил ${res.status}.`);
   return (await res.json()) as T;
 }
