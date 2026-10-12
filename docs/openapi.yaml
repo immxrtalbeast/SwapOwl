@@ -325,6 +325,25 @@ paths:
                        available: {qty: 0, unit: g}, missing: {qty: 150, unit: g}}
                   recipe: [{product_id: salmon, quantity: {qty: 150, unit: g}}]
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/forecast/writeoffs:
+    get:
+      tags: [menu]
+      summary: Прогноз списаний «если ничего не делать» (viewer)
+      parameters:
+        - {name: hours, in: query, description: Горизонт в часах, по умолчанию 168, schema: {type: integer, enum: [24, 72, 168]}}
+      responses:
+        '200':
+          description: Деньги под риском по партиям со сроком раньше now+hours (количество под риском 2.6, без горячих предложений)
+          content:
+            application/json:
+              example:
+                hours: 168
+                total_minor: 126000
+                products:
+                  - {product_id: salmon, product_name: Лосось, at_risk: {qty: 1400, unit: g}, total_minor: 126000}
+                days:
+                  - {date: '2026-10-09', total_minor: 126000}
+                generated_at: '2026-10-09T11:00:00+03:00'
   /api/hot-offers:
     get:
       tags: [menu]
