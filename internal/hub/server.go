@@ -42,7 +42,7 @@ func (s *Server) summary(w http.ResponseWriter, _ *http.Request) {
 	for i := range states { // в сводке ленты не нужны
 		states[i].Alerts, states[i].StopList = nil, nil
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"points": states, "totals": Summarize(s.c.Snapshot())})
+	writeJSON(w, http.StatusOK, map[string]any{"points": states, "totals": Summarize(states)})
 }
 
 func (s *Server) point(w http.ResponseWriter, r *http.Request) {

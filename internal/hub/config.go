@@ -109,6 +109,11 @@ func parseYAML(s string) ([]Point, error) {
 			return nil, fmt.Errorf("hub: config yaml: line %d: unsupported syntax", n+1)
 		}
 		v = strings.TrimSpace(v)
+		if v != "" && v[0] != '"' && v[0] != '\'' {
+			if i := strings.Index(v, " #"); i >= 0 {
+				v = strings.TrimSpace(v[:i])
+			}
+		}
 		if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
 			v = v[1 : len(v)-1]
 		}

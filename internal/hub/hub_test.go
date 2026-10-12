@@ -171,6 +171,10 @@ func TestParseConfig(t *testing.T) {
 	if err != nil || len(c.Points) != 2 || c.Points[0].URL != "http://a:8080" || c.Points[1].APIKey != "v2" || c.Points[0].Name != "Точка A" {
 		t.Fatalf("yaml: %+v %v", c, err)
 	}
+	cm := "points:\n  - id: a\n    url: http://a\n    api_key: sk_abc   # comment: x\n"
+	if c, err := ParseConfig([]byte(cm), env); err != nil || c.Points[0].APIKey != "sk_abc" {
+		t.Fatalf("inline comment: %+v %v", c, err)
+	}
 	j := `{"points":[{"id":"a","url":"http://a","api_key":"k"}]}`
 	if _, err := ParseConfig([]byte(j), env); err != nil {
 		t.Fatal(err)
