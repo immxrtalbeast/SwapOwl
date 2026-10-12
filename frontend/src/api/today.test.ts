@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { atRiskFromAlerts, qtyCostMinor, unitPricesFromWriteoffs } from "./today";
+import { atRiskFromAlerts, restaurantDay, todayMinor, qtyCostMinor, unitPricesFromWriteoffs } from "./today";
 import type { Alert, MoneyReport } from "./types";
 
 const report = {
@@ -25,5 +25,13 @@ describe("today model", () => {
   it("считает только истекающие, без цены — отдельно", () => {
     const r = atRiskFromAlerts([alert("milk", "expiring", 500), alert("milk", "expired", 900), alert("nope", "expiring", 1)], { milk: 8 });
     expect(r).toEqual({ totalMinor: 4000, unpriced: 1 });
+  });
+  it("«сегодня» — по дню ресторана, а не по скользящим 24 ч", () => {
+    const r = { ...report, by_day: [{ date: "2026-10-11", cost_minor: 500 }, { date: "2026-10-12", cost_minor: 700 }] } as MoneyReport;
+    // 21:30 UTC 11 октября = 00:30 12 октября в Москве
+    expect(restaurantDay("2026-10-11T21:30:00Z", "Europe/Moscow")).toBe("2026-10-12");
+    expect(todayMinor(r, "2026-10-11T21:30:00Z", "Europe/Moscow")).toBe(700);
+    expect(todayMinor(r, "2026-10-11T21:30:00Z", "UTC")).toBe(500);
+    expect(todayMinor(r, "2026-10-13T09:00:00Z", "UTC")).toBe(0);
   });
 });

@@ -43,3 +43,14 @@ export function atRiskFromAlerts(alerts: readonly Alert[], prices: UnitPrices): 
   }
   return { totalMinor, unpriced };
 }
+
+/** Дата YYYY-MM-DD момента `nowIso` в часовом поясе ресторана (формат `by_day` из отчётов). */
+export function restaurantDay(nowIso: string, timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(nowIso));
+}
+
+/** Сумма за сегодняшний день ресторана из отчёта по дням. */
+export function todayMinor(report: MoneyReport, nowIso: string, timezone: string): number {
+  const key = restaurantDay(nowIso, timezone);
+  return report.by_day.find((d) => d.date === key)?.cost_minor ?? 0;
+}

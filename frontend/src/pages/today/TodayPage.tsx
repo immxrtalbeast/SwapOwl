@@ -95,6 +95,9 @@ export function TodayPage() {
   const prices = risk.kind === "ready" ? risk.prices : {};
   const offers = hot.kind === "ready" ? hot.data.offers.slice(0, 3) : [];
   const urgent = supply.kind === "ready" ? supply.rows.filter((r) => r.urgency === "now") : [];
+  // id поставки живёт, пока строка видна (как на «Поставках»): вернувшееся предложение — новая поставка.
+  const live = new Set(urgent.map(offerKey));
+  if (supply.kind === "ready") for (const k of ids.current.keys()) if (!live.has(k)) ids.current.delete(k);
   const unconfirmed = receiving.kind === "ready" ? receiving.rows : [];
   const stops = Array.isArray(stopped) ? stopped : [];
 
