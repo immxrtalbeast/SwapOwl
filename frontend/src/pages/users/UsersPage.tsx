@@ -4,7 +4,7 @@ import { Alert, Group, PasswordInput, Select, Stack, TextInput } from "@mantine/
 import { IconAlertTriangle, IconCopy } from "@tabler/icons-react";
 import { api } from "../../api/client";
 import type { ApiKeyInfo, CreatedApiKey, UserAccount } from "../../api/types";
-import { RoleGate } from "../../auth/AuthContext";
+import { useAuth } from "../../auth/AuthContext";
 import { roleLabel } from "../../auth/roles";
 import type { Role } from "../../auth/roles";
 import { useLive } from "../../app/useLive";
@@ -20,11 +20,17 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleString("ru-RU", { day: "n
 const roleOptions = (roles: Role[]) => roles.map((r) => ({ value: r, label: roleLabel[r] }));
 
 export function UsersPage() {
-  return (
-    <RoleGate min="admin">
-      <UsersAdmin />
-    </RoleGate>
-  );
+  const { state, logout } = useAuth();
+  const role = state.kind === "user" ? state.role : null;
+  if (role !== "admin") {
+    return (
+      <section>
+        <ScreenTitle>Пользователи и ключи</ScreenTitle>
+        <EmptyState title="Нужен вход администратора" text="Войдите под учётной записью администратора, чтобы управлять пользователями и ключами." action={{ label: "Войти", onClick: () => void logout() }} />
+      </section>
+    );
+  }
+  return <UsersAdmin />;
 }
 
 function UsersAdmin() {

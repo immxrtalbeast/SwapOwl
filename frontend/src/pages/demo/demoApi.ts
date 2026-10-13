@@ -63,7 +63,7 @@ export function describeBurst(r: BurstResult): string {
   return `Принято ${r.accepted}, отклонено ${r.rejected} из ${r.orders}`;
 }
 
-export const TOKEN_HINT = "нужен DEMO_TOKEN";
+export const TOKEN_HINT = "нужен токен демо";
 
 /** Действия с токеном видны только при введённом DEMO_TOKEN. */
 export const tokenActionsVisible = (token: string): boolean => token.trim() !== "";

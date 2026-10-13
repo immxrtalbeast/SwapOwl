@@ -25,7 +25,7 @@ export function OrderResult({ order }: { order: Order }) {
             {lines.length > 0 ? (
               <>
                 <span style={{ font: "var(--type-small)" }}>Списано по партиям:</span>
-                <ul style={{ margin: 0, paddingLeft: 18, font: "var(--type-num)" }}>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
                   {lines.map((l) => (
                     <li key={l}>{l}</li>
                   ))}

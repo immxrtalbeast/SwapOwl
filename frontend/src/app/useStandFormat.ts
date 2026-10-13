@@ -23,7 +23,7 @@ export function useStandFormat() {
       /** «08:00» */
       time: (t: Date | string | number) => formatTime(t, tz),
       /** «вс, 11 окт., 19:20 МСК» — для подсказки */
-      exact: (t: Date | string | number) => formatExact(t, tz),
+      exact: (t: Date | string | number) => formatExact(t, tz, nowMs),
     }),
     [tz, nowMs],
   );

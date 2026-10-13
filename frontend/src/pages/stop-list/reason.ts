@@ -6,9 +6,9 @@ export function reasonText(d: DishServings): string {
   if (d.missing.length === 0) return "Нет продуктов для порции";
   return d.missing
     .map((r) =>
-      r.available.qty === 0
-        ? `${r.product_name}: закончился или просрочен`
-        : `${r.product_name}: не хватает ${formatQty(r.missing)} на порцию`,
+      r.missing.qty > 0
+        ? `${r.product_name}: не хватает ${formatQty(r.missing)} на порцию`
+        : `${r.product_name}: нет на складе`,
     )
     .join("; ");
 }
