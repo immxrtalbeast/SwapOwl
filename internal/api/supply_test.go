@@ -133,6 +133,10 @@ func TestSupplyOrderValidationAndErrors(t *testing.T) {
 			t.Errorf("%s: %d %s", name, rec.Code, rec.Body)
 		}
 	}
+	// qty — целое в базовой единице: совет «строка с числом» тут увёл бы клиента по кругу.
+	if rec := postSupplyOrder(h, `{"id":"`+id+`","items":[{"product_id":"a","qty":"5"}]}`); !strings.Contains(rec.Body.String(), "qty — целое число") {
+		t.Errorf("qty строкой: сообщение %s", rec.Body)
+	}
 	good := `{"id":"` + id + `","items":[{"product_id":"a","qty":1}]}`
 	f.err = store.ErrSupplyOrderConflict
 	if rec := postSupplyOrder(h, good); rec.Code != 409 || !strings.Contains(rec.Body.String(), "order_conflict") {
