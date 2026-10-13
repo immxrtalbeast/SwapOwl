@@ -12,6 +12,7 @@ import type { AcceptOutcome } from "./accept";
 import { ORDER_STATUS_TEXT, buildOrderBody, buildOrderCsv, needsPolling, selectionKey } from "./order";
 import { formatStockout } from "./urgency";
 import { useSupply } from "./useSupply";
+import { useStandFormat } from "../../app/useStandFormat";
 
 interface Pending {
   id: string;
@@ -72,7 +73,8 @@ interface SentOrder {
 
 export function SupplyPage() {
   const [state, reload] = useSupply();
-  const nowMs = Date.now();
+  const fmt = useStandFormat();
+  const nowMs = fmt.now.getTime(); // время стенда, не часы браузера
   // Заказ поставщику (через подключённую учётную систему): выбранные строки → POST /api/supply-orders → статус по подтверждению outbox.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [ordering, setOrdering] = useState(false);
@@ -184,7 +186,7 @@ export function SupplyPage() {
     {
       key: "stockout",
       header: "Закончится",
-      cell: (r) => <span style={r.usable_stock.qty <= 0 ? { color: "var(--urgency-risk-fg, #a3330a)" } : undefined} title={r.stockout_at ? new Date(r.stockout_at).toLocaleString("ru-RU") : undefined}>{formatStockout(r.stockout_at, nowMs, r.usable_stock.qty)}</span>,
+      cell: (r) => <span style={r.usable_stock.qty <= 0 ? { color: "var(--urgency-risk-fg, #a3330a)" } : undefined} title={r.stockout_at ? fmt.exact(r.stockout_at) : undefined}>{formatStockout(r.stockout_at, nowMs, r.usable_stock.qty)}</span>,
     },
     { key: "urgency", header: "Срочность", cell: (r) => <UrgencyBadge def={SUPPLY_STATES[r.urgency]} /> },
     { key: "explanation", header: "Объяснение", cell: (r) => <span style={{ font: "var(--type-small)" }}>{explainSupply(r.explanation, r.quantity.unit)}</span> },

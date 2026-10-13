@@ -74,3 +74,11 @@ describe("проценты и деньги", () => {
     expect(formatRub(0)).toBe(`0${N}₽`);
   });
 });
+
+describe("formatExact year", () => {
+  it("shows the year only when it is not the current one", () => {
+    const now = new Date("2026-10-13T08:00:00Z");
+    expect(formatExact("2027-04-07T05:00:00Z", "Europe/Moscow", now)).toContain("2027");
+    expect(formatExact("2026-10-11T16:20:00Z", "Europe/Moscow", now)).not.toContain("2026");
+  });
+});

@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { Tabs } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { RoleGate } from "../../auth/AuthContext";
 import { api } from "../../api/client";
 import { ApiError } from "../../api/types";
@@ -13,6 +14,24 @@ import { OrderForm } from "./OrderForm";
 import { ORDER_STATES, appendPage, itemsText, rejectionReason, sectionTitle, shortfallText, writeoffLines } from "./view";
 
 const PAGE = 50;
+
+/** Заказы на телефоне (< 640 px): вместо таблицы — карточки, каждая колонка подписана. */
+function OrderCards({ orders, columns, caption }: { orders: readonly Order[]; columns: readonly Column<Order>[]; caption: string }) {
+  return (
+    <ul aria-label={caption} style={{ listStyle: "none", margin: 0, padding: 12, display: "grid", gap: 8 }}>
+      {orders.map((o) => (
+        <li key={o.id} style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", display: "grid", gap: 6 }}>
+          {columns.map((c) => (
+            <div key={c.key} style={{ display: "grid", gap: 2 }}>
+              <span style={{ font: "var(--type-caption)", textTransform: "uppercase", color: "var(--text-muted)" }}>{c.header}</span>
+              <div>{c.cell(o)}</div>
+            </div>
+          ))}
+        </li>
+      ))}
+    </ul>
+  );
+}
 type Tab = Order["status"];
 type State =
   | { kind: "loading" }
@@ -25,6 +44,7 @@ export function OrdersPage() {
   const [more, setMore] = useState(false);
   const [moreError, setMoreError] = useState<string | null>(null);
   const fmt = useStandFormat();
+  const narrow = useMediaQuery("(max-width: 639px)") ?? false;
 
   const load = useCallback(async () => {
     try {
@@ -99,7 +119,7 @@ export function OrdersPage() {
         return (
           <div style={{ display: "grid", gap: 2, padding: "4px 0" }}>
             {lines.map((l) => (
-              <span key={l} style={{ font: "var(--type-num)" }}>{l}</span>
+              <span key={l}>{l}</span>
             ))}
             {short && <span style={{ font: "var(--type-small)", color: "var(--urgency-warn-fg)" }}>{short}</span>}
             {lines.length === 0 && !short && <span style={{ color: "var(--text-subtle)" }}>—</span>}
@@ -121,7 +141,11 @@ export function OrdersPage() {
         <EmptyState title={emptyTitle} text={emptyText} />
       ) : (
         <>
-          <DataTable caption={sectionTitle(status === "accepted" ? "Принятые" : "Отклонённые", page.total)} columns={columns} rows={page.orders} rowKey={(o) => o.id} />
+          {narrow ? (
+            <OrderCards orders={page.orders} columns={columns} caption={sectionTitle(status === "accepted" ? "Принятые" : "Отклонённые", page.total)} />
+          ) : (
+            <DataTable caption={sectionTitle(status === "accepted" ? "Принятые" : "Отклонённые", page.total)} columns={columns} rows={page.orders} rowKey={(o) => o.id} />
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, font: "var(--type-small)", color: "var(--text-muted)" }}>
             <span>Показано {page.orders.length} из {formatNumber(page.total)}</span>
             {page.orders.length < page.total && (

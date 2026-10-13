@@ -8,11 +8,17 @@ export function setUnauthorizedHandler(fn: (() => void) | null) {
 }
 
 async function requestRaw<T>(path: string, init?: RequestInit): Promise<{ body: T; headers: Headers }> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-    credentials: "same-origin",
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+      credentials: "same-origin",
+    });
+  } catch {
+    // Обрыв связи: браузер даёт «Failed to fetch» — показываем человеческий текст.
+    throw new Error("Нет связи с сервером — данные обновятся сами");
+  }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     // Любой 401 ведёт на экран входа; ошибку неверного пароля при входе обрабатывает сама форма.

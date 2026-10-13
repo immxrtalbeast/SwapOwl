@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { MoneyReport } from "../../api/types";
-import { Card, DataTable, EmptyState, ErrorState, HandNote, LoadingState, ScreenTitle, SecondaryButton } from "../../components";
+import { Card, DataTable, ErrorState, HandNote, LoadingState, ScreenTitle, SecondaryButton } from "../../components";
 import type { Column } from "../../components";
 import { formatQty } from "../stock/format";
 import { formatRub, reasonLabel } from "./format";
@@ -33,7 +33,7 @@ function Section({ title, report, withReason, note }: { title: string; report: M
       </p>
       {note && <div style={{ marginBottom: 16 }}><HandNote arrow="down">{note}</HandNote></div>}
       {report.by_product.length === 0 ? (
-        <EmptyState title="Ничего нет" text="За период ничего нет." />
+        <p style={{ margin: 0, color: "var(--text-muted)" }}>За период ничего нет.</p>
       ) : (
         <div style={{ display: "grid", gap: 16 }}>
           <DataTable caption={`${title}: по продуктам`} columns={productColumns} rows={report.by_product} rowKey={(r) => `${r.product_id}/${r.reason ?? ""}`} />

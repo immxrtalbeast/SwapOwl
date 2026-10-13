@@ -28,7 +28,7 @@ const stopped: DishServings = {
 
 describe("stop-list text", () => {
   it("names the product and how much is missing", () => {
-    expect(reasonText(stopped)).toBe("Говядина: закончился или просрочен; Овощи: не хватает 30 г на порцию");
+    expect(reasonText(stopped)).toBe("Говядина: не хватает 200 г на порцию; Овощи: не хватает 30 г на порцию");
   });
   it("labels servings", () => {
     expect(servingsLabel(stopped)).toBe("нет в наличии");

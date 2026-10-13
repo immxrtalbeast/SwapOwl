@@ -74,7 +74,7 @@ export function DemoPage() {
         <Card title="Время стенда">
           {info ? (
             <>
-              <p style={{ margin: 0, font: "var(--type-clock-lg)" }}>{new Date(info.now).toLocaleString("ru-RU", { timeZone: info.timezone })}</p>
+              <p style={{ margin: 0, font: "var(--type-clock-lg)", whiteSpace: "nowrap" }}>{new Date(info.now).toLocaleString("ru-RU", { timeZone: info.timezone }).replace(", ", " ")}</p>
               <p style={{ margin: "8px 0 0" }}><Pill>Скорость ×{info.speed}</Pill></p>
             </>
           ) : (
@@ -113,7 +113,7 @@ export function DemoPage() {
 
         <Card title="Управление временем">
           <label style={label}>
-            DEMO_TOKEN
+            Токен демо
             <input style={input} type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="off" />
           </label>
           {tokenActionsVisible(token) ? (
@@ -148,7 +148,7 @@ export function DemoPage() {
               </div>
             </div>
           ) : (
-            <p style={{ margin: "12px 0 0", color: "var(--text-muted)" }}>Скорость, прыжок и сброс доступны после ввода DEMO_TOKEN.</p>
+            <p style={{ margin: "12px 0 0", color: "var(--text-muted)" }}>Скорость, прыжок и сброс доступны после ввода токена демо.</p>
           )}
         </Card>
       </div>

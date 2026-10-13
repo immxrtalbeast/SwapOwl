@@ -27,6 +27,11 @@ export function formatQty({ qty, unit }: Qty): string {
   }
 }
 
+/** Цена за единицу: «25,14 ₽ / кг» — число, знак и единица не рвутся переносом. */
+export function formatPerUnit(value: string, unit: string): string {
+  return `${value}${NBSP}/${NBSP}${unit}`;
+}
+
 /** «−23 %» (минус U+2212, неразрывный пробел). Знак «+» не добавляется. */
 export function formatPercent(value: number): string {
   return `${formatNumber(Math.round(value))}${NBSP}%`;
@@ -132,8 +137,10 @@ export function formatDateTime(d: Date | string | number, timezone: string, now:
 }
 
 /** Точное время для подсказки: «вс, 11 окт., 19:20 МСК». */
-export function formatExact(d: Date | string | number, timezone: string): string {
+export function formatExact(d: Date | string | number, timezone: string, now: Date | number = new Date()): string {
   const date = new Date(d);
-  const o = safeParts(date, timezone, { weekday: "short", day: "numeric", month: "short" });
-  return `${o.weekday}, ${o.day} ${o.month.replace(/\.$/, "")}., ${formatTime(date, timezone)} ${zoneLabel(timezone, date)}`;
+  const o = safeParts(date, timezone, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const cur = safeParts(new Date(now), timezone, { year: "numeric" });
+  const year = o.year === cur.year ? "" : ` ${o.year}`;
+  return `${o.weekday}, ${o.day} ${o.month.replace(/\.$/, "")}.${year}, ${formatTime(date, timezone)} ${zoneLabel(timezone, date)}`;
 }

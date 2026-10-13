@@ -27,6 +27,6 @@ export function formatStockout(iso: string | null, nowMs: number, usableQty?: nu
   const ms = new Date(iso).getTime() - nowMs;
   if (ms <= 0) return "уже закончился";
   const hours = ms / 3_600_000;
-  if (hours < 48) return `через ${Math.max(1, Math.round(hours))} ч`;
-  return `через ${Math.round(hours / 24)} сут.`;
+  if (hours < 48) return `через ${Math.max(1, Math.round(hours))} ч`;
+  return `через ${Math.round(hours / 24)} сут.`;
 }

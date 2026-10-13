@@ -37,6 +37,14 @@ export function EmptyState({ title, text, action }: EmptyProps) {
   );
 }
 
+const OFFLINE_TEXT = "Нет связи с сервером — данные обновятся сами";
+
+/** Сырые сообщения браузера при обрыве связи («Failed to fetch») → человеческий текст. */
+export function humanizeReason(reason: string | undefined): string | undefined {
+  if (reason && /failed to fetch|networkerror|load failed|fetch failed|network request failed/i.test(reason)) return OFFLINE_TEXT;
+  return reason;
+}
+
 interface ErrorProps {
   /** Что не загрузилось: «поставки», «склад». */
   what: string;
@@ -47,7 +55,8 @@ interface ErrorProps {
 }
 
 /** Ошибка: «Не удалось загрузить …», причина, request_id мелким моноширинным и «Повторить». */
-export function ErrorState({ what, reason, requestId, onRetry }: ErrorProps) {
+export function ErrorState({ what, reason: rawReason, requestId, onRetry }: ErrorProps) {
+  const reason = humanizeReason(rawReason);
   return (
     <div role="alert" style={centered}>
       <IconAlertCircle size={40} color="var(--urgency-critical-fg)" aria-hidden="true" />
@@ -70,7 +79,7 @@ export function OfflineBanner({ onRetry }: { onRetry?: () => void }) {
       }}
     >
       <IconWifiOff size={18} aria-hidden="true" />
-      <span>Нет связи с сервером.</span>
+      <span>{OFFLINE_TEXT}</span>
       {onRetry && <SecondaryButton size="compact-sm" onClick={onRetry}>Повторить сейчас</SecondaryButton>}
     </div>
   );

@@ -10,9 +10,11 @@ export const ORDER_STATES: Record<Order["status"], UrgencyDef> = {
 
 const lower = (s: string) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
 
-/** Строка списания: «лосось 500 г — партия №17». */
+const upper = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+/** Строка списания: «Лосось 500 г — партия №17». */
 export function writeoffText(w: OrderWriteoff): string {
-  return `${lower(w.product_name ?? w.product_id)} ${formatQty(w.qty)} — партия${NBSP}№${w.batch_id}`;
+  return `${upper(w.product_name ?? w.product_id)} ${formatQty(w.qty)} — партия${NBSP}№${w.batch_id}`;
 }
 
 /** Списания по партиям; одна и та же пара «продукт — партия» не повторяется. */

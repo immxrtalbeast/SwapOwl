@@ -12,17 +12,17 @@ const w = (batch: number, qty: number, name = "Лосось") => ({
 
 describe("история заказов", () => {
   it("списание по партиям: продукт, количество, номер партии", () => {
-    expect(writeoffLines({ writeoffs: [w(17, 500)] })).toEqual(["лосось 500 г — партия №17"]);
-    expect(writeoffLines({ writeoffs: [w(17, 1500)] })).toEqual(["лосось 1,5 кг — партия №17"]);
+    expect(writeoffLines({ writeoffs: [w(17, 500)] })).toEqual(["Лосось 500 г — партия №17"]);
+    expect(writeoffLines({ writeoffs: [w(17, 1500)] })).toEqual(["Лосось 1,5 кг — партия №17"]);
   });
   it("две партии — две строки; повтор той же партии складывается", () => {
     expect(writeoffLines({ writeoffs: [w(17, 300), w(18, 200), w(17, 200)] })).toEqual([
-      "лосось 500 г — партия №17",
-      "лосось 200 г — партия №18",
+      "Лосось 500 г — партия №17",
+      "Лосось 200 г — партия №18",
     ]);
   });
   it("без названия продукта (старый ответ) — id", () => {
-    expect(writeoffLines({ writeoffs: [{ ...w(3, 100), product_name: undefined }] })).toEqual(["salmon 100 г — партия №3"]);
+    expect(writeoffLines({ writeoffs: [{ ...w(3, 100), product_name: undefined }] })).toEqual(["Salmon 100 г — партия №3"]);
   });
   it("причина отказа человеческим языком", () => {
     const m = (name: string, qty: number, unit: "ml" | "g") => ({
