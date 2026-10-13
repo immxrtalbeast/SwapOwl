@@ -138,13 +138,7 @@ func TestInventoryShortageFEFO(t *testing.T) {
 func TestInventorySurplusMakesInvBatch(t *testing.T) {
 	db, clk := orderDB(t)
 	ctx := context.Background()
-	receive(t, db, clk, "D1", 100, 72)
-	if _, err := db.Inventory(ctx, InventoryInput{ID: c1, ProductID: "salmon", Counted: 130}, clk.Now); !errors.Is(err, ErrInventoryNoShelf) {
-		t.Fatalf("no shelf life: %v", err)
-	}
-	if _, err := db.Pool.Exec(ctx, `UPDATE products SET shelf_life_hours = 48 WHERE id = 'salmon'`); err != nil {
-		t.Fatal(err)
-	}
+	receive(t, db, clk, "D1", 100, 48)
 	res, err := db.Inventory(ctx, InventoryInput{ID: c1, ProductID: "salmon", Counted: 130}, clk.Now)
 	if err != nil || res.Surplus == nil || res.Surplus.Quantity.Qty != 30 || len(res.Shortage) != 0 {
 		t.Fatalf("surplus: %v %+v", err, res)
@@ -252,5 +246,36 @@ func TestResetClearsCorrections(t *testing.T) {
 	}
 	if n := cnt(t, db, `SELECT count(*) FROM corrections`); n != 0 {
 		t.Fatalf("corrections left: %d", n)
+	}
+}
+
+// 2.3б: срок излишка — у самой поздней доступной партии, даже если у продукта нет срока по умолчанию.
+func TestInventorySurplusTakesLatestBatchExpiry(t *testing.T) {
+	db, clk := orderDB(t)
+	ctx := context.Background()
+	receive(t, db, clk, "D1", 100, 72)
+	receive(t, db, clk, "D2", 100, 24)
+	res, err := db.Inventory(ctx, InventoryInput{ID: c1, ProductID: "salmon", Counted: 230}, clk.Now)
+	if err != nil || res.Surplus == nil || res.Surplus.Quantity.Qty != 30 {
+		t.Fatalf("surplus: %v %+v", err, res)
+	}
+	if !res.Surplus.ExpiresAt.Equal(clk.Now().Add(72 * time.Hour)) {
+		t.Fatalf("expires: %v", res.Surplus.ExpiresAt)
+	}
+	balanceHolds(t, db)
+}
+
+func TestInventorySurplusNoBatches(t *testing.T) {
+	db, clk := orderDB(t)
+	ctx := context.Background()
+	if _, err := db.Inventory(ctx, InventoryInput{ID: c1, ProductID: "salmon", Counted: 30}, clk.Now); !errors.Is(err, ErrInventoryNoShelf) {
+		t.Fatalf("no batches, no shelf life: %v", err)
+	}
+	if _, err := db.Pool.Exec(ctx, `UPDATE products SET shelf_life_hours = 36 WHERE id = 'salmon'`); err != nil {
+		t.Fatal(err)
+	}
+	res, err := db.Inventory(ctx, InventoryInput{ID: c2, ProductID: "salmon", Counted: 30}, clk.Now)
+	if err != nil || res.Surplus == nil || !res.Surplus.ExpiresAt.Equal(clk.Now().Add(36*time.Hour)) {
+		t.Fatalf("default shelf life: %v %+v", err, res)
 	}
 }
