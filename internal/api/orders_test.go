@@ -194,3 +194,13 @@ func TestListOrdersRejectsBadCursor(t *testing.T) {
 		}
 	}
 }
+
+func TestPostOrderTypeErrorsNameField(t *testing.T) {
+	fo := &fakeOrders{}
+	rec := postOrder(t, fo, `{"id":"`+oid+`","items":[{"dish_id":"d1","portions":1.5}]}`)
+	body := rec.Body.String()
+	if rec.Code != http.StatusBadRequest || !strings.Contains(body, "validation_error") ||
+		!strings.Contains(body, "portions — целое число от 1") || !strings.Contains(body, `"field":"items.portions"`) {
+		t.Fatalf("portions 1.5: %d %s", rec.Code, body)
+	}
+}

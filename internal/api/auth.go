@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 	"unicode"
@@ -43,14 +44,48 @@ func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		WriteError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body", nil)
+		var te *json.UnmarshalTypeError
+		if errors.As(err, &te) && te.Field != "" {
+			validationError(w, te.Field, typeErrorMessage(te))
+			return false
+		}
+		WriteError(w, http.StatusBadRequest, CodeValidation, "некорректное тело запроса: ожидается JSON-объект", nil)
 		return false
 	}
 	if dec.More() {
-		WriteError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body", nil)
+		WriteError(w, http.StatusBadRequest, CodeValidation, "некорректное тело запроса: после JSON-объекта есть лишние данные", nil)
 		return false
 	}
 	return true
+}
+
+// typeErrorMessage называет поле и ожидаемый вид значения, когда в JSON пришёл не тот тип
+// (дробные порции, число вместо строки в quantity, строка вместо целого в qty заказа поставщику).
+// Вид берётся из типа поля в Go, имя — только для порций.
+func typeErrorMessage(te *json.UnmarshalTypeError) string {
+	name := te.Field
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	if name == "portions" {
+		return "portions — целое число от 1"
+	}
+	kind := reflect.Invalid
+	if te.Type != nil {
+		t := te.Type
+		for t.Kind() == reflect.Pointer {
+			t = t.Elem()
+		}
+		kind = t.Kind()
+	}
+	switch kind {
+	case reflect.String:
+		return name + ` — строка с числом, например "1.5"`
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return name + " — целое число, например 5"
+	}
+	return name + " — значение неверного типа (получено " + te.Value + ")"
 }
 
 func validationError(w http.ResponseWriter, field, msg string) {

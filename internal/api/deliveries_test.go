@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -198,5 +199,12 @@ func TestPostDeliveryPackValidation(t *testing.T) {
 				t.Fatalf("code %d body %s", rec.Code, rec.Body)
 			}
 		})
+	}
+}
+
+func TestQuantityMessagesAreRussian(t *testing.T) {
+	var te = &json.UnmarshalTypeError{Field: "items.quantity", Value: "number", Type: reflect.TypeOf("")}
+	if got := typeErrorMessage(te); got != `quantity — строка с числом, например "1.5"` {
+		t.Fatalf("quantity: %q", got)
 	}
 }

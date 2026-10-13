@@ -154,3 +154,16 @@ func TestGateTakenByMutatingRequestsOnly(t *testing.T) {
 		t.Fatalf("post held %d, get held %d, max %d→%d, left %d", heldInside, heldInsideGet, heldInsideDemo, g.max, g.held)
 	}
 }
+
+// curl -X POST -H 'Authorization: Bearer …' /api/demo/reset — без тела и без Content-Type (FS-156).
+func TestDemoResetWithoutBodyAndContentType(t *testing.T) {
+	d := &fakeDemo{}
+	h := demoRouter(d)
+	req := httptest.NewRequest(http.MethodPost, "/api/demo/reset", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || d.resets != 1 {
+		t.Fatalf("reset без тела: %d, сбросов %d: %s", rec.Code, d.resets, rec.Body)
+	}
+}
