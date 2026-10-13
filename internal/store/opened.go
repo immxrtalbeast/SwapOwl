@@ -20,6 +20,9 @@ const (
 	OpenedDeliveryPrefix = "OPEN-"
 )
 
+// ErrAlreadyOpened — партия уже выделена вскрытием (opened_at задан): вскрыть её повторно нельзя.
+var ErrAlreadyOpened = errors.New("store: batch is already opened")
+
 // OpenInput — вскрытие упаковки. Qty == nil — по умолчанию (упаковка продукта или вся партия).
 type OpenInput struct {
 	ID      string
@@ -78,17 +81,21 @@ func (d *DB) OpenBatch(ctx context.Context, in OpenInput, now func() time.Time) 
 		var (
 			b         domain.Batch
 			unit      string
+			openedAt  *time.Time
 			shelfOpen *int
 			packSize  int64
 		)
 		err = tx.QueryRow(ctx,
 			`SELECT b.id, b.product_id, b.quantity, b.remaining, b.received_at, b.expires_at,
-			        p.unit, p.shelf_after_open_hours, p.pack_size
+			        p.unit, p.shelf_after_open_hours, p.pack_size, b.opened_at
 			 FROM batches b JOIN products p ON p.id = b.product_id WHERE b.id = $1`, in.BatchID).
 			Scan(&b.ID, &b.ProductID, &b.Quantity, &b.Remaining, &b.ReceivedAt, &b.ExpiresAt,
-				&unit, &shelfOpen, &packSize)
+				&unit, &shelfOpen, &packSize, &openedAt)
 		if err != nil {
 			return fmt.Errorf("store: read batch: %w", err)
+		}
+		if openedAt != nil {
+			return ErrAlreadyOpened
 		}
 		rules := domain.OpenRules{PackSize: domain.Qty(packSize)}
 		if shelfOpen != nil {

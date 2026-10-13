@@ -93,7 +93,7 @@ export function StockPage() {
   const openAction = (r: Extract<StockRow, { kind: "batch" }>) => {
     const product = productsById.get(r.batch.product_id);
     const hours = product?.shelf_after_open_hours;
-    if (!product || !hours || r.batch.status === "expired" || r.batch.remaining.qty <= 0) return null;
+    if (!product || !hours || r.batch.opened_at || r.batch.status === "expired" || r.batch.remaining.qty <= 0) return null;
     return (
       <RoleGate min="operator">
         <BatchOpen batchId={r.batch.id} productName={product.name} hours={hours} batchExpiresAt={r.batch.expires_at} nowMs={f.now.getTime()} timeZone={f.timezone} onOpened={load} />

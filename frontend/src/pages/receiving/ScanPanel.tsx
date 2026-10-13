@@ -50,6 +50,7 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
   const [pick, setPick] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const seq = useRef(0);
   // id и номер живут до успешной отправки: повтор после потерянного ответа не задвоит поставку.
@@ -88,10 +89,15 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
     let stop: (() => void) | undefined;
     let dead = false;
     startCamera(video.current, (s) => acceptRef.current(s))
-      .then((st) => (dead ? st() : (stop = st)))
+      .then((st) => {
+        if (dead) return st();
+        stop = st;
+        setStreaming(true);
+      })
       .catch(() => setMsg("Камера недоступна — вставьте код вручную"));
     return () => {
       dead = true;
+      setStreaming(false);
       stop?.();
     };
   }, [open]);
@@ -140,7 +146,8 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
   return (
     <Card>
       <div style={{ display: "grid", gap: 12 }}>
-        <video ref={video} playsInline muted style={{ width: "100%", maxHeight: 240, background: "#000" }} />
+        {/* Скрыт, пока камера не дала поток: без неё это чёрный прямоугольник во всю ширину. */}
+        <video ref={video} playsInline muted hidden={!streaming} style={{ width: "100%", maxHeight: 240, background: "#000" }} />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             aria-label="Код вручную"

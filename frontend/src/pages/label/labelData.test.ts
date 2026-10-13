@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLabel, labelBatchIdFromHash, needsOpenFirst } from "./labelData";
+import { buildLabel, childOfOpened, labelBatchIdFromHash, needsOpenFirst } from "./labelData";
 
 describe("labelBatchIdFromHash", () => {
   it("разбирает номер партии", () => {
@@ -18,8 +18,18 @@ describe("buildLabel", () => {
     expect(l.untilStamp).toBe("14.10 14:00");
     expect(l.qrUrl).toBe("https://s.example/#/stock?batch=5");
   });
-  it("без вскрытия «вскрыто» — момент печати", () => {
-    expect(buildLabel(base).openedStamp).toBe("12.10 14:00");
+  it("без вскрытия строки «вскрыто» нет, срок — партии", () => {
+    const l = buildLabel(base);
+    expect(l.openedStamp).toBeNull();
+    expect(l.untilStamp).toBe("14.10 14:00");
+  });
+});
+
+describe("childOfOpened", () => {
+  it("находит дочернюю партию исходной", () => {
+    const bs = [{ id: 3 }, { id: 9, parent_batch_id: 2 }, { id: 10, parent_batch_id: 3 }];
+    expect(childOfOpened(bs, 3)).toBe(10);
+    expect(childOfOpened(bs, 4)).toBeNull();
   });
 });
 

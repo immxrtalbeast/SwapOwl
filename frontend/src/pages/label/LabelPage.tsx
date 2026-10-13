@@ -6,7 +6,7 @@ import { useStandFormat } from "../../app/useStandFormat";
 import { ErrorState, LoadingState, ScreenTitle } from "../../components";
 import { PrimaryButton, SecondaryButton } from "../../components";
 import { qrSvg } from "../../lib/qr";
-import { buildLabel, needsOpenFirst, type LabelData } from "./labelData";
+import { buildLabel, childOfOpened, needsOpenFirst, type LabelData } from "./labelData";
 
 type Mode = "thermal" | "a4";
 
@@ -36,8 +36,9 @@ function Label({ d }: { d: LabelData }) {
     <div className="label-card">
       <div>
         <div className="l-name">{d.product}</div>
-        <div className="l-small">вскрыто {d.openedStamp}{d.by ? ` · ${d.by}` : ""}</div>
+        {d.openedStamp && <div className="l-small">вскрыто {d.openedStamp}{d.by ? ` · ${d.by}` : ""}</div>}
         <div className="l-until">ГОДНО ДО {d.untilStamp}</div>
+        {!d.openedStamp && d.by && <div className="l-small">{d.by}</div>}
         <div className="l-small">партия №{d.batchId}</div>
       </div>
       <div className="l-qr" role="img" aria-label={`QR партии №${d.batchId}`} dangerouslySetInnerHTML={{ __html: qrSvg(d.qrUrl, 1) }} />
@@ -49,7 +50,7 @@ function Label({ d }: { d: LabelData }) {
 export function LabelPage({ batchId }: { batchId: number }) {
   const f = useStandFormat();
   const { state } = useAuth();
-  const [data, setData] = useState<{ batch: Batch; product: ProductStock } | "missing" | null>(null);
+  const [data, setData] = useState<{ batch: Batch; product: ProductStock } | { moved: number } | "missing" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("thermal");
 
@@ -62,7 +63,9 @@ export function LabelPage({ batchId }: { batchId: number }) {
         if (!live) return;
         const batch = bs.find((b) => b.id === batchId);
         const product = batch && ps.find((p) => p.id === batch.product_id);
-        setData(batch && product ? { batch, product } : "missing");
+        // Исходная партия с нулём в списке не приходит: ищем дочернюю, выделенную из неё вскрытием.
+        const child = batch ? null : childOfOpened(bs, batchId);
+        setData(batch && product ? { batch, product } : child !== null ? { moved: child } : "missing");
       })
       .catch((e) => live && setErr(e instanceof Error ? e.message : "Не удалось загрузить партию"));
     return () => { live = false; };
@@ -71,7 +74,7 @@ export function LabelPage({ batchId }: { batchId: number }) {
   const login = state.kind === "user" ? state.login : null;
   const nowMs = f.now.getTime();
   const label = useMemo(
-    () => (data && data !== "missing"
+    () => (data && data !== "missing" && "batch" in data
       ? buildLabel({ product: data.product.name, batchId, expiresAt: data.batch.expires_at, openedAt: data.batch.opened_at, nowMs, timeZone: f.timezone, login, origin: window.location.origin })
       : null),
     [data, batchId, nowMs, f.timezone, login],
@@ -79,7 +82,17 @@ export function LabelPage({ batchId }: { batchId: number }) {
 
   if (err) return <ErrorState what="этикетку" reason={err} onRetry={() => window.location.reload()} />;
   if (data === null) return <LoadingState label="Загрузка этикетки" />;
-  if (data !== "missing" && needsOpenFirst(data.batch.opened_at, data.product.shelf_after_open_hours)) {
+  if (data !== "missing" && "moved" in data) {
+    return (
+      <section aria-label="Этикетка">
+        <ScreenTitle>Этикетка партии №{batchId}</ScreenTitle>
+        <p style={{ font: "var(--type-body)" }}>
+          Упаковка вскрыта — этикетка у партии <a href={`#/label/${data.moved}`}>№{data.moved}</a>.
+        </p>
+      </section>
+    );
+  }
+  if (data !== "missing" && "batch" in data && needsOpenFirst(data.batch.opened_at, data.product.shelf_after_open_hours)) {
     return <ErrorState what="этикетку" reason="Сначала нажмите «Вскрыл упаковку» на складе: срок вскрытой части назначает сервер" onRetry={() => { window.location.hash = "#/stock"; }} />;
   }
   if (data === "missing" || !label) return <ErrorState what="партию" reason={`Партия №${batchId} не найдена`} onRetry={() => { window.location.hash = "#/stock"; }} />;

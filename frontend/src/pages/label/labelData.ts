@@ -2,7 +2,8 @@ import { formatOpenedStamp } from "../stock/opened";
 
 export interface LabelData {
   product: string;
-  openedStamp: string;
+  /** null — партия не вскрыта: строки «вскрыто» на этикетке нет. */
+  openedStamp: string | null;
   untilStamp: string;
   by: string | null;
   batchId: number;
@@ -22,22 +23,21 @@ export function batchUrl(origin: string, batchId: number): string {
 
 /**
  * Данные этикетки. Вскрытая часть: «вскрыто» = opened_at, «годно до» = её expires_at.
- * Партия без вскрытия: «вскрыто» — момент печати (nowMs), «годно до» — срок партии.
+ * Партия без вскрытия: строки «вскрыто» нет (момент печати — не дата вскрытия), «годно до» — срок партии.
  */
 export function buildLabel(args: {
   product: string;
   batchId: number;
   expiresAt: string;
   openedAt?: string | null;
-  nowMs: number;
+  nowMs?: number;
   timeZone: string;
   login: string | null;
   origin: string;
 }): LabelData {
-  const opened = args.openedAt ?? args.nowMs;
   return {
     product: args.product,
-    openedStamp: formatOpenedStamp(opened, args.timeZone),
+    openedStamp: args.openedAt ? formatOpenedStamp(args.openedAt, args.timeZone) : null,
     untilStamp: formatOpenedStamp(args.expiresAt, args.timeZone),
     by: args.login,
     batchId: args.batchId,
@@ -51,4 +51,10 @@ export function buildLabel(args: {
  */
 export function needsOpenFirst(openedAt: string | null | undefined, shelfAfterOpenHours: number | null | undefined): boolean {
   return !openedAt && !!shelfAfterOpenHours;
+}
+
+/** Партия, выделенная вскрытием из `parentId` (исходная с нулевым остатком больше не печатается). */
+export function childOfOpened(batches: readonly { id: number; parent_batch_id?: number | null }[], parentId: number): number | null {
+  const child = batches.find((b) => b.parent_batch_id === parentId);
+  return child ? child.id : null;
 }

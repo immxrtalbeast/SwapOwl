@@ -279,7 +279,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409':
-          description: "`batch_closed` (партия просрочена или пуста) или `correction_conflict`"
+          description: "`batch_closed` (партия просрочена или пуста), `already_opened` (партия уже выделена вскрытием — повторно не вскрывается) или `correction_conflict`"
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}

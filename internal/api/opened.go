@@ -8,6 +8,9 @@ import (
 	"umirhack/internal/store"
 )
 
+// CodeAlreadyOpened — партия уже вскрыта: повторное вскрытие дочерней партии не создаёт «внучку».
+const CodeAlreadyOpened = "already_opened"
+
 // openedRoutes — вскрытие упаковки (docs/opened.md). Нет Corrections — маршрут не регистрируется.
 func (rt *Router) openedRoutes() {
 	if rt.deps.Corrections == nil {
@@ -63,6 +66,8 @@ func (rt *Router) postOpen(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, http.StatusBadRequest, CodeValidation, "вскрытие не меняет срок: у продукта нет shelf_after_open_hours", details)
 		case errors.Is(err, domain.ErrOpenQty):
 			WriteError(w, http.StatusBadRequest, CodeValidation, "qty must be positive and not exceed the batch remainder", map[string]any{"field": "qty", "batch_id": batchID})
+		case errors.Is(err, store.ErrAlreadyOpened):
+			WriteError(w, http.StatusConflict, CodeAlreadyOpened, "batch is already opened", details)
 		case errors.Is(err, domain.ErrOpenClosed):
 			WriteError(w, http.StatusConflict, CodeBatchClosed, "batch is expired or empty", details)
 		case !correctionError(w, err, details):
