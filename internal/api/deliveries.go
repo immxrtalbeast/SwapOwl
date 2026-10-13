@@ -92,13 +92,13 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case !validLabel(in.ID):
-		validationError(w, "id", "id must be 1..128 characters without control characters or edge spaces")
+		validationError(w, "id", "id — от 1 до 128 символов, без управляющих символов и пробелов по краям")
 		return
 	case !validLabel(in.Number):
-		validationError(w, "number", "number must be 1..128 characters without control characters or edge spaces")
+		validationError(w, "number", "number — от 1 до 128 символов, без управляющих символов и пробелов по краям")
 		return
 	case len(in.Items) == 0 || len(in.Items) > maxDeliveryItems:
-		validationError(w, "items", fmt.Sprintf("items must contain 1..%d positions", maxDeliveryItems))
+		validationError(w, "items", fmt.Sprintf("items — от 1 до %d позиций", maxDeliveryItems))
 		return
 	}
 	created, err := time.Parse(time.RFC3339, in.CreatedAt)
@@ -113,7 +113,7 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 	ids := make([]string, 0, len(in.Items))
 	for i, it := range in.Items {
 		if !validLabel(it.ProductID) {
-			validationError(w, fmt.Sprintf("items[%d].product_id", i), "product_id must be 1..128 characters without control characters or edge spaces")
+			validationError(w, fmt.Sprintf("items[%d].product_id", i), "product_id — от 1 до 128 символов, без управляющих символов и пробелов по краям")
 			return
 		}
 		ids = append(ids, it.ProductID)
@@ -141,24 +141,24 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 		field := func(f string) string { return fmt.Sprintf("items[%d].%s", i, f) }
 		hasHours, hasDate := it.ShelfLifeHours != nil, it.ExpiresOn != ""
 		if hasHours && hasDate {
-			validationError(w, field("shelf_life_hours"), "shelf_life_hours and expires_on are mutually exclusive")
+			validationError(w, field("shelf_life_hours"), "shelf_life_hours и expires_on взаимоисключающие")
 			return
 		}
 		di := store.DeliveryItem{ProductID: it.ProductID, Name: strings.TrimSpace(it.Name)}
 		if len(di.Name) > maxLoginLen {
-			validationError(w, field("name"), "name must be at most 128 bytes")
+			validationError(w, field("name"), "name — не больше 128 байт")
 			return
 		}
 		switch {
 		case hasHours:
 			if *it.ShelfLifeHours < 1 || *it.ShelfLifeHours > maxShelfHours {
-				validationError(w, field("shelf_life_hours"), fmt.Sprintf("shelf_life_hours must be an integer in 1..%d", maxShelfHours))
+				validationError(w, field("shelf_life_hours"), fmt.Sprintf("shelf_life_hours — целое число от 1 до %d", maxShelfHours))
 				return
 			}
 			di.ShelfLifeHours = *it.ShelfLifeHours
 		case hasDate:
 			if _, err := time.Parse("2006-01-02", it.ExpiresOn); err != nil {
-				validationError(w, field("expires_on"), "expires_on must be a date YYYY-MM-DD")
+				validationError(w, field("expires_on"), "expires_on — дата в формате YYYY-MM-DD")
 				return
 			}
 			di.ExpiresOn = it.ExpiresOn
@@ -173,7 +173,7 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 			}
 			n, err := parsePackCount(it.Quantity, pk.PackSize)
 			if err != nil {
-				validationError(w, field("quantity"), "quantity in packs must be a whole number of packs within the quantity limit")
+				validationError(w, field("quantity"), "quantity — целое число упаковок в пределах допустимого количества")
 				return
 			}
 			di.Unit, di.Qty = pk.Unit, n
@@ -191,7 +191,7 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 		case !ok:
 			b, valid := inputBase[unit]
 			if !valid {
-				validationError(w, field("unit"), "unit must be one of g, kg, ml, l, pcs")
+				validationError(w, field("unit"), "unit — одно из g, kg, ml, l, pcs")
 				return
 			}
 			base = b
@@ -242,21 +242,21 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 func quantityMessage(err error, field string) string {
 	switch {
 	case errors.Is(err, units.ErrFormat):
-		return field + " must be a string like \"1.5\": digits with an optional fractional part"
+		return field + ` — строка с числом, например "1.5": цифры и необязательная дробная часть`
 	case errors.Is(err, units.ErrUnknownUnit):
-		return field + ": unit must be one of g, kg, ml, l, pcs"
+		return field + ": unit — одно из g, kg, ml, l, pcs"
 	case errors.Is(err, units.ErrDimension):
-		return field + ": unit does not match the product's dimension"
+		return field + ": unit не подходит по размерности продукта"
 	case errors.Is(err, units.ErrFraction):
-		return field + " is finer than the base unit"
+		return field + " — точность выше базовой единицы"
 	case errors.Is(err, units.ErrFractionalPcs):
-		return field + ": pieces cannot be fractional"
+		return field + ": штуки не бывают дробными"
 	case errors.Is(err, units.ErrZero):
-		return field + " must be greater than zero"
+		return field + " — число больше нуля"
 	case errors.Is(err, units.ErrLimit), errors.Is(err, units.ErrOverflow):
-		return field + " exceeds the limit"
+		return field + " превышает допустимый предел"
 	}
-	return field + " is not a valid quantity"
+	return field + " — некорректное количество"
 }
 
 func (rt *Router) listDeliveries(w http.ResponseWriter, r *http.Request) {
@@ -274,7 +274,7 @@ func (rt *Router) getDelivery(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		WriteJSON(w, http.StatusOK, d)
 	case errors.Is(err, store.ErrNotFound):
-		WriteError(w, http.StatusNotFound, CodeNotFound, "delivery not found", nil)
+		WriteError(w, http.StatusNotFound, CodeNotFound, "поставка не найдена", nil)
 	default:
 		rt.internalError(w, r, err)
 	}

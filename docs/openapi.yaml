@@ -829,7 +829,7 @@ paths:
                   waste_reduction_vs_random_pct: {type: number}
                   waste_reduction_vs_nearest_pct: {type: number}
               example:
-                {available: true, runs: 200, main_algo: b, waste_reduction_vs_random_pct: 39.0, waste_reduction_vs_nearest_pct: 27.0}
+                {available: true, runs: 200, main_algo: b, waste_reduction_vs_random_pct: 10.1, waste_reduction_vs_nearest_pct: 13.3}
         '401': {$ref: '#/components/responses/Unauthorized'}
   /api/demo/clock/speed:
     post:
@@ -885,7 +885,7 @@ paths:
     post:
       tags: [demo]
       summary: Сброс стенда к демо-данным
-      description: "Требует `Authorization: Bearer <DEMO_TOKEN>`."
+      description: "Требует `Authorization: Bearer <DEMO_TOKEN>`. Тело и Content-Type не нужны: `curl -X POST -H \"Authorization: Bearer $DEMO_TOKEN\" https://swapowl.duckdns.org/api/demo/reset`."
       security: [{demoToken: []}]
       responses:
         '200': {description: Сброс выполнен}

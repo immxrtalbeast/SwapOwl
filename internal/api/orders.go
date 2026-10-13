@@ -61,11 +61,11 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !uuidRe.MatchString(in.ID) {
-		validationError(w, "id", "id must be a client-generated UUID")
+		validationError(w, "id", "id — UUID, сгенерированный клиентом")
 		return
 	}
 	if len(in.Items) == 0 || len(in.Items) > maxOrderItems {
-		validationError(w, "items", fmt.Sprintf("items must contain 1..%d positions", maxOrderItems))
+		validationError(w, "items", fmt.Sprintf("items — от 1 до %d позиций", maxOrderItems))
 		return
 	}
 	switch in.Source {
@@ -73,7 +73,7 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 		in.Source = store.SourceAPI
 	case store.SourceAPI, store.SourcePOS:
 	default:
-		validationError(w, "source", `source must be "api" or "pos"`)
+		validationError(w, "source", `source — "api" или "pos"`)
 		return
 	}
 	occurred, ok := parseOccurredAt(w, in.OccurredAt)
@@ -87,16 +87,16 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 	for i, it := range in.Items {
 		field := func(f string) string { return fmt.Sprintf("items[%d].%s", i, f) }
 		if !validLabel(it.DishID) {
-			validationError(w, field("dish_id"), "dish_id must be 1..128 characters without control characters or edge spaces")
+			validationError(w, field("dish_id"), "dish_id — от 1 до 128 символов, без управляющих символов и пробелов по краям")
 			return
 		}
 		if seen[it.DishID] {
-			validationError(w, field("dish_id"), "dish_id: a dish may appear in at most one line")
+			validationError(w, field("dish_id"), "dish_id — блюдо может встречаться в заказе только в одной строке")
 			return
 		}
 		seen[it.DishID] = true
 		if it.Portions == nil || *it.Portions < 1 || *it.Portions > maxPortions {
-			validationError(w, field("portions"), fmt.Sprintf("portions must be an integer in 1..%d", maxPortions))
+			validationError(w, field("portions"), fmt.Sprintf("portions — целое число от 1 до %d", maxPortions))
 			return
 		}
 		items = append(items, store.OrderItem{DishID: it.DishID, Portions: *it.Portions})
@@ -111,7 +111,7 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 	for i, it := range items {
 		recipe, ok := recipes[it.DishID]
 		if !ok {
-			WriteError(w, http.StatusBadRequest, CodeUnknownDish, fmt.Sprintf("unknown dish %q: dish_id not found", it.DishID),
+			WriteError(w, http.StatusBadRequest, CodeUnknownDish, fmt.Sprintf("dish_id — неизвестное блюдо %q", it.DishID),
 				map[string]any{"field": fmt.Sprintf("items[%d].dish_id", i)})
 			return
 		}
@@ -123,7 +123,7 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 				q = sum
 			}
 			if err != nil {
-				validationError(w, fmt.Sprintf("items[%d].portions", i), "order quantity exceeds the limit")
+				validationError(w, fmt.Sprintf("items[%d].portions", i), "portions — суммарное количество в заказе превышает допустимый предел")
 				return
 			}
 			need[ri.ProductID] = domain.Qty(q)

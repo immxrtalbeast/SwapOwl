@@ -200,3 +200,10 @@ func TestPostDeliveryPackValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestQuantityMessagesAreRussian(t *testing.T) {
+	var te = &json.UnmarshalTypeError{Field: "items.quantity", Value: "number"}
+	if got := typeErrorMessage(te); got != `quantity — строка с числом, например "1.5"` {
+		t.Fatalf("quantity: %q", got)
+	}
+}

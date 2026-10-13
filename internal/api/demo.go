@@ -50,7 +50,7 @@ func (rt *Router) demoAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		got := sha256.Sum256([]byte(bearerToken(r)))
 		if rt.deps.DemoToken == "" || subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
-			WriteError(w, http.StatusUnauthorized, CodeUnauthorized, "demo token required", nil)
+			WriteError(w, http.StatusUnauthorized, CodeUnauthorized, "нужен токен демо-режима (Authorization: Bearer <DEMO_TOKEN>)", nil)
 			return
 		}
 		next(w, r)
@@ -68,11 +68,11 @@ func (rt *Router) demoFail(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, clock.ErrInvalidSpeed), errors.Is(err, clock.ErrInvalidJump):
 		WriteError(w, http.StatusBadRequest, CodeValidation, err.Error(), nil)
 	case rt.deps.NotSimulated != nil && errors.Is(err, rt.deps.NotSimulated):
-		WriteError(w, http.StatusConflict, codeNotSimulated, "clock is not simulated (CLOCK_MODE=real)", nil)
+		WriteError(w, http.StatusConflict, codeNotSimulated, "часы не симулируются (CLOCK_MODE=real)", nil)
 	default:
 		rt.deps.Log.LogAttrs(r.Context(), slog.LevelError, "demo failed",
 			slog.String("request_id", RequestID(r.Context())), slog.String("error", err.Error()))
-		WriteError(w, http.StatusInternalServerError, CodeInternal, "internal error", nil)
+		WriteError(w, http.StatusInternalServerError, CodeInternal, "внутренняя ошибка", nil)
 	}
 }
 
@@ -84,11 +84,11 @@ func (rt *Router) demoSpeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Speed == nil {
-		validationError(w, "speed", "speed is required")
+		validationError(w, "speed", "speed — обязательное поле")
 		return
 	}
 	if !(*in.Speed >= 0 && *in.Speed <= MaxDemoSpeed) {
-		WriteError(w, http.StatusBadRequest, CodeValidation, "speed must be in 0..3600", nil)
+		WriteError(w, http.StatusBadRequest, CodeValidation, "speed — число от 0 до 3600", nil)
 		return
 	}
 	if err := rt.deps.Demo.SetSpeed(r.Context(), *in.Speed); err != nil {
@@ -107,7 +107,7 @@ func (rt *Router) demoJump(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Hours == nil {
-		validationError(w, "hours", "hours is required")
+		validationError(w, "hours", "hours — обязательное поле")
 		return
 	}
 	if _, err := rt.deps.Demo.Jump(r.Context(), *in.Hours); err != nil {

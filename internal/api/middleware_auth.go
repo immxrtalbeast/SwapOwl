@@ -122,13 +122,15 @@ func (rt *Router) guard(w http.ResponseWriter, r *http.Request, acc access) (*ht
 			ai.set(p)
 		}
 		if !p.Role.Allows(acc.min) {
-			WriteError(w, http.StatusForbidden, CodeForbidden, "insufficient role", nil)
+			WriteError(w, http.StatusForbidden, CodeForbidden, "недостаточно прав", nil)
 			return r, false
 		}
 		r = r.WithContext(context.WithValue(r.Context(), principalKey, p))
 	}
-	if isMutating(r.Method) && !isJSON(r) {
-		WriteError(w, http.StatusBadRequest, CodeValidation, "Content-Type must be application/json", nil)
+	// Ручки /api/demo/* без тела (сброс) принимают запрос без Content-Type: curl -X POST -H 'Authorization: Bearer …'.
+	emptyDemo := strings.HasPrefix(r.URL.Path, "/api/demo/") && r.ContentLength == 0
+	if isMutating(r.Method) && !isJSON(r) && !emptyDemo {
+		WriteError(w, http.StatusBadRequest, CodeValidation, "заголовок Content-Type должен быть application/json", nil)
 		return r, false
 	}
 	return r, true

@@ -43,14 +43,35 @@ func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		WriteError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body", nil)
+		var te *json.UnmarshalTypeError
+		if errors.As(err, &te) && te.Field != "" {
+			validationError(w, te.Field, typeErrorMessage(te))
+			return false
+		}
+		WriteError(w, http.StatusBadRequest, CodeValidation, "некорректное тело запроса: ожидается JSON-объект", nil)
 		return false
 	}
 	if dec.More() {
-		WriteError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body", nil)
+		WriteError(w, http.StatusBadRequest, CodeValidation, "некорректное тело запроса: после JSON-объекта есть лишние данные", nil)
 		return false
 	}
 	return true
+}
+
+// typeErrorMessage называет поле и ожидаемый вид значения, когда в JSON пришёл не тот тип
+// (дробные порции, число вместо строки в quantity).
+func typeErrorMessage(te *json.UnmarshalTypeError) string {
+	name := te.Field
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	switch name {
+	case "portions":
+		return "portions — целое число от 1"
+	case "quantity", "qty", "counted", "yield":
+		return name + ` — строка с числом, например "1.5"`
+	}
+	return name + " — значение неверного типа (получено " + te.Value + ")"
 }
 
 func validationError(w http.ResponseWriter, field, msg string) {
