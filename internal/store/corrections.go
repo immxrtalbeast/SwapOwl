@@ -288,10 +288,21 @@ func (d *DB) Inventory(ctx context.Context, in InventoryInput, now func() time.T
 			res.Shortage = append(res.Shortage, AdjustmentJSON{BatchID: w.BatchID, ProductID: w.ProductID, Qty: QtyJSON{int64(w.Qty), unit}})
 		}
 		if plan.Surplus > 0 {
-			if shelf == nil {
+			// 2.3б: срок самой поздней доступной партии, иначе срок продукта по умолчанию, иначе 400.
+			var expires time.Time
+			switch {
+			case len(batches) > 0:
+				expires = batches[0].ExpiresAt
+				for _, b := range batches[1:] {
+					if b.ExpiresAt.After(expires) {
+						expires = b.ExpiresAt
+					}
+				}
+			case shelf != nil:
+				expires = at.Add(time.Duration(*shelf) * time.Hour)
+			default:
 				return ErrInventoryNoShelf
 			}
-			expires := at.Add(time.Duration(*shelf) * time.Hour)
 			delivery := InventoryDeliveryPrefix + in.ID
 			if _, err := tx.Exec(ctx,
 				`INSERT INTO deliveries (id, number, created_at, received_at, body_hash, response) VALUES ($1, $2, $3, $3, $4, '{}')`,
