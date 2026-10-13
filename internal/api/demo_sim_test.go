@@ -45,7 +45,7 @@ func simRouter(o Orders, sim SimControl) http.Handler {
 
 func TestBurstCountsAcceptedAndRejected(t *testing.T) {
 	so := &stockOrders{left: 4}
-	rec := demoPost(simRouter(so, &fakeSim{}), "/api/demo/burst", `{"dish_id":"soup","orders":10}`, "")
+	rec := demoPost(simRouter(so, &fakeSim{}), "/api/demo/burst", `{"dish_id":"soup","orders":10}`, "tok")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
@@ -72,7 +72,7 @@ func TestBurstValidation(t *testing.T) {
 		`{"dish_id":"nope","orders":3}`:  http.StatusBadRequest,
 		`{"dish_id":"soup","orders":50}`: http.StatusOK,
 	} {
-		if rec := demoPost(h, "/api/demo/burst", body, ""); rec.Code != code {
+		if rec := demoPost(h, "/api/demo/burst", body, "tok"); rec.Code != code {
 			t.Errorf("%s: %d %s", body, rec.Code, rec.Body)
 		}
 	}
@@ -81,13 +81,13 @@ func TestBurstValidation(t *testing.T) {
 func TestSimulatorToggle(t *testing.T) {
 	sim := &fakeSim{}
 	h := simRouter(&stockOrders{}, sim)
-	if rec := demoPost(h, "/api/demo/simulator", `{"running":true}`, ""); rec.Code != http.StatusOK || !sim.running {
+	if rec := demoPost(h, "/api/demo/simulator", `{"running":true}`, "tok"); rec.Code != http.StatusOK || !sim.running {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
-	if rec := demoPost(h, "/api/demo/simulator", `{"running":false}`, ""); rec.Code != http.StatusOK || sim.running {
+	if rec := demoPost(h, "/api/demo/simulator", `{"running":false}`, "tok"); rec.Code != http.StatusOK || sim.running {
 		t.Fatalf("%d %s", rec.Code, rec.Body)
 	}
-	if rec := demoPost(h, "/api/demo/simulator", `{}`, ""); rec.Code != http.StatusBadRequest {
+	if rec := demoPost(h, "/api/demo/simulator", `{}`, "tok"); rec.Code != http.StatusBadRequest {
 		t.Fatalf("%d", rec.Code)
 	}
 }
@@ -112,5 +112,20 @@ func TestPlacerSumsNeeds(t *testing.T) {
 	}
 	if _, err := p.Place(context.Background(), oid, store.SourceAPI, []store.OrderItem{{DishID: "x", Portions: 1}}); err == nil {
 		t.Fatal("unknown dish must fail")
+	}
+}
+
+func TestSimRoutesRequireDemoToken(t *testing.T) {
+	sim := &fakeSim{}
+	h := simRouter(&stockOrders{left: 1}, sim)
+	for _, path := range []string{"/api/demo/simulator", "/api/demo/burst"} {
+		for _, tok := range []string{"", "wrong"} {
+			if rec := demoPost(h, path, `{"running":true,"dish_id":"soup","orders":1}`, tok); rec.Code != http.StatusUnauthorized {
+				t.Errorf("%s token %q: %d", path, tok, rec.Code)
+			}
+		}
+	}
+	if sim.running {
+		t.Fatal("simulator started without token")
 	}
 }

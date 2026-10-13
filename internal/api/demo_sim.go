@@ -81,12 +81,12 @@ func (rt *Router) demoSimRoutes() {
 	if rt.deps.Demo == nil {
 		return
 	}
-	// Без DEMO_TOKEN (2.8), но с ролью operator, как остальные изменяющие ручки (2.9).
+	// Как speed/jump/reset: только по DEMO_TOKEN (2.8), чтобы посетитель стенда не запустил генератор или залп.
 	if rt.deps.Sim != nil {
-		rt.Handle(http.MethodPost, "/api/demo/simulator", rt.demoSimulator)
+		rt.HandlePublic(http.MethodPost, "/api/demo/simulator", rt.demoAuth(rt.demoSimulator))
 	}
 	if rt.deps.Orders != nil {
-		rt.Handle(http.MethodPost, "/api/demo/burst", rt.demoBurst)
+		rt.HandlePublic(http.MethodPost, "/api/demo/burst", rt.demoAuth(rt.demoBurst))
 	}
 }
 

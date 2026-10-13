@@ -11,6 +11,7 @@ import {
   parseJumpHours,
   parseSpeed,
   tokenActionsVisible,
+  TOKEN_HINT,
 } from "./demoApi";
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : "Не удалось выполнить действие");
@@ -52,7 +53,7 @@ export function DemoPage() {
 
   const toggle = (next: boolean) =>
     run(async () => {
-      const r = await demoApi.simulator(next);
+      const r = await demoApi.simulator(next, t);
       setRunning(r.running);
       return r.running ? "Генератор запущен" : "Генератор на паузе";
     });
@@ -61,6 +62,7 @@ export function DemoPage() {
   const speedV = parseSpeed(speed);
   const hoursV = parseJumpHours(hours);
   const t = token.trim();
+  const hasToken = tokenActionsVisible(token);
 
   const input: React.CSSProperties = { height: "var(--control-h)", border: "1px solid var(--border-strong)", borderRadius: 6, padding: "0 8px", font: "var(--type-body)" };
   const label: React.CSSProperties = { display: "grid", gap: 4, font: "var(--type-label)" };
@@ -83,8 +85,9 @@ export function DemoPage() {
         <Card title="Генератор заказов">
           <p style={{ margin: "0 0 12px" }}>Сейчас: {running === null ? "…" : running ? "идёт" : "на паузе"}</p>
           <div style={row}>
-            <PrimaryButton disabled={busy || running === true} onClick={() => void toggle(true)}>Запустить</PrimaryButton>
-            <SecondaryButton disabled={busy || running === false} onClick={() => void toggle(false)}>Пауза</SecondaryButton>
+            <PrimaryButton disabled={busy || !hasToken || running === true} onClick={() => void toggle(true)}>Запустить</PrimaryButton>
+            <SecondaryButton disabled={busy || !hasToken || running === false} onClick={() => void toggle(false)}>Пауза</SecondaryButton>
+            {!hasToken && <span style={{ color: "var(--text-muted)" }}>{TOKEN_HINT}</span>}
           </div>
         </Card>
 
@@ -101,9 +104,10 @@ export function DemoPage() {
               Заказов (1…{MAX_BURST})
               <input style={{ ...input, width: 80 }} value={orders} onChange={(e) => setOrders(e.target.value)} inputMode="numeric" size={4} aria-invalid={burstN === null} />
             </label>
-            <PrimaryButton disabled={busy || !dishId || burstN === null} onClick={() => void run(async () => describeBurst(await demoApi.burst(dishId, burstN!)))}>
+            <PrimaryButton disabled={busy || !hasToken || !dishId || burstN === null} onClick={() => void run(async () => describeBurst(await demoApi.burst(dishId, burstN!, t)))}>
               Залп
             </PrimaryButton>
+            {!hasToken && <span style={{ color: "var(--text-muted)" }}>{TOKEN_HINT}</span>}
           </div>
         </Card>
 

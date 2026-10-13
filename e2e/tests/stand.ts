@@ -49,7 +49,7 @@ export class Stand {
   reset() { return this.demo("/api/demo/reset"); }
   speed(speed: number) { return this.demo("/api/demo/clock/speed", { speed }); }
   jump(hours: number) { return this.demo("/api/demo/clock/jump", { hours }); }
-  simulator(running: boolean) { return this.post("/api/demo/simulator", { running }); }
+  simulator(running: boolean) { return this.post("/api/demo/simulator", { running }, true); }
 
   clock() { return this.get<Clock>("/api/clock"); }
   dishes() { return this.get<Dish[]>("/api/dishes"); }

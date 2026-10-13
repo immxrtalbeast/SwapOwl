@@ -312,7 +312,7 @@ AB_PID="$EDGE_DIR/ab.pid"
 ab_pause() {
   local slug
   for slug in "$@"; do
-    ab_post "$slug" /api/demo/simulator '{"running":false}' "${AB_SIM_KEY:-}" || true
+    ab_post "$slug" /api/demo/simulator '{"running":false}' "$(envval "$POINTS/$slug/.env" DEMO_TOKEN)" || true
     ab_post "$slug" /api/demo/clock/speed '{"speed":0}' "$(envval "$POINTS/$slug/.env" DEMO_TOKEN)" || true
   done
 }
@@ -327,14 +327,14 @@ cmd_ab_start() {
   for slug in "${pts[@]}"; do
     tok="$(envval "$POINTS/$slug/.env" DEMO_TOKEN)"
     [ -n "$tok" ] || die "$slug: в .env нет DEMO_TOKEN"
-    ab_post "$slug" /api/demo/simulator '{"running":false}' "${AB_SIM_KEY:-}" || die "$slug: не удалось остановить генератор (при AUTH_REQUIRED=true нужен ключ operator: AB_SIM_KEY)"
+    ab_post "$slug" /api/demo/simulator '{"running":false}' "$tok" || die "$slug: не удалось остановить генератор"
     ab_post "$slug" /api/demo/reset '{}' "$tok" || die "$slug: сброс не удался"
     ab_post "$slug" /api/demo/clock/speed "{\"speed\":$speed}" "$tok" || die "$slug: не удалось задать скорость"
   done
   # Одновременный старт: оба запроса уходят параллельно, разница моментов окончания замеряется.
   t0="$(date +%s%N)"
   for slug in "${pts[@]}"; do
-    ( ab_post "$slug" /api/demo/simulator '{"running":true}' "${AB_SIM_KEY:-}" && date +%s%N > "$EDGE_DIR/.ab-start.$slug" ) &
+    ( ab_post "$slug" /api/demo/simulator '{"running":true}' "$(envval "$POINTS/$slug/.env" DEMO_TOKEN)" && date +%s%N > "$EDGE_DIR/.ab-start.$slug" ) &
     pids+=($!)
   done
   for p in "${pids[@]}"; do wait "$p" || { ab_pause "${pts[@]}"; die "старт генератора не удался, точки поставлены на паузу"; }; done

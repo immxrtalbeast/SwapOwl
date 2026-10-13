@@ -210,8 +210,9 @@ curl -X POST http://localhost:8080/api/orders \
 - С токеном (`Authorization: Bearer <DEMO_TOKEN>`, иначе `401`):
   - `POST /api/demo/clock/speed` `{"speed": 600}` (0…3600);
   - `POST /api/demo/clock/jump` `{"hours": 6}` (`0 < hours ≤ 720`);
-  - `POST /api/demo/reset`.
-- Без токена: `POST /api/demo/simulator` `{"running": true}`; `POST /api/demo/burst` `{"dish_id": "salmon-pasta", "orders": 10}` (1…50 параллельных заказов по одной порции).
+  - `POST /api/demo/reset`;
+  - `POST /api/demo/simulator` `{"running": true}`;
+  - `POST /api/demo/burst` `{"dish_id": "salmon-pasta", "orders": 10}` (1…50 параллельных заказов по одной порции).
 - При `DEMO_MODE=false` все `/api/demo/*` отвечают `404`.
 - `GET /healthz` → `200`, когда БД доступна и миграции применены. Открыт без входа.
 
