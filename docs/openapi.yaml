@@ -1440,6 +1440,10 @@ components:
               product_id: {type: string}
               product_name: {type: string}
               quantity: {$ref: '#/components/schemas/Qty'}
+        cancelled_at:
+          type: string
+          format: date-time
+          description: Время отмены принятого заказа (`POST /api/orders/{id}/cancel`); только в `GET /api/orders`, у неотменённых поля нет.
     CorrectionLine:
       type: object
       properties:

@@ -129,6 +129,8 @@ export interface Order {
   writeoffs: OrderWriteoff[];
   missing: OrderMissing[];
   shortfalls?: OrderShortfall[];
+  /** Время отмены принятого заказа; есть только в списке заказов. */
+  cancelled_at?: string;
 }
 
 export class ApiError extends Error {

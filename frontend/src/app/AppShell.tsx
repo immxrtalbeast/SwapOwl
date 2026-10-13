@@ -14,6 +14,7 @@ import { ReceivingPage } from "../pages/receiving";
 import { TodayPage } from "../pages/today";
 import { LabelPage } from "../pages/label";
 import { labelBatchIdFromHash } from "../pages/label/labelData";
+import { ShiftReportPage } from "../pages/shift-report";
 import { NetworkPage } from "../pages/network";
 import { useHubAvailable } from "../pages/network/useHubAvailable";
 import { OfflineBanner } from "../components/ScreenStates";
@@ -39,6 +40,7 @@ function ScreenView({ id }: { id: string }) {
     case "supply": return <SupplyPage />;
     case "hot-offers": return <HotOffersPage />;
     case "money": return <MoneyPage />;
+    case "shift-report": return <ShiftReportPage />;
     case "network": return <NetworkPage />;
     case "demo": return <DemoPage />;
     case "analytics": return <AnalyticsPage />;

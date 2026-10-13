@@ -86,6 +86,8 @@ type OrderResponse struct {
 	Writeoffs  []WriteoffJSON  `json:"writeoffs"`
 	Missing    []MissingJSON   `json:"missing"`
 	Shortfalls []ShortfallJSON `json:"shortfalls"`
+	// CancelledAt — время отмены принятого заказа (POST /api/orders/{id}/cancel); только в списке заказов.
+	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
 }
 
 // BodyHash — хэш id, источника и позиций (dish_id, порции), отсортированных по dish_id.
@@ -342,6 +344,9 @@ func productInfo(ctx context.Context, tx pgx.Tx, ids []string) (map[string]strin
 // ErrUnknownCursor — before указывает на несуществующий заказ.
 var ErrUnknownCursor = errors.New("store: unknown order cursor")
 
+// cancelledAtSQL — время отмены заказа o из журнала корректировок (отмена бывает не больше одной).
+const cancelledAtSQL = `(SELECT x.at FROM corrections x WHERE x.kind = 'cancel' AND x.subject = o.id::text)`
+
 // ListOrders — история заказов, новые сверху; status "" | "accepted" | "rejected".
 // before — id заказа, после которого продолжить (порядок at DESC, id; пусто — с начала).
 // total — число заказов с этим статусом целиком, а не размер страницы.
@@ -354,7 +359,7 @@ func (d *DB) ListOrders(ctx context.Context, status string, limit int, before st
 	var err error
 	if before == "" {
 		rows, err = d.Pool.Query(ctx,
-			`SELECT response FROM orders WHERE ($1 = '' OR status = $1) ORDER BY at DESC, id LIMIT $2`, status, limit)
+			`SELECT o.response, `+cancelledAtSQL+` FROM orders o WHERE ($1 = '' OR o.status = $1) ORDER BY o.at DESC, o.id LIMIT $2`, status, limit)
 	} else {
 		var found bool
 		if err := d.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM orders WHERE id = $1)`, before).Scan(&found); err != nil {
@@ -364,7 +369,7 @@ func (d *DB) ListOrders(ctx context.Context, status string, limit int, before st
 			return nil, 0, ErrUnknownCursor
 		}
 		rows, err = d.Pool.Query(ctx,
-			`SELECT o.response FROM orders o, orders c
+			`SELECT o.response, `+cancelledAtSQL+` FROM orders o, orders c
 			 WHERE c.id = $3 AND ($1 = '' OR o.status = $1) AND (o.at < c.at OR (o.at = c.at AND o.id > c.id))
 			 ORDER BY o.at DESC, o.id LIMIT $2`, status, limit, before)
 	}
@@ -376,12 +381,14 @@ func (d *DB) ListOrders(ctx context.Context, status string, limit int, before st
 	for rows.Next() {
 		var raw []byte
 		var r OrderResponse
-		if err := rows.Scan(&raw); err != nil {
+		var cancelled *time.Time
+		if err := rows.Scan(&raw, &cancelled); err != nil {
 			return nil, 0, fmt.Errorf("store: list orders: %w", err)
 		}
 		if err := json.Unmarshal(raw, &r); err != nil {
 			return nil, 0, fmt.Errorf("store: list orders: %w", err)
 		}
+		r.CancelledAt = cancelled
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {

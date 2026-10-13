@@ -237,6 +237,7 @@ export function TodayPage() {
           )}
         </Block>
       </div>
+      <p style={{ margin: "16px 0 0" }}><a href="#/shift-report" style={{ color: "var(--brand-ink)", font: "var(--type-body-strong)" }}>Отчёт смены на печать →</a></p>
     </section>
   );
 }
