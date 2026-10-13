@@ -50,6 +50,7 @@ func TestPostOpenErrors(t *testing.T) {
 		{"qty above remainder", "/api/batches/7/open", `{"id":"o","qty":"9"}`, domain.ErrOpenQty, 400, CodeValidation},
 		{"no shelf after open", "/api/batches/7/open", `{"id":"o"}`, domain.ErrOpenNoShelf, 400, CodeValidation},
 		{"expired or empty", "/api/batches/7/open", `{"id":"o"}`, domain.ErrOpenClosed, 409, CodeBatchClosed},
+		{"already opened", "/api/batches/7/open", `{"id":"o"}`, store.ErrAlreadyOpened, 409, CodeAlreadyOpened},
 		{"id reused", "/api/batches/7/open", `{"id":"o"}`, store.ErrCorrectionConflict, 409, CodeCorrectionConflict},
 	}
 	for _, c := range cases {

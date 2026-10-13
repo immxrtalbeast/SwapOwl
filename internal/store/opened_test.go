@@ -128,8 +128,8 @@ func TestOpenBatchExpiresByOpenedShelf(t *testing.T) {
 			t.Fatalf("available %d, want 1000 (child expired)", s.Available.Qty)
 		}
 	}
-	if _, err := db.OpenBatch(ctx, OpenInput{ID: "o2", BatchID: res.Child.ID}, clk.Now); !errors.Is(err, domain.ErrOpenClosed) {
-		t.Fatalf("expired child: %v", err)
+	if _, err := db.OpenBatch(ctx, OpenInput{ID: "o2", BatchID: res.Child.ID}, clk.Now); !errors.Is(err, ErrAlreadyOpened) {
+		t.Fatalf("expired child (already opened wins): %v", err)
 	}
 }
 
@@ -317,4 +317,25 @@ func TestCatalogImportShelfAfterOpen(t *testing.T) {
 	if _, err := db.ImportCatalog(ctx, in, false); err != nil || cnt(t, db, `SELECT count(*) FROM products WHERE id = 'cream' AND shelf_after_open_hours = 72`) != 1 {
 		t.Fatalf("kept: %v", err)
 	}
+}
+
+func TestOpenBatchRejectsReopen(t *testing.T) {
+	db, clk := openedDB(t)
+	ctx := context.Background()
+	receiveCream(t, db, clk, "D1", 5000, 240)
+	first, err := db.OpenBatch(ctx, OpenInput{ID: "o1", BatchID: 1}, clk.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.OpenBatch(ctx, OpenInput{ID: "o2", BatchID: first.Child.ID}, clk.Now); !errors.Is(err, ErrAlreadyOpened) {
+		t.Fatalf("reopen child: %v", err)
+	}
+	if cnt(t, db, `SELECT count(*) FROM batches WHERE parent_batch_id IS NOT NULL`) != 1 || cnt(t, db, `SELECT count(*) FROM corrections WHERE kind = 'open'`) != 1 {
+		t.Fatal("rejected reopen left traces")
+	}
+	// Повтор исходного запроса по-прежнему идемпотентен.
+	if again, err := db.OpenBatch(ctx, OpenInput{ID: "o1", BatchID: 1}, clk.Now); err != nil || !again.Replayed {
+		t.Fatalf("replay: %v %+v", err, again)
+	}
+	balanceHoldsOpened(t, db)
 }

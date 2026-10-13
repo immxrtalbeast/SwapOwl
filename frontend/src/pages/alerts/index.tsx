@@ -1,3 +1,4 @@
+import { useChangedKeys } from "../today/useChanged";
 import { formatQty, formatTimeLeft } from "../stock/format";
 import { useAlerts } from "./useAlerts";
 import { hotOffersUrl } from "../hot-offers/query";
@@ -10,6 +11,10 @@ const cell = { padding: "8px 12px" } as const;
 
 export function AlertsPage() {
   const [state, reload] = useAlerts();
+  // Подсветка строк, изменившихся по SSE (общий класс so-row-changed, как на «Складе» и «Сегодня»).
+  const changed = useChangedKeys(
+    Object.fromEntries((state.kind === "ready" ? state.alerts : []).map((a) => [String(a.batch_id), `${a.remaining.qty}|${a.status}|${a.expires_at}`])),
+  );
   return (
     <section>
       <ScreenTitle>Предупреждения</ScreenTitle>
@@ -37,7 +42,7 @@ export function AlertsPage() {
                   const u = alertUrgency(a);
                   const def = BATCH_STATES[u];
                   return (
-                    <tr key={a.batch_id} data-urgency={u} style={{ background: toneVars(def.tone).row, borderTop: "1px solid var(--border)", height: 44 }}>
+                    <tr key={a.batch_id} data-urgency={u} className={changed.has(String(a.batch_id)) ? "so-row-changed" : undefined} style={{ background: toneVars(def.tone).row, borderTop: "1px solid var(--border)", height: 44 }}>
                       <td style={cell}>
                         {a.product_name} <span style={{ font: "var(--type-num)", color: "var(--text-subtle)" }}>{batchLabel(a.batch_id)}</span>
                       </td>
