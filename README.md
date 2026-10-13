@@ -6,6 +6,67 @@ SwapOwl — самостоятельная система учёта парти�
 
 **Тесты:** `gofmt -l . && go vet ./... && go test -race -p 1 ./...` (для тестов с БД нужен PostgreSQL, см. «Тесты»).
 
+## Соответствие кейсу
+
+Каждое требование кейса — где оно в коде, какой тест его держит и как увидеть его на стенде. Сторожа `tests/invariants/` гоняются на настоящем PostgreSQL в CI на каждом PR; e2e `e2e/tests/` проходит демо-сценарий на стенде.
+
+**Поставки и партии**
+
+| Требование | Код | Тест | На стенде |
+|---|---|---|---|
+| Приём поставки: id, номер, дата создания, позиции | `internal/api/deliveries.go`, `internal/store/deliveries.go` | `TestPostDeliveryValidation`, `TestPostDeliveryNormalizesUnits` | «Приёмка»; `POST /api/deliveries` (curl ниже) |
+| Каждая позиция — отдельная партия со своим сроком | `internal/store/batches.go` | `TestInv01QuantityConservation` | «Склад» → строка продукта раскрывается в партии |
+| Срок каждой партии и оставшееся время | `internal/store/expiry.go`; «годен до даты» — до конца дня по `RESTAURANT_TZ` | `TestInv06StrictExpiryBoundary`, `TestInv07EndOfDay` | «Склад»: «через 14 ч», точная дата во всплывающей подсказке |
+| Учёт количества без float, единицы `g/kg/ml/l/pcs` | `internal/domain/units` | `TestInv12ParseTable`, `TestInv12AddMulBounds` | `"1.5" kg` → «1,5 кг»; `1e3`, `-5`, `1,5` → `400` с причиной |
+| Повтор поставки не удваивает остаток | `internal/store/deliveries.go` | `TestPostDeliveryStatusMapping` | curl №3 ниже → `replayed: true`; на экране «уже принята» |
+| Остаток = сумма непросроченных партий; журнал движений сходится | `internal/store/movements.go` | `TestInv01QuantityConservation`, `TestInv01ConservationWithCorrections` (600 случайных шагов) | `GET /api/movements?product_id=` |
+
+**Заказы и стоп-лист**
+
+| Требование | Код | Тест | На стенде |
+|---|---|---|---|
+| Проверка ингредиентов по сумме всех блюд заказа | `internal/domain/sale.go` | `TestPostOrderSumsNeedsAcrossDishes` | «Заказы»: два блюда с общим продуктом |
+| Списание по FEFO, в ответе — из какой партии сколько | `internal/domain/sale.go`, `internal/store/orders.go` | `TestInv05FEFOTable`, `TestInv05FEFOProperty` | ответ `writeoffs`; e2e шаг 4 |
+| Отказ при нехватке — целиком, с перечнем недостающего | `internal/domain/sale.go` | `TestInv02OrderAtomicity`, `TestPostOrderRejectedIs409WithMissing` | `409 insufficient_stock`, `missing`; на экране — по-человечески |
+| Нет двойной продажи при параллельных заказах | `internal/store/locks.go` (`FOR UPDATE` по продуктам) | `TestInv03ConcurrentOrders` (50 параллельных), `TestInv04OrdersVersusWiper` | «Демо-панель» → залп 10 заказов на 3 порции (e2e шаг 5) |
+| Повтор заказа с тем же id не списывает второй раз | `internal/store/orders.go` | `TestInv09OrderIdempotency` | тот же `id` → `replayed: true` |
+| Автоматический стоп-лист с причиной и числом порций | `internal/domain/stoplist.go` | `TestInv08StopListIsFunctionOfStock`, `TestStopListReasons` | «Меню и стоп-лист»: чего и сколько не хватает, «можно N порций» |
+| Блюдо уходит в стоп при истечении партии без других событий | `internal/janitor`, SSE `/events` | `TestInv08StopListOnlyClockJump` | прыжок времени — стоп-лист меняется без перезагрузки (e2e шаг 6) |
+
+**Мониторинг сроков**
+
+| Требование | Код | Тест | На стенде |
+|---|---|---|---|
+| Остатки и остатки по партиям | `internal/api/stock.go` | `TestStockReadsUseStandClock` | «Склад» |
+| Выявление истекающих (порог от срока партии) и сигнал по партии | `internal/domain/alerts.go`, `internal/janitor` | `TestSweepReportsExpiringBeforeExpired` | «Предупреждения», счётчик в шапке; сигнал один раз на партию |
+| Просроченная партия не участвует в остатке и заказах | предикат `now < expires_at` в каждом запросе | `TestInv06StrictExpiryBoundary`, `TestInv13ClockNeverGoesBack` | e2e шаг 6 |
+| Анализ и предложение поставок | `internal/domain/supply.go`, `internal/api/supply.go` | `TestSupplyBlockingFirst` | «Поставки»: что заказать, «закончится через», сколько блюд блокирует → заказ поставщику |
+
+**Горячие предложения**
+
+| Требование | Код | Тест | На стенде |
+|---|---|---|---|
+| Приоритет от срока, количества, граммовки и числа блюд | `internal/hotoffers/b` (основной), `internal/hotoffers/a` (простой) | `TestRankTable`, `TestPropertyMonotoneByExpiry`, `TestInv11MonotoneInExpiry` | «Горячие предложения» |
+| Объяснение: продукт, партия, количество под риском, срок | `internal/api/hotoffers.go` | `TestInv10HotOffersValid` | карточка: цель в порциях, до какого времени, сколько спасёт |
+| Нет блюд из стоп-листа и блюд, съедающих дефицитный продукт | `internal/hotoffers/b` | `TestStoppedAndDoomedSkipped`, `TestScaleScarceIngredientExcludedWithReason` | — |
+| Цель по общему продукту не больше реального риска | `internal/hotoffers/b` | `TestScaleSharedProductTargetWithinRisk`, `TestSharedRiskTargetsWithinProductRisk` | — |
+| Автообновление при изменении остатков | SSE `/events` | `TestEventsStreamFormatAndPing` | заказ в одной вкладке — список меняется в другой |
+| Измеренный эффект | `internal/simulator` | `TestFollowHotReducesWriteoffsSameSeed` | «Аналитика»; `go run ./cmd/simulator bench -n 200`; «Сеть» — две точки со SwapOwl и без вживую |
+
+**Дополнительно в кейсе**
+
+| Пункт | Есть | Где |
+|---|---|---|
+| Автосписание просрочки | да | `internal/janitor`, причина «истёк срок» в журнале |
+| Аналитика списаний | да | «Деньги», «Аналитика»; `GET /api/analytics/writeoffs` (в ₽) |
+| Статистика дефицитных ингредиентов | да | `GET /api/analytics/shortages` — по отклонённым заказам |
+| Прогноз момента стоп-листа | да | «Поставки»: `stockout_at` и `blocks_dishes`; `GET /api/forecast/writeoffs` — прогноз списаний |
+| WebSocket/SSE | да | `GET /events` |
+| Генератор поставок и заказов | да | `cmd/simulator`, «Демо-панель»; `TestStabilityUnderGenerator` |
+| Дашборд склада | частично | свои экраны «Сегодня» и «Сеть»; `/metrics` в формате Prometheus, готового дашборда Grafana нет |
+| Безопасность | да | роли, сессии, ключи интеграции, лимит входов, журнал аудита — «Доступ» ниже |
+| Код на GitHub, деплой по ссылке | да | https://swapowl.duckdns.org, CI и автодеплой после зелёного CI |
+
 ## Что умеет
 
 - **Партии и сроки.** Остаток склада — сумма непросроченных партий; списание строго по FEFO; истекающие партии, количество под риском, стоп-лист пересчитываются от остатков.
