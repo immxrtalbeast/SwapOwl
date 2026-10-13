@@ -236,7 +236,8 @@ func buildReasons(norms []norm, states map[string]*productState, in hotoffers.In
 		rs = append(rs, hotoffers.Reason{
 			ProductID:        n.product,
 			BatchID:          s.batch.ID,
-			AtRisk:           s.riskTotal, // весь риск продукта до распределения: цель набирается по нему, у всех блюд одно число
+			AtRisk:           s.batchAt,
+			ProductAtRisk:    s.riskTotal, // цель набирается по риску продукта, а не одной партии
 			Batches:          s.riskBatches,
 			ExpiresAt:        s.expires,
 			WorkingHoursLeft: s.hours,

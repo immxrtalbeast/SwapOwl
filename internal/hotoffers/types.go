@@ -43,7 +43,8 @@ type Offer struct {
 type Reason struct {
 	ProductID        string
 	BatchID          int64
-	AtRisk           domain.Qty // у Bg — под риском по продукту во всех рисковых партиях горизонта; у R — остаток опорных партий
+	AtRisk           domain.Qty // у Bg — риск опорной (ближайшей) партии BatchID; у R — остаток опорных партий
+	ProductAtRisk    domain.Qty // у Bg — риск продукта во всех рисковых партиях горизонта до распределения (одно число у всех блюд)
 	Batches          int        // у Bg — сколько партий продукта под риском (BatchID — ближайшая из них)
 	ExpiresAt        time.Time
 	WorkingHoursLeft float64

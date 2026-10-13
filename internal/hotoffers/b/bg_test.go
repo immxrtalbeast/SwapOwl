@@ -325,10 +325,13 @@ func TestSharedRiskTargetsWithinProductRisk(t *testing.T) {
 			if r.Batches != 3 || r.BatchID != 1 {
 				t.Fatalf("%s: в причине должны быть 3 партии и ближайшая №1: %+v", o.DishID, r)
 			}
-			if risk != 0 && r.AtRisk != risk {
-				t.Fatalf("под риском должно быть одно число у всех блюд: %d и %d", risk, r.AtRisk)
+			if risk != 0 && r.ProductAtRisk != risk {
+				t.Fatalf("риск продукта должен быть одним числом у всех блюд: %d и %d", risk, r.ProductAtRisk)
 			}
-			risk = r.AtRisk
+			if r.AtRisk > 1500 {
+				t.Fatalf("at_risk — риск одной партии (≤ 1500 г), а не продукта: %d", r.AtRisk)
+			}
+			risk = r.ProductAtRisk
 		}
 	}
 	// Последняя выбранная порция может взять часть нормы сверх остатка риска.
