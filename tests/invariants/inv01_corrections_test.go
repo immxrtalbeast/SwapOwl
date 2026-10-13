@@ -60,7 +60,7 @@ func TestInv01ConservationWithCorrections(t *testing.T) {
 			st, b = s.do("POST", "/api/orders/"+oid+"/cancel", map[string]any{"id": id("cancel")})
 			s.expect(i, what, st, b, 201)
 		case r < 14:
-			bid, p, rem := s.randomBatch(rng, "")
+			bid, p, rem := s.randomBatch(rng, "", false)
 			if bid == 0 {
 				continue
 			}
@@ -80,7 +80,7 @@ func TestInv01ConservationWithCorrections(t *testing.T) {
 				"counted": fmt.Sprint(counted), "unit": "g"})
 			s.expect(i, what, st, b, 201)
 		case r < 18:
-			bid, _, rem := s.randomBatch(rng, "p1")
+			bid, _, rem := s.randomBatch(rng, "p1", true)
 			if bid == 0 {
 				continue
 			}
@@ -115,12 +115,14 @@ func (s *stand) expect(step int, what string, st int, body []byte, ok ...int) {
 	s.t.Fatalf("шаг %d: %s: %d %s", step, what, st, body)
 }
 
-// randomBatch — случайная доступная (remaining > 0, не просрочена) партия; product — фильтр или "".
-func (s *stand) randomBatch(rng *rand.Rand, product string) (id int64, prod string, remaining int64) {
+// randomBatch — случайная доступная (remaining > 0, не просрочена) партия; product — фильтр или "";
+// unopened — только невскрытые: вскрытую партию повторно не вскрывают (409 already_opened).
+func (s *stand) randomBatch(rng *rand.Rand, product string, unopened bool) (id int64, prod string, remaining int64) {
 	s.t.Helper()
 	rows, err := s.pool.Query(context.Background(), `
 		SELECT id, product_id, remaining FROM batches
-		WHERE remaining > 0 AND expires_at > $1 AND ($2 = '' OR product_id = $2) ORDER BY id`, s.now(), product)
+		WHERE remaining > 0 AND expires_at > $1 AND ($2 = '' OR product_id = $2) AND (NOT $3 OR opened_at IS NULL)
+		ORDER BY id`, s.now(), product, unopened)
 	if err != nil {
 		s.t.Fatal(err)
 	}
