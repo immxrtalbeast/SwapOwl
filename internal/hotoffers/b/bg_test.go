@@ -290,3 +290,52 @@ func TestHorizonExcludesFarBatch(t *testing.T) {
 		t.Fatal("without horizon the offer must exist")
 	}
 }
+
+// К3, 9 баллов: суммарная цель по блюдам с общим рисковым продуктом не превышает того, что под угрозой.
+// Под риском три партии салата: в причине — весь риск продукта и число партий (FS-153), а не одна партия,
+// иначе карточка «43 порции при 1438 г» выглядит как нарушение.
+func TestSharedRiskTargetsWithinProductRisk(t *testing.T) {
+	c := cfg()
+	in := hotoffers.Input{
+		Now: now,
+		Batches: []domain.Batch{
+			{ID: 1, ProductID: "lettuce", Remaining: 1500, ExpiresAt: now.Add(6 * time.Hour)},
+			{ID: 2, ProductID: "lettuce", Remaining: 1500, ExpiresAt: now.Add(8 * time.Hour)},
+			{ID: 3, ProductID: "lettuce", Remaining: 1500, ExpiresAt: now.Add(10 * time.Hour)},
+			{ID: 4, ProductID: "bun", Remaining: 500, ExpiresAt: now.Add(200 * time.Hour)},
+		},
+		Dishes:   []domain.Dish{dish("caesar", "lettuce", 80), dish("burger", "lettuce", 20, "bun", 1), dish("salad", "lettuce", 40)},
+		Price:    map[string]int64{"lettuce": 400, "bun": 1500},
+		RateHour: map[string]float64{"lettuce": 10, "bun": 50}, // булочки расходятся сами: цель задаёт только салат
+		Schedule: sched(),
+		Config:   c,
+	}
+	offers, _ := Rank(in)
+	if len(offers) == 0 {
+		t.Fatal("нет предложений")
+	}
+	norm := map[string]domain.Qty{"caesar": 80, "burger": 20, "salad": 40}
+	var used, risk domain.Qty
+	for _, o := range offers {
+		used += domain.Qty(o.TargetPortions) * norm[o.DishID]
+		for _, r := range o.Reasons {
+			if r.ProductID != "lettuce" {
+				continue
+			}
+			if r.Batches != 3 || r.BatchID != 1 {
+				t.Fatalf("%s: в причине должны быть 3 партии и ближайшая №1: %+v", o.DishID, r)
+			}
+			if risk != 0 && r.ProductAtRisk != risk {
+				t.Fatalf("риск продукта должен быть одним числом у всех блюд: %d и %d", risk, r.ProductAtRisk)
+			}
+			if r.AtRisk > 1500 {
+				t.Fatalf("at_risk — риск одной партии (≤ 1500 г), а не продукта: %d", r.AtRisk)
+			}
+			risk = r.ProductAtRisk
+		}
+	}
+	// Последняя выбранная порция может взять часть нормы сверх остатка риска.
+	if used > risk+80 {
+		t.Fatalf("суммарная цель %d г салата больше, чем под угрозой %d г", used, risk)
+	}
+}

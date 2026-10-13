@@ -42,12 +42,14 @@ type OfferJSON struct {
 
 // HotReasonJSON — ссылка на партию в предложении.
 type HotReasonJSON struct {
-	ProductID        string        `json:"product_id"`
-	ProductName      string        `json:"product_name"`
-	BatchID          int64         `json:"batch_id"`
-	AtRisk           store.QtyJSON `json:"at_risk"`
-	ExpiresAt        time.Time     `json:"expires_at"`
-	WorkingHoursLeft float64       `json:"working_hours_left"`
+	ProductID        string         `json:"product_id"`
+	ProductName      string         `json:"product_name"`
+	BatchID          int64          `json:"batch_id"`
+	AtRisk           store.QtyJSON  `json:"at_risk"`
+	ProductAtRisk    *store.QtyJSON `json:"product_at_risk,omitempty"` // Bg: риск продукта во всех партиях горизонта
+	RiskBatches      int            `json:"risk_batches,omitempty"`    // Bg: партий под риском; batch_id — ближайшая
+	ExpiresAt        time.Time      `json:"expires_at"`
+	WorkingHoursLeft float64        `json:"working_hours_left"`
 }
 
 // ExcludedJSON — блюдо, снятое предохранителем Bg.
@@ -121,8 +123,9 @@ func buildHotOffers(snap store.Snapshot, algo string, cfg hotoffers.Config) HotO
 		for _, rs := range o.Reasons {
 			p := snap.Products[rs.ProductID]
 			row.Reasons = append(row.Reasons, HotReasonJSON{ProductID: rs.ProductID, ProductName: p.Name,
-				BatchID: rs.BatchID, AtRisk: store.QtyJSON{Qty: int64(rs.AtRisk), Unit: p.Unit},
-				ExpiresAt: rs.ExpiresAt.In(loc), WorkingHoursLeft: rs.WorkingHoursLeft})
+				BatchID: rs.BatchID, AtRisk: store.QtyJSON{Qty: int64(rs.AtRisk), Unit: p.Unit}, RiskBatches: rs.Batches,
+				ProductAtRisk: productRisk(rs.ProductAtRisk, p.Unit),
+				ExpiresAt:     rs.ExpiresAt.In(loc), WorkingHoursLeft: rs.WorkingHoursLeft})
 			if row.SellUntil.IsZero() || rs.ExpiresAt.Before(row.SellUntil) {
 				row.SellUntil = rs.ExpiresAt.In(loc)
 			}
@@ -179,8 +182,14 @@ func explainOffer(o OfferJSON, algo string) string {
 	parts := make([]string, 0, len(o.Reasons)+1)
 	for _, r := range o.Reasons {
 		if algo == "b" {
-			parts = append(parts, fmt.Sprintf("%s, партия №%d: %s не успеет разойтись за %s.",
-				r.ProductName, r.BatchID, formatQty(r.AtRisk.Qty, r.AtRisk.Unit), workingHours(r.WorkingHoursLeft)))
+			if r.RiskBatches > 1 && r.ProductAtRisk != nil {
+				parts = append(parts, fmt.Sprintf("%s: %s в %d партиях не успеет разойтись (ближайшая — №%d, %s, за %s).",
+					r.ProductName, formatQty(r.ProductAtRisk.Qty, r.ProductAtRisk.Unit), r.RiskBatches, r.BatchID,
+					formatQty(r.AtRisk.Qty, r.AtRisk.Unit), workingHours(r.WorkingHoursLeft)))
+			} else {
+				parts = append(parts, fmt.Sprintf("%s, партия №%d: %s не успеет разойтись за %s.",
+					r.ProductName, r.BatchID, formatQty(r.AtRisk.Qty, r.AtRisk.Unit), workingHours(r.WorkingHoursLeft)))
+			}
 		} else {
 			parts = append(parts, fmt.Sprintf("%s, партия №%d: в запасе %s, срок через %s.",
 				r.ProductName, r.BatchID, formatQty(r.AtRisk.Qty, r.AtRisk.Unit), workingHours(r.WorkingHoursLeft)))
@@ -243,4 +252,12 @@ func plural(n int64, one, few, many string) string {
 // BuildHotOffers — тот же расчёт, что у GET /api/hot-offers, для отпечатка списка (hotoffers.changed).
 func BuildHotOffers(snap store.Snapshot, algo string, cfg hotoffers.Config) HotOffersResponse {
 	return buildHotOffers(snap, algo, cfg)
+}
+
+// productRisk — риск продукта для ответа; нуль (алгоритм R его не считает) — поле не выводится.
+func productRisk(q domain.Qty, unit domain.Unit) *store.QtyJSON {
+	if q <= 0 {
+		return nil
+	}
+	return &store.QtyJSON{Qty: int64(q), Unit: unit}
 }
