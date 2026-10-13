@@ -24,6 +24,7 @@ export const SCREENS: Screen[] = [
   { id: "orders", title: "Заказы" },
   { id: "alerts", title: "Предупреждения", soon: "лента истекающих и списанных партий" },
   { id: "money", title: "Деньги", soon: "потери от списаний и сэкономленные суммы" },
+  { id: "shift-report", title: "Отчёт смены" },
   { id: "analytics", title: "Аналитика", soon: "сводки по списаниям и продажам" },
   { id: "network", title: "Сеть", needsHub: true },
   { id: "demo", title: "Демо-панель", soon: "панель управления временем стенда" },
