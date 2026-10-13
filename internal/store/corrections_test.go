@@ -191,6 +191,9 @@ func TestCancelOrderReturnsOnce(t *testing.T) {
 	if n := cnt(t, db, `SELECT count(*) FROM movements WHERE kind=$1 AND order_id=$2`, KindReturn, o1); n != 1 {
 		t.Fatalf("return movements: %d", n)
 	}
+	if list, _, err := db.ListOrders(ctx, OrderAccepted, 10, ""); err != nil || len(list) != 1 || list[0].CancelledAt == nil {
+		t.Fatalf("list after cancel: %v %+v", err, list)
+	}
 	if again, err := db.CancelOrder(ctx, CancelInput{ID: c1, OrderID: o1}, clk.Now); err != nil || !again.Replayed || batchRemaining(t, db, 1) != 300 {
 		t.Fatalf("replay: %v %+v", err, again)
 	}

@@ -10,6 +10,8 @@ export interface ShiftData {
   dishes: (Dish & { price_minor?: number })[];
   accepted: Order[];
   rejected: Order[];
+  /** Заказы за сутки прочитаны не до конца: упёрлись в MAX_PAGES страниц. */
+  incomplete: boolean;
   writeoffs: MoneyReport;
   shortages: ShortagesReport;
   supply: SupplySuggestion[];
@@ -20,19 +22,20 @@ export type ShiftState = { kind: "loading" } | { kind: "error"; message: string 
 
 const MAX_PAGES = 10;
 
-/** Заказы статуса за сутки `date`: страницами от новых к старым, пока не дошли до более ранних суток. */
-async function ordersOfDay(status: Order["status"], date: string, tz: string): Promise<Order[]> {
+/** Заказы статуса за сутки `date`: страницами от новых к старым, пока не дошли до более ранних суток.
+ *  complete — false, если лимит страниц кончился раньше, чем дошли до более ранних суток. */
+async function ordersOfDay(status: Order["status"], date: string, tz: string): Promise<{ orders: Order[]; complete: boolean }> {
   const out: Order[] = [];
   let before: string | undefined;
   for (let i = 0; i < MAX_PAGES; i++) {
     const { orders } = await api.ordersPage(status, { limit: 500, before });
-    if (orders.length === 0) break;
+    if (orders.length === 0) return { orders: out, complete: true };
     out.push(...orders.filter((o) => dayOf(o.at, tz) === date));
     const last = orders[orders.length - 1];
-    if (orders.length < 500 || dayOf(last.at, tz) < date) break;
+    if (orders.length < 500 || dayOf(last.at, tz) < date) return { orders: out, complete: true };
     before = last.id;
   }
-  return out;
+  return { orders: out, complete: false };
 }
 
 /** Данные отчёта за сутки `date` (по умолчанию — текущие сутки стенда). */
@@ -57,7 +60,12 @@ export function useShiftReport(date: string | null): [ShiftState, string | null,
         api.forecastWriteoffs(),
       ]);
       if (mine !== seq.current) return;
-      setState({ kind: "ready", data: { date: day, timeZone: tz, dishes, accepted, rejected, writeoffs, shortages, supply, forecast } });
+      // Отменённый заказ вернул продукты на склад — в «Продано» он не входит.
+      const sold = accepted.orders.filter((o) => !o.cancelled_at);
+      setState({
+        kind: "ready",
+        data: { date: day, timeZone: tz, dishes, accepted: sold, rejected: rejected.orders, incomplete: !accepted.complete || !rejected.complete, writeoffs, shortages, supply, forecast },
+      });
     } catch (e) {
       if (mine !== seq.current) return;
       setState((p) => (p.kind === "ready" ? p : { kind: "error", message: e instanceof Error ? e.message : "Не удалось загрузить данные" }));

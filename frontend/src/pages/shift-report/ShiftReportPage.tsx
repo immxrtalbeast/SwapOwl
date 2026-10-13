@@ -68,6 +68,7 @@ export function ShiftReportPage() {
         const now = d.supply.filter((s) => s.urgency === "now");
         return (
           <div className="grid" style={{ display: "grid", gap: 20 }}>
+            {d.incomplete && <p role="status" style={{ margin: 0, color: "var(--urgency-risk-fg, #a3330a)" }}>Данные неполные: за более поздние сутки слишком много заказов, «Продано» и «Недополучено» посчитаны не по всем.</p>}
             <p style={{ margin: 0 }}>Сутки стенда: {new Date(`${d.date}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
               <Kpi label="Продано" value={soldMinor === null ? `${sumPortions(sold)} порц.` : formatRub(soldMinor)} hint={`${sumPortions(sold)} порций`} />
