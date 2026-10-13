@@ -61,8 +61,13 @@ test("10. Вскрытая упаковка: дочерняя партия со 
   await page.getByRole("button", { name: "Вскрыл упаковку" }).first().click();
   await page.getByRole("button", { name: "Подтвердить" }).click();
 
-  await expect.poll(async () => (await milkBatches()).batches.length, { timeout: 15_000 }).toBe(before.length + 1);
-  const child = (await milkBatches()).batches.find((b) => !before.some((x) => x.id === b.id))!;
+  // Ищем новую партию, а не сверяем их число: если в исходной меньше упаковки (генератор шага 1 съел
+  // случайное количество), она вскрывается целиком, обнуляется и пропадает из списка — число не меняется.
+  const fresh = async () => (await milkBatches()).batches.filter((b) => !before.some((x) => x.id === b.id));
+  await expect.poll(async () => (await fresh()).length, { timeout: 15_000 }).toBe(1);
+  const child = (await fresh())[0]!;
+  expect(child.parent_batch_id, "дочерняя партия ссылается на исходную").toBeTruthy();
+  expect(child.opened_at, "у дочерней партии есть время вскрытия").toBeTruthy();
   const maxExpiry = Date.parse(clock.now) + 48 * 3600_000;
   expect(Date.parse(child.expires_at), "срок вскрытой — не позже now + 48 ч").toBeLessThanOrEqual(maxExpiry + 60_000);
 
