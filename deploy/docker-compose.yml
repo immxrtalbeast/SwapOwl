@@ -43,6 +43,9 @@ services:
       AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
       ADMIN_LOGIN: ${ADMIN_LOGIN:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      INVOICE_MODEL: ${INVOICE_MODEL:-claude-haiku-5-5}
+      INVOICE_PER_HOUR: ${INVOICE_PER_HOUR:-30}
     ports:
       - "${API_PORT:-8080}:8080"
     healthcheck:

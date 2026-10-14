@@ -5,6 +5,7 @@ import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { api } from "../../api/client";
 import type { DeliveryInput, ProductStock } from "../../api/types";
 import { CsvImport } from "./CsvImport";
+import { PhotoInvoice } from "./PhotoInvoice";
 import { Card, PrimaryButton, SecondaryButton, TextButton } from "../../components";
 
 interface Line {
@@ -62,6 +63,7 @@ export function DeliveryForm({ products, onReceived }: { products: readonly Prod
   return (
     <Card title="Приём поставки">
       <form onSubmit={submit} style={{ display: "grid", gap: 16 }}>
+        <PhotoInvoice products={products} onReceived={onReceived} />
         <CsvImport products={products} onReceived={onReceived} />
         <TextInput label="Номер накладной" required value={number} onChange={(e) => setNumber(e.currentTarget.value)} />
         {lines.map((l, i) => (

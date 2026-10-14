@@ -1,6 +1,6 @@
 import type { Role } from "../auth/roles";
 import { ApiError } from "./types";
-import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, ForecastReport, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput } from "./types";
+import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, InvoiceDraft, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, ForecastReport, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
@@ -76,6 +76,8 @@ export const api = {
     }),
   receiveDelivery: (d: DeliveryInput) =>
     request<DeliveryResult>("/api/deliveries", { method: "POST", body: JSON.stringify(d) }),
+  recognizeInvoice: (image_base64: string, media_type: string) =>
+    request<InvoiceDraft>("/api/invoices/recognize", { method: "POST", body: JSON.stringify({ image_base64, media_type }) }),
   users: () => request<{ items: UserAccount[] }>("/api/users").then((r) => r.items),
   createUser: (u: { login: string; password: string; role: Role }) =>
     request<UserAccount>("/api/users", { method: "POST", body: JSON.stringify(u) }),

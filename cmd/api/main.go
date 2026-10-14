@@ -22,6 +22,7 @@ import (
 	"umirhack/internal/events"
 	"umirhack/internal/generator"
 	"umirhack/internal/hotoffers"
+	"umirhack/internal/invoice"
 	"umirhack/internal/janitor"
 	"umirhack/internal/metrics"
 	"umirhack/internal/stand"
@@ -166,7 +167,8 @@ func run() error {
 			Snap: store.Snapshotter{DB: db, Params: store.SnapshotParams{
 				WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}}},
 		HotConfig: api.HotOffersConfig{DefaultAlgo: cfg.HotOffersAlgo, Rank: hotoffers.Config{
-			TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter, HorizonHours: cfg.HotHorizon}}})
+			TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter, HorizonHours: cfg.HotHorizon}},
+		Invoices: invoiceDeps(cfg, log)})
 	go newHotWatcher(bus, store.Snapshotter{DB: db, Params: store.SnapshotParams{
 		WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
 		hotoffers.Config{TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter, HorizonHours: cfg.HotHorizon},
@@ -358,4 +360,19 @@ func countOutbox(ctx context.Context, db *store.DB) int {
 		n += len(list)
 		after = list[len(list)-1].ID
 	}
+}
+
+// invoiceDeps — распознавание фото накладной: Claude при заданном ANTHROPIC_API_KEY, иначе на демо-стенде —
+// демо-распознаватель с образцом (ответ помечен demo), иначе маршрут отвечает 503 not_configured.
+func invoiceDeps(cfg config.Config, log *slog.Logger) *api.Invoices {
+	inv := &api.Invoices{Limiter: invoice.NewLimiter(cfg.InvoicePerHour), Wall: time.Now}
+	switch key := os.Getenv("ANTHROPIC_API_KEY"); {
+	case key != "":
+		inv.Recognizer = invoice.NewClaude(key, cfg.InvoiceModel)
+		log.Info("invoice recognition", slog.String("model", cfg.InvoiceModel), slog.Int("per_hour", cfg.InvoicePerHour))
+	case cfg.DemoMode:
+		inv.Recognizer = invoice.Demo{}
+		log.Info("invoice recognition: demo recognizer (ANTHROPIC_API_KEY not set)")
+	}
+	return inv
 }

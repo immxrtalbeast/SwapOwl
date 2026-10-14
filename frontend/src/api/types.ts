@@ -64,6 +64,28 @@ export interface DeliveryItemInput {
   expires_on?: string;
 }
 
+/** Позиция распознанной накладной (POST /api/invoices/recognize). quantity — строка в unit. */
+export interface InvoiceLine {
+  raw_name: string;
+  product_id: string | null;
+  quantity: string;
+  unit: "g" | "kg" | "ml" | "l" | "pcs";
+  expires_on: string | null;
+  shelf_life_hours: number | null;
+  confidence: "high" | "low";
+  note?: string;
+}
+
+/** Черновик поставки с фото накладной; date — дата документа, не срок годности. demo — образец без модели. */
+export interface InvoiceDraft {
+  number: string;
+  date?: string;
+  supplier?: string;
+  model: string;
+  demo: boolean;
+  lines: InvoiceLine[];
+}
+
 export interface DeliveryInput {
   id: string;
   number: string;

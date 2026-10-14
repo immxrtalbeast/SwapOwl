@@ -152,6 +152,9 @@ func TestSimDefaultsAndValidation(t *testing.T) {
 	if err != nil || c.SimSeed != 7 || c.SimFollowHot || c.SimHotUplift != 2 {
 		t.Errorf("sim override: %+v %v", c, err)
 	}
+	if _, err := Load(env(map[string]string{"DATABASE_URL": "postgres://x", "INVOICE_PER_HOUR": "0"})); err == nil {
+		t.Error("INVOICE_PER_HOUR = 0 must fail")
+	}
 	if _, err := Load(env(map[string]string{"DATABASE_URL": "postgres://x", "SIM_HOT_UPLIFT": "0.5"})); err == nil {
 		t.Error("SIM_HOT_UPLIFT < 1 must fail")
 	}

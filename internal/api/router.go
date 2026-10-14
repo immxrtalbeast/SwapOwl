@@ -83,6 +83,8 @@ type Deps struct {
 	Metrics *metrics.Registry
 	// MetricsToken — значение METRICS_TOKEN; пустой — /metrics отвечает 404.
 	MetricsToken string
+	// Invoices — распознавание фото накладной (FS-158). nil — маршрут не регистрируется.
+	Invoices *Invoices
 }
 
 // Router — хаб-файл маршрутов. Следующие тикеты добавляют строки в Routes(),
@@ -120,6 +122,7 @@ func (rt *Router) Routes() {
 	rt.authRoutes()
 	rt.stockRoutes()
 	rt.receivingRoutes()
+	rt.invoiceRoutes()
 	rt.catalogRoutes()
 	rt.orderRoutes()
 	rt.correctionRoutes()
