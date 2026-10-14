@@ -6,7 +6,7 @@ import { api } from "../../api/client";
 import { ApiError } from "../../api/types";
 import type { InvoiceDraft, ProductStock } from "../../api/types";
 import { PrimaryButton, SecondaryButton } from "../../components";
-import { buildPhotoDelivery, claimText, discrepancies, draftRows, normQty, rowErrors, shrinkImage, unitRu } from "./photoInvoice";
+import { buildPhotoDelivery, claimText, discrepancies, draftRows, normQty, rowErrors, shelfLabel, shrinkImage, unitRu } from "./photoInvoice";
 import type { DraftRow } from "./photoInvoice";
 
 type Status = { kind: "idle" | "reading" | "sending" } | { kind: "ok" | "error"; message: string; claim?: string };
@@ -145,9 +145,9 @@ export function PhotoInvoice({ products, onReceived }: { products: readonly Prod
                   {rows.map((r, i) => {
                     const short = r.decision === "accept" && normQty(r.accepted) && normQty(r.line.quantity) && Number(normQty(r.accepted)) < Number(normQty(r.line.quantity));
                     return (
-                      <tr key={r.key} style={{ borderTop: "1px solid var(--border)", opacity: r.decision === "reject" ? 0.6 : 1 }}>
+                      <tr key={r.key} style={{ borderTop: "1px solid var(--border)", background: r.decision === "reject" ? "var(--urgency-critical-bg, #fdecea)" : undefined }}>
                         <td style={cell}>
-                          <div>{r.line.raw_name}</div>
+                          <div style={r.decision === "reject" ? { textDecoration: "line-through" } : undefined}>{r.line.raw_name}</div>
                           {r.line.confidence === "low" && <Badge color="yellow" variant="light" size="sm" title={r.line.note}>проверьте{r.line.note ? `: ${r.line.note}` : ""}</Badge>}
                           {errors[i].map((m) => <div key={m} role="alert" style={{ color: "var(--urgency-critical-fg)", fontSize: 13 }}>{m}</div>)}
                         </td>
@@ -172,8 +172,8 @@ export function PhotoInvoice({ products, onReceived }: { products: readonly Prod
                           />
                           {short && <Badge color="orange" variant="light" size="sm">недовоз</Badge>}
                         </td>
-                        <td style={cell}>
-                          {r.line.expires_on ? `до ${r.line.expires_on.split("-").reverse().join(".")}` : r.line.shelf_life_hours ? `${r.line.shelf_life_hours} ч` : <span title="Срок возьмётся из карточки продукта и попросит подтверждения в «Приёмке»">из карточки</span>}
+                        <td style={{ ...cell, whiteSpace: "nowrap" }}>
+                          {r.line.expires_on ? `до ${r.line.expires_on.split("-").reverse().join(".")}` : r.line.shelf_life_hours ? shelfLabel(r.line.shelf_life_hours) : <span title="Срок возьмётся из карточки продукта и попросит подтверждения в «Приёмке»">из карточки</span>}
                         </td>
                         <td style={cell}>
                           <SegmentedControl
@@ -181,6 +181,7 @@ export function PhotoInvoice({ products, onReceived }: { products: readonly Prod
                             aria-label={`Решение: ${r.line.raw_name}`}
                             data={[{ value: "accept", label: "Принять" }, { value: "reject", label: "Брак" }]}
                             value={r.decision}
+                            color={r.decision === "reject" ? "red" : undefined}
                             onChange={(v) => update(r.key, { decision: v as DraftRow["decision"] })}
                           />
                         </td>

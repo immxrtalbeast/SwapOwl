@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { InvoiceDraft, ProductStock } from "../../api/types";
-import { buildPhotoDelivery, claimText, discrepancies, draftRows, normQty, normSupplier, rowErrors } from "./photoInvoice";
+import { buildPhotoDelivery, claimText, discrepancies, draftRows, normQty, normSupplier, rowErrors, shelfLabel } from "./photoInvoice";
 
 const products = [
   { id: "milk", name: "Молоко", unit: "ml" },
@@ -74,6 +74,11 @@ describe("photoInvoice", () => {
     const at = new Date("2026-10-13T08:00:00Z");
     expect(buildPhotoDelivery({ ...draft, date: "" }, "1", "", draftRows(draft), at).created_at).toBe(at.toISOString());
     expect(buildPhotoDelivery({ ...draft, date: "2026-13-45" }, "1", "", draftRows(draft), at).created_at).toBe(at.toISOString());
+  });
+
+  it("срок хранения сутками, если делится", () => {
+    expect(shelfLabel(120)).toBe("5 сут");
+    expect(shelfLabel(36)).toBe("36 ч");
   });
 
   it("без расхождений акта нет", () => {

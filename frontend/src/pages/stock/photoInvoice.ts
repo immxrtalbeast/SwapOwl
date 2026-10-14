@@ -22,6 +22,9 @@ const DIM: Record<InvoiceLine["unit"], "g" | "ml" | "pcs"> = { g: "g", kg: "g", 
 
 export const unitRu = (u: InvoiceLine["unit"]) => UNIT_RU[u];
 
+/** Срок хранения: целые сутки — «5 сут», иначе часы. */
+export const shelfLabel = (h: number) => (h % 24 === 0 ? `${h / 24} сут` : `${h} ч`);
+
 /** "1,5" и "1.5" → "1.5"; не число или ≤ 0 → null. */
 export function normQty(s: string): string | null {
   const v = s.trim().replace(",", ".");
