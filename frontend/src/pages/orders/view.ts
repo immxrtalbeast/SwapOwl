@@ -1,4 +1,4 @@
-import type { Order, OrderMissing, OrderShortfall, OrderWriteoff } from "../../api/types";
+import type { DishServings, Order, OrderMissing, OrderShortfall, OrderWriteoff } from "../../api/types";
 import { NBSP, formatNumber, formatQty } from "../../lib/format";
 import type { UrgencyDef } from "../../lib/urgency";
 
@@ -54,4 +54,21 @@ export function itemsText(order: Pick<Order, "items">, dishName: (id: string) =>
 export function appendPage(rows: readonly Order[], next: readonly Order[]): Order[] {
   const seen = new Set(rows.map((o) => o.id));
   return [...rows, ...next.filter((o) => !seen.has(o.id))];
+}
+
+/** Подпись блюда в выборе заказа: доступные — с числом порций, из стоп-листа — с причиной (выбрать нельзя). */
+export function dishOptionLabel(d: Pick<DishServings, "name" | "available" | "servings" | "missing">): string {
+  if (!d.available) {
+    const what = d.missing.map((m) => m.product_name.toLowerCase()).join(", ");
+    return `${d.name} — стоп-лист${what ? ` (нет: ${what})` : ""}`;
+  }
+  return `${d.name} — можно ${d.servings}`;
+}
+
+/** Строки заказа с блюдом, ушедшим в стоп-лист после выбора: их нужно убрать, иначе заказ не оформить. */
+export function stoppedLines(lines: readonly { dish_id: string }[], dishes: readonly Pick<DishServings, "id" | "name" | "available">[]): string[] {
+  return lines.flatMap((l) => {
+    const d = dishes.find((x) => x.id === l.dish_id);
+    return d && !d.available ? [d.name] : [];
+  });
 }

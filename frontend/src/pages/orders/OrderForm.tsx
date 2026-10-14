@@ -2,17 +2,18 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { api } from "../../api/client";
 import { ApiError } from "../../api/types";
-import type { Dish, Order } from "../../api/types";
+import type { DishServings, Order } from "../../api/types";
 import { Card } from "../../components";
 import { PrimaryButton, SecondaryButton, TextButton } from "../../components";
 import { OrderResult } from "./OrderResult";
+import { dishOptionLabel, stoppedLines } from "./view";
 
 interface Line {
   dish_id: string;
   portions: string;
 }
 
-export function OrderForm({ dishes, onPlaced }: { dishes: Dish[]; onPlaced: () => void | Promise<void> }) {
+export function OrderForm({ dishes, onPlaced }: { dishes: DishServings[]; onPlaced: () => void | Promise<void> }) {
   const [lines, setLines] = useState<Line[]>([{ dish_id: "", portions: "1" }]);
   const [result, setResult] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +28,8 @@ export function OrderForm({ dishes, onPlaced }: { dishes: Dish[]; onPlaced: () =
   };
   const update = (i: number, patch: Partial<Line>) => edit((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const taken = new Set(lines.map((l) => l.dish_id));
+  // Блюдо ушло в стоп-лист, пока собирали заказ: просим убрать его, а не отправляем заказ на заведомый отказ.
+  const stopped = stoppedLines(lines, dishes);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -59,8 +62,8 @@ export function OrderForm({ dishes, onPlaced }: { dishes: Dish[]; onPlaced: () =
               <select required value={l.dish_id} onChange={(e) => update(i, { dish_id: e.target.value })} style={{ ...controlStyle, minWidth: 220 }}>
                 <option value="">— выберите —</option>
                 {dishes.map((d) => (
-                  <option key={d.id} value={d.id} disabled={taken.has(d.id) && l.dish_id !== d.id}>
-                    {d.name}
+                  <option key={d.id} value={d.id} disabled={(taken.has(d.id) && l.dish_id !== d.id) || (!d.available && l.dish_id !== d.id)}>
+                    {dishOptionLabel(d)}
                   </option>
                 ))}
               </select>
@@ -80,10 +83,15 @@ export function OrderForm({ dishes, onPlaced }: { dishes: Dish[]; onPlaced: () =
           <SecondaryButton type="button" onClick={() => edit((ls) => [...ls, { dish_id: "", portions: "1" }])}>
             Добавить блюдо
           </SecondaryButton>
-          <PrimaryButton type="submit" loading={sending}>
+          <PrimaryButton type="submit" loading={sending} disabled={stopped.length > 0}>
             Оформить заказ
           </PrimaryButton>
         </div>
+        {stopped.length > 0 && (
+          <p role="alert" style={{ margin: 0, color: "var(--urgency-critical-fg)" }}>
+            {stopped.join(", ")} {stopped.length > 1 ? "ушли" : "ушло"} в стоп-лист — уберите из заказа, чтобы оформить остальное.
+          </p>
+        )}
         {error && (
           <p role="alert" style={{ margin: 0, color: "var(--urgency-critical-fg)" }}>
             Ошибка: {error}
