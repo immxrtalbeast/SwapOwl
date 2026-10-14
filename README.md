@@ -15,6 +15,7 @@ SwapOwl — самостоятельная система учёта парти�
 | Требование | Код | Тест | На стенде |
 |---|---|---|---|
 | Приём поставки: id, номер, дата создания, позиции | `internal/api/deliveries.go`, `internal/store/deliveries.go` | `TestPostDeliveryValidation`, `TestPostDeliveryNormalizesUnits` | «Приёмка»; `POST /api/deliveries` (curl ниже) |
+| Ввод поставки без ручного набора: фото накладной и CSV | `internal/invoice`, `internal/api/invoices.go`, `frontend/src/pages/stock/photoInvoice.ts` | `TestClaudeRequestAndParse`, `TestRecognizeInvoiceErrors` | «Склад» → «Фото накладной» / «Пример фото»: принять, недовоз, брак |
 | Каждая позиция — отдельная партия со своим сроком | `internal/store/batches.go` | `TestInv01QuantityConservation` | «Склад» → строка продукта раскрывается в партии |
 | Срок каждой партии и оставшееся время | `internal/store/expiry.go`; «годен до даты» — до конца дня по `RESTAURANT_TZ` | `TestInv06StrictExpiryBoundary`, `TestInv07EndOfDay` | «Склад»: «через 14 ч», точная дата во всплывающей подсказке |
 | Учёт количества без float, единицы `g/kg/ml/l/pcs` | `internal/domain/units` | `TestInv12ParseTable`, `TestInv12AddMulBounds` | `"1.5" kg` → «1,5 кг»; `1e3`, `-5`, `1,5` → `400` с причиной |
@@ -71,6 +72,7 @@ SwapOwl — самостоятельная система учёта парти�
 
 - **Партии и сроки.** Остаток склада — сумма непросроченных партий; списание строго по FEFO; истекающие партии, количество под риском, стоп-лист пересчитываются от остатков.
 - **Приёмка и заказ поставщику.** Экран «Приёмка» подтверждает срок, взятый из карточки продукта; экран «Поставки» предлагает закупку и создаёт заказ поставщику (`POST /api/supply-orders`, идемпотентно по `id`). Доставка заказа во внешнюю систему — через адаптер ([`docs/iiko.md`](docs/iiko.md)).
+- **Приёмка по фото накладной.** Снимок ТОРГ-12/УПД → позиции по справочнику (Claude Haiku 5.5, фасовка пересчитывается) → по каждой строке «принять», «недовоз» или «брак» → поставка только с принятым и акт расхождений поставщику — [`docs/photo-invoice.md`](docs/photo-invoice.md).
 - **Штучные продукты и упаковки.** Яйца приходят штуками, а норма — граммы (`piece_weight`); поставка в упаковках (`unit: "pack"`) — [`docs/catalog.md`](docs/catalog.md).
 - **Сеть точек.** Один ресторан — один экземпляр; отдельный сервис hub (`cmd/hub`) опрашивает точки и отдаёт сводку, в интерфейсе — экран «Сеть» (виден, когда hub доступен). Много точек на одном сервере — `deploy/scripts/fleet.sh` — [`docs/network.md`](docs/network.md), [`docs/operations.md`](docs/operations.md).
 - **Сторож эксплуатации.** `cmd/watchdog` проверяет `/healthz`, очередь исходящих и диск и пишет инженеру в Telegram — [`docs/operations.md`](docs/operations.md). Управляющему сообщения шлёт `cmd/notifier` — [`docs/notify.md`](docs/notify.md).

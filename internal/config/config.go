@@ -66,6 +66,11 @@ type Config struct {
 	// SeedProfile — склад и спрос стенда: "demo" (по умолчанию, сценарий показа) или "ab"
 	// (bench «скоропорт в трёх блюдах» для живого A/B на сцене).
 	SeedProfile string
+
+	// InvoiceModel — модель распознавания фото накладной; InvoicePerHour — лимит распознаваний
+	// в час на экземпляр (деньги за вызовы модели). Ключ — ANTHROPIC_API_KEY, в Config не хранится.
+	InvoiceModel   string
+	InvoicePerHour int
 }
 
 // Load читает окружение через getenv (os.Getenv в проде), подставляет значения
@@ -106,6 +111,8 @@ func Load(getenv func(string) string) (Config, error) {
 		SimFollowHot:      p.bool("SIM_FOLLOW_HOT", true),
 		SimHotUplift:      p.float("SIM_HOT_UPLIFT", 1.5),
 		SeedProfile:       p.str("SEED_PROFILE", "demo"),
+		InvoiceModel:      p.str("INVOICE_MODEL", "claude-haiku-5-5"),
+		InvoicePerHour:    p.int("INVOICE_PER_HOUR", 30),
 	}
 	c.OpenAt = p.clock("OPEN_AT", "10:00")
 	c.CloseAt = p.clock("CLOSE_AT", "23:00")

@@ -1,6 +1,6 @@
 # Адаптер iiko и демо-эмулятор iiko (fake-iiko) в одном образе; fake-iiko запускается с другим entrypoint.
 # Сборка из корня репозитория: docker build -f deploy/Dockerfile.adapter .
-FROM golang:1.22-alpine AS build
+FROM golang:1.24-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

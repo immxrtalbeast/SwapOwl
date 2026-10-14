@@ -199,6 +199,60 @@ paths:
                 - {id: salmon, name: Лосось, unit: g, available: {qty: 4000, unit: g}, expiring: {qty: 1400, unit: g},
                    batches_count: 2, nearest_expires_at: '2026-10-10T18:00:00+03:00'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/invoices/recognize:
+    post:
+      tags: [stock]
+      summary: Распознать фото накладной — черновик поставки (operator)
+      description: |
+        Фото накладной (ТОРГ-12, УПД, счёт, рукописная) → позиции, сопоставленные со справочником. Поставку **не создаёт**:
+        оператор проверяет строки (принять, поправить количество — недовоз, отметить брак) и отправляет принятое
+        обычным `POST /api/deliveries`. `date` — дата документа, не срок годности; срок — `expires_on` / `shelf_life_hours`
+        позиции, если напечатан. `confidence: low` — строку стоит проверить (`note` — что под сомнением).
+        Модель — `INVOICE_MODEL` (по умолчанию Claude Haiku 5.5), ключ — `ANTHROPIC_API_KEY`. Без ключа на демо-стенде
+        отвечает демо-распознаватель с образцом (`demo: true`), иначе `503 not_configured`. Лимит — `INVOICE_PER_HOUR` в час.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_base64, media_type]
+              additionalProperties: false
+              properties:
+                image_base64: {type: string, description: "Фото в base64 без префикса data:, до 8 МБ"}
+                media_type: {type: string, enum: [image/jpeg, image/png, image/webp]}
+      responses:
+        '200':
+          description: Черновик поставки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  number: {type: string}
+                  date: {type: string}
+                  supplier: {type: string}
+                  model: {type: string}
+                  demo: {type: boolean}
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        raw_name: {type: string}
+                        product_id: {type: string, nullable: true}
+                        quantity: {type: string, example: "12"}
+                        unit: {type: string, enum: [g, kg, ml, l, pcs]}
+                        expires_on: {type: string, format: date, nullable: true}
+                        shelf_life_hours: {type: integer, nullable: true}
+                        confidence: {type: string, enum: [high, low]}
+                        note: {type: string}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '422': {description: "`unreadable_invoice` — на фото нет позиций накладной", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {description: "`too_many_attempts` — лимит распознаваний за час; заголовок Retry-After", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '502': {description: "`internal` — сервис распознавания не ответил", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '503': {description: "`not_configured` — нет ключа модели", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/batches:
     get:
       tags: [stock]
