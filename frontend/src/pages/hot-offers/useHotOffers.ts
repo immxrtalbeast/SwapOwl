@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../api/client";
-import type { Dish, HotAlgo, HotOffersResponse } from "../../api/types";
+import type { DishServings, HotAlgo, HotOffersResponse } from "../../api/types";
 import { useLive } from "../../app/useLive";
 
 export type HotOffersState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; data: HotOffersResponse; dishNames: Record<string, string> };
+  | { kind: "ready"; data: HotOffersResponse; dishNames: Record<string, string>; menu: DishServings[] };
 
 /**
  * Горячие предложения выбранного алгоритма (null — основной по настройке сервера).
@@ -18,9 +18,9 @@ export function useHotOffers(algo: HotAlgo | null): [HotOffersState, () => Promi
   const load = useCallback(async () => {
     const mine = ++seq.current;
     try {
-      const [data, dishes] = await Promise.all([api.hotOffers(algo ?? undefined), api.dishes()]);
+      const [data, dishes] = await Promise.all([api.hotOffers(algo ?? undefined), api.menu()]);
       if (mine !== seq.current) return; // пришёл ответ на устаревший запрос (смена алгоритма)
-      setState({ kind: "ready", data, dishNames: nameMap(dishes) });
+      setState({ kind: "ready", data, dishNames: nameMap(dishes), menu: dishes });
     } catch (e) {
       if (mine !== seq.current) return;
       setState((prev) =>
@@ -28,7 +28,7 @@ export function useHotOffers(algo: HotAlgo | null): [HotOffersState, () => Promi
       );
     }
   }, [algo]);
-  useLive(load, ["hotoffers.changed", "stand.reset"]);
+  useLive(load, ["hotoffers.changed", "stand.reset", "stoplist.changed"]);
   // useLive сам загружает только при монтировании и по событиям: смену алгоритма перечитываем здесь.
   const first = useRef(true);
   useEffect(() => {
@@ -42,6 +42,6 @@ export function useHotOffers(algo: HotAlgo | null): [HotOffersState, () => Promi
   return [state, load];
 }
 
-function nameMap(dishes: Dish[]): Record<string, string> {
+function nameMap(dishes: DishServings[]): Record<string, string> {
   return Object.fromEntries(dishes.map((d) => [d.id, d.name]));
 }

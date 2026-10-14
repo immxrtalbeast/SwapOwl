@@ -20,6 +20,7 @@ export const SCREENS: Screen[] = [
   { id: "receiving", title: "Приёмка" },
   { id: "menu", title: "Меню и стоп-лист" },
   { id: "hot-offers", title: "Горячие предложения", soon: "блюда, которые стоит продвигать, чтобы не списывать продукты" },
+  { id: "hall", title: "Для зала" },
   { id: "supply", title: "Поставки", soon: "предложения по закупке" },
   { id: "orders", title: "Заказы" },
   { id: "alerts", title: "Предупреждения", soon: "лента истекающих и списанных партий" },

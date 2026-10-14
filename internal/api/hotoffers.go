@@ -38,6 +38,9 @@ type OfferJSON struct {
 	SellUntil      time.Time       `json:"sell_until"`
 	Reasons        []HotReasonJSON `json:"reasons"`
 	Explanation    string          `json:"explanation"`
+	// Pinned — менеджер ещё и закрепил это блюдо; ManagerNote — его подсказка для зала.
+	Pinned      bool   `json:"pinned,omitempty"`
+	ManagerNote string `json:"manager_note,omitempty"`
 }
 
 // HotReasonJSON — ссылка на партию в предложении.
@@ -64,6 +67,76 @@ type HotOffersResponse struct {
 	Algo     string         `json:"algo"`
 	Offers   []OfferJSON    `json:"offers"`
 	Excluded []ExcludedJSON `json:"excluded"`
+	// ManagerPicks — блюда, добавленные менеджером вручную (FS-159), которых нет в расчёте; отдельно от offers,
+	// потому что у них нет партии-причины. Блюдо из стоп-листа сюда не попадает — оно в excluded.
+	ManagerPicks []ManagerPickJSON `json:"manager_picks"`
+	// Hidden — блюда, скрытые менеджером: из offers убраны.
+	Hidden []HiddenJSON `json:"hidden"`
+}
+
+// ManagerPickJSON — блюдо, закреплённое менеджером.
+type ManagerPickJSON struct {
+	DishID   string    `json:"dish_id"`
+	DishName string    `json:"dish_name"`
+	Note     string    `json:"note"`
+	SetAt    time.Time `json:"set_at"`
+	SetBy    string    `json:"set_by"`
+}
+
+// HiddenJSON — блюдо, скрытое менеджером.
+type HiddenJSON struct {
+	DishID   string    `json:"dish_id"`
+	DishName string    `json:"dish_name"`
+	InOffers bool      `json:"in_offers"` // без скрытия алгоритм поставил бы его в список
+	SetAt    time.Time `json:"set_at"`
+	SetBy    string    `json:"set_by"`
+}
+
+// HotOverrides — решения менеджера по горячим предложениям (FS-159). nil — ручной правки нет.
+type HotOverrides interface {
+	ListHotOverrides(ctx context.Context) ([]store.HotOverride, error)
+	SetHotOverride(ctx context.Context, o store.HotOverride) (store.HotOverride, error)
+	DeleteHotOverride(ctx context.Context, dishID string) error
+}
+
+// applyOverrides — решения менеджера поверх расчёта: скрытые убираются из offers, закреплённые помечаются
+// или идут в manager_picks; закреплённое блюдо из стоп-листа — в excluded с причиной. Чистая функция.
+func applyOverrides(resp HotOffersResponse, overrides []store.HotOverride, names map[string]string, stopped map[string]bool) HotOffersResponse {
+	resp.ManagerPicks, resp.Hidden = []ManagerPickJSON{}, []HiddenJSON{}
+	byDish := make(map[string]store.HotOverride, len(overrides))
+	for _, o := range overrides {
+		byDish[o.DishID] = o
+	}
+	offers := resp.Offers[:0:0]
+	inOffers := map[string]bool{}
+	for _, of := range resp.Offers {
+		inOffers[of.DishID] = true
+		o, ok := byDish[of.DishID]
+		switch {
+		case ok && o.Mode == store.HotHide:
+			continue
+		case ok && o.Mode == store.HotPin:
+			of.Pinned, of.ManagerNote = true, o.Note
+		}
+		offers = append(offers, of)
+	}
+	resp.Offers = offers
+	for _, o := range overrides {
+		name := names[o.DishID]
+		if name == "" {
+			name = o.DishID
+		}
+		switch {
+		case o.Mode == store.HotHide:
+			resp.Hidden = append(resp.Hidden, HiddenJSON{DishID: o.DishID, DishName: name, InOffers: inOffers[o.DishID], SetAt: o.SetAt, SetBy: o.SetBy})
+		case inOffers[o.DishID]:
+		case stopped[o.DishID]:
+			resp.Excluded = append(resp.Excluded, ExcludedJSON{DishID: o.DishID, Why: name + " закреплено менеджером, но сейчас в стоп-листе — не предлагаем"})
+		default:
+			resp.ManagerPicks = append(resp.ManagerPicks, ManagerPickJSON{DishID: o.DishID, DishName: name, Note: o.Note, SetAt: o.SetAt, SetBy: o.SetBy})
+		}
+	}
+	return resp
 }
 
 func (rt *Router) hotOffersRoutes() {
@@ -71,6 +144,11 @@ func (rt *Router) hotOffersRoutes() {
 		return
 	}
 	rt.Handle(http.MethodGet, "/api/hot-offers", rt.getHotOffers)
+	if rt.deps.HotOverrides != nil {
+		rt.Handle(http.MethodGet, "/api/hot-offers/overrides", rt.listHotOverrides)
+		rt.Handle(http.MethodPut, "/api/hot-offers/overrides/{dish_id}", rt.putHotOverride)
+		rt.Handle(http.MethodDelete, "/api/hot-offers/overrides/{dish_id}", rt.deleteHotOverride)
+	}
 }
 
 // getHotOffers — GET /api/hot-offers?algo=a|b. Пересчёт при каждом чтении на свежем снимке БД;
@@ -93,7 +171,21 @@ func (rt *Router) getHotOffers(w http.ResponseWriter, r *http.Request) {
 		rt.internalError(w, r, err)
 		return
 	}
-	WriteJSON(w, http.StatusOK, buildHotOffers(snap, algo, cfg.Rank))
+	resp := buildHotOffers(snap, algo, cfg.Rank)
+	resp.ManagerPicks, resp.Hidden = []ManagerPickJSON{}, []HiddenJSON{}
+	if rt.deps.HotOverrides != nil {
+		overrides, err := rt.deps.HotOverrides.ListHotOverrides(r.Context())
+		if err != nil {
+			rt.internalError(w, r, err)
+			return
+		}
+		names := make(map[string]string, len(snap.Dishes))
+		for _, d := range snap.Dishes {
+			names[d.ID] = d.Name
+		}
+		resp = applyOverrides(resp, overrides, names, snap.Stopped)
+	}
+	WriteJSON(w, http.StatusOK, resp)
 }
 
 // buildHotOffers — чистая сборка ответа: алгоритм + тексты. Без обращений к БД и часам.
