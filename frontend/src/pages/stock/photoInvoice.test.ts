@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { InvoiceDraft, ProductStock } from "../../api/types";
-import { buildPhotoDelivery, claimText, discrepancies, draftRows, normQty, rowErrors } from "./photoInvoice";
+import { buildPhotoDelivery, claimText, discrepancies, draftRows, normQty, normSupplier, rowErrors } from "./photoInvoice";
 
 const products = [
   { id: "milk", name: "Молоко", unit: "ml" },
@@ -50,7 +50,7 @@ describe("photoInvoice", () => {
     expect(text).toContain("Пармезан — недовоз 0,2 кг");
     expect(text).toContain("Йогурт — брак 20 шт");
 
-    const d = buildPhotoDelivery(draft, "4471", rows);
+    const d = buildPhotoDelivery(draft, "4471", draft.supplier!, rows, new Date("2026-10-13T08:00:00Z"));
     expect(d.items).toEqual([
       { product_id: "milk", name: "Молоко 1 л × 12", quantity: "12", unit: "l", shelf_life_hours: 120 },
       { product_id: "parmesan", name: "Пармезан", quantity: "1.0", unit: "kg", expires_on: "2026-11-01" },
@@ -59,11 +59,21 @@ describe("photoInvoice", () => {
     expect(d.created_at).toBe("2026-10-14T00:00:00.000Z");
   });
 
-  it("id не зависит от принятого состава: повтор того же документа — тот же id", () => {
-    const a = buildPhotoDelivery(draft, "4471", draftRows(draft));
-    const b = buildPhotoDelivery(draft, "4471", draftRows(draft).slice(0, 1));
+  it("id не зависит от состава, даты и написания поставщика: повтор того же документа — тот же id", () => {
+    const at = new Date("2026-10-13T08:00:00Z");
+    const a = buildPhotoDelivery(draft, "4471", "ООО «Свежие продукты»", draftRows(draft), at);
+    const b = buildPhotoDelivery({ ...draft, date: undefined }, " 4471 ", 'ООО "Свежие  Продукты"', draftRows(draft).slice(0, 1), at);
     expect(a.id).toBe(b.id);
-    expect(buildPhotoDelivery(draft, "4472", draftRows(draft)).id).not.toBe(a.id);
+    expect(normSupplier("ИП Петров А.А.")).toBe("петроваа");
+    expect(normSupplier("ООО «Аорта»")).toBe("аорта");
+    expect(buildPhotoDelivery(draft, "4472", "ООО «Свежие продукты»", draftRows(draft), at).id).not.toBe(a.id);
+    expect(buildPhotoDelivery(draft, "4471", "ООО «Другой»", draftRows(draft), at).id).not.toBe(a.id);
+  });
+
+  it("без прочитанной даты created_at — момент распознавания, а не отправки", () => {
+    const at = new Date("2026-10-13T08:00:00Z");
+    expect(buildPhotoDelivery({ ...draft, date: "" }, "1", "", draftRows(draft), at).created_at).toBe(at.toISOString());
+    expect(buildPhotoDelivery({ ...draft, date: "2026-13-45" }, "1", "", draftRows(draft), at).created_at).toBe(at.toISOString());
   });
 
   it("без расхождений акта нет", () => {

@@ -183,6 +183,9 @@ func (c *Config) validate() []error {
 	if c.SimHotUplift < 1 || c.SimHotUplift > 10 {
 		bad("SIM_HOT_UPLIFT must be in 1..10, got %v", c.SimHotUplift)
 	}
+	if c.InvoicePerHour < 1 || c.InvoicePerHour > 10000 {
+		bad("INVOICE_PER_HOUR must be in 1..10000, got %d", c.InvoicePerHour)
+	}
 	if c.SeedProfile != "demo" && c.SeedProfile != "ab" {
 		bad("SEED_PROFILE must be demo or ab, got %q", c.SeedProfile)
 	}

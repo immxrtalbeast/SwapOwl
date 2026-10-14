@@ -29,6 +29,8 @@ export function PhotoInvoice({ products, onReceived }: { products: readonly Prod
   const [draft, setDraft] = useState<InvoiceDraft | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [number, setNumber] = useState("");
+  const [supplier, setSupplier] = useState("");
+  const [recognizedAt, setRecognizedAt] = useState(() => new Date());
   const [rows, setRows] = useState<DraftRow[]>([]);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
@@ -40,6 +42,8 @@ export function PhotoInvoice({ products, onReceived }: { products: readonly Prod
       setPhoto(`data:${img.mediaType};base64,${img.base64}`);
       setDraft(d);
       setNumber(d.number);
+      setSupplier(d.supplier ?? "");
+      setRecognizedAt(new Date());
       setRows(draftRows(d));
       setStatus({ kind: "idle" });
     } catch (err) {
@@ -67,14 +71,14 @@ export function PhotoInvoice({ products, onReceived }: { products: readonly Prod
   const accepted = rows.filter((r) => r.decision === "accept");
   const diffs = discrepancies(rows);
   const today = new Date().toLocaleDateString("ru-RU");
-  const claim = draft ? claimText({ number, supplier: draft.supplier }, diffs, today) : "";
+  const claim = draft ? claimText({ number, supplier }, diffs, today) : "";
   const canSend = draft !== null && number.trim() !== "" && accepted.length > 0 && errors.every((e) => e.length === 0) && status.kind !== "sending";
 
   async function send() {
     if (!draft || !canSend) return;
     setStatus({ kind: "sending" });
     try {
-      const r = await api.receiveDelivery(buildPhotoDelivery(draft, number.trim(), rows));
+      const r = await api.receiveDelivery(buildPhotoDelivery(draft, number, supplier, rows, recognizedAt));
       const tail = diffs.length ? ` Расхождений: ${diffs.length} — акт можно скопировать.` : "";
       if (r.replayed) setStatus({ kind: "ok", message: "Эта накладная уже принята — остатки не изменились.", claim });
       else {
@@ -118,9 +122,9 @@ export function PhotoInvoice({ products, onReceived }: { products: readonly Prod
           <div style={{ display: "grid", gap: 12 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end" }}>
               {photo && <a href={photo} target="_blank" rel="noreferrer"><img src={photo} alt="Снимок накладной" style={{ height: 96, borderRadius: 4, border: "1px solid var(--border)" }} /></a>}
-              <TextInput label="Номер накладной" required value={number} onChange={(e) => setNumber(e.currentTarget.value)} style={{ width: 180 }} />
+              <TextInput label="Номер накладной" required value={number} onChange={(e) => setNumber(e.currentTarget.value)} style={{ width: 160 }} />
+              <TextInput label="Поставщик" value={supplier} onChange={(e) => setSupplier(e.currentTarget.value)} style={{ width: 240 }} />
               <div style={{ display: "grid", gap: 4 }}>
-                {draft.supplier && <span>{draft.supplier}</span>}
                 {draft.date && <span style={{ color: "var(--text-muted)" }}>Дата документа {draft.date.split("-").reverse().join(".")} (не срок годности)</span>}
                 {draft.demo ? <Badge color="gray" variant="light">демо-распознавание: образец без модели</Badge> : <span style={{ color: "var(--text-muted)", fontSize: 12 }}>Распознано: {draft.model}</span>}
               </div>

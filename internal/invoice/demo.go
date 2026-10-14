@@ -32,7 +32,8 @@ type Limiter struct {
 	times   []time.Time
 }
 
-func NewLimiter(perHour int) *Limiter { return &Limiter{perHour: perHour} }
+// NewLimiter — perHour < 1 считается 1: нулевой лимит не должен ронять Allow.
+func NewLimiter(perHour int) *Limiter { return &Limiter{perHour: max(perHour, 1)} }
 
 // Allow отмечает попытку в момент now; false — лимит исчерпан, retry — когда освободится место.
 func (l *Limiter) Allow(now time.Time) (ok bool, retry time.Duration) {

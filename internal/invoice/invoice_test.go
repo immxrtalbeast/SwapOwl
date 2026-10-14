@@ -44,6 +44,16 @@ func TestDemoMatchesStandCatalog(t *testing.T) {
 	}
 }
 
+func TestLimiterZeroIsOne(t *testing.T) {
+	l := NewLimiter(0)
+	if ok, _ := l.Allow(time.Now()); !ok {
+		t.Fatal("первая попытка")
+	}
+	if ok, _ := l.Allow(time.Now()); ok {
+		t.Fatal("вторая в тот же час")
+	}
+}
+
 func TestLimiterSlidingHour(t *testing.T) {
 	l := NewLimiter(2)
 	t0 := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)

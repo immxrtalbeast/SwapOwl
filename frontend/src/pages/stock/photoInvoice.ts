@@ -70,11 +70,18 @@ export function claimText(d: Pick<InvoiceDraft, "number" | "supplier">, list: re
   return [`${d.supplier || "Поставщику"}`, `Акт расхождений по накладной № ${d.number}, приёмка ${date}.`, "", ...lines, "", "Просим заменить или скорректировать счёт."].join("\n");
 }
 
+/** Поставщик для id: без формы собственности, кавычек, регистра и пробелов — второй снимок прочитает его иначе. */
+export function normSupplier(s: string): string {
+  return s.toLowerCase().replace(/ё/g, "е").replace(/(^|[^\p{L}])(ооо|оао|зао|пао|ао|ип)(?=[^\p{L}]|$)/gu, "$1").replace(/[^\p{L}\p{N}]/gu, "");
+}
+
 /**
- * Тело POST /api/deliveries из принятых строк. id — от номера, поставщика и даты документа: тот же документ,
- * снятый повторно и принятый так же, даёт replayed; принятый иначе — delivery_conflict, а не вторую поставку.
+ * Тело POST /api/deliveries из принятых строк. id — от номера и поставщика (их видит и правит оператор), без даты:
+ * её модель на втором снимке может не прочитать. Тот же документ, принятый так же, — replayed; иначе — delivery_conflict,
+ * а не вторая поставка. createdAt — дата документа, если прочитана, иначе момент распознавания (хранится в черновике,
+ * чтобы повтор после потерянного ответа был тем же телом).
  */
-export function buildPhotoDelivery(d: InvoiceDraft, number: string, rows: readonly DraftRow[], now: Date = new Date()): DeliveryInput {
+export function buildPhotoDelivery(d: InvoiceDraft, number: string, supplier: string, rows: readonly DraftRow[], recognizedAt: Date): DeliveryInput {
   const items: DeliveryItemInput[] = rows
     .filter((r) => r.decision === "accept")
     .map((r) => ({
@@ -84,8 +91,8 @@ export function buildPhotoDelivery(d: InvoiceDraft, number: string, rows: readon
       unit: r.line.unit,
       ...(r.line.expires_on ? { expires_on: r.line.expires_on } : r.line.shelf_life_hours ? { shelf_life_hours: r.line.shelf_life_hours } : {}),
     }));
-  const created = d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date) ? new Date(`${d.date}T00:00:00Z`) : now;
-  return { id: `photo-${sha256Hex(JSON.stringify([number, d.supplier ?? "", d.date ?? ""])).slice(0, 32)}`, number, created_at: created.toISOString(), items };
+  const created = d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && !Number.isNaN(Date.parse(d.date)) ? new Date(`${d.date}T00:00:00Z`) : recognizedAt;
+  return { id: `photo-${sha256Hex(JSON.stringify([number.trim(), normSupplier(supplier)])).slice(0, 32)}`, number: number.trim(), created_at: created.toISOString(), items };
 }
 
 /** Снимок → JPEG не больше maxSide по длинной стороне: меньше трафика и токенов модели, текст накладной читается. */
