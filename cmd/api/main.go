@@ -366,7 +366,13 @@ func countOutbox(ctx context.Context, db *store.DB) int {
 // демо-распознаватель с образцом (ответ помечен demo), иначе маршрут отвечает 503 not_configured.
 func invoiceDeps(cfg config.Config, log *slog.Logger) *api.Invoices {
 	inv := &api.Invoices{Limiter: invoice.NewLimiter(cfg.InvoicePerHour), Wall: time.Now}
-	switch key := os.Getenv("ANTHROPIC_API_KEY"); {
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	if key != "" && !strings.HasPrefix(key, "sk-ant-api") {
+		// sk-ant-oat… — токен подписки Claude, а не ключ API: Messages API ответит 401 на каждый снимок.
+		log.Warn("invoice recognition: ANTHROPIC_API_KEY is not an API key (expected sk-ant-api…), ignoring it")
+		key = ""
+	}
+	switch {
 	case key != "":
 		inv.Recognizer = invoice.NewClaude(key, cfg.InvoiceModel)
 		log.Info("invoice recognition", slog.String("model", cfg.InvoiceModel), slog.Int("per_hour", cfg.InvoicePerHour))
