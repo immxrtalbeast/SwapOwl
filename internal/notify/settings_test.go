@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -307,5 +308,38 @@ func TestSuggestionsFollowDigestNotQuiet(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(logs, "\n"), "предложения поставок") {
 		t.Fatalf("после тишины подсказок нет: %v", logs)
+	}
+}
+
+// «Помощник»: /ask и свободный текст уходят в API и возвращают его ответ; непонятная ошибка API — человеческий текст.
+func TestAskCommandAndFreeText(t *testing.T) {
+	var got []string
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var q struct {
+			Question string `json:"question"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&q)
+		got = append(got, r.URL.Path+"|"+q.Question)
+		_, _ = w.Write([]byte(`{"intent":"stop","answer":"В стоп-листе 1"}`))
+	}))
+	defer api.Close()
+	n, out, b := settingsN(t, "2026-10-09T12:00:00+03:00", filepath.Join(t.TempDir(), "state.json"))
+	n.API = &APIClient{Base: api.URL, Key: "viewer", HC: api.Client()}
+	ctx := context.Background()
+	b.HandleUpdate(ctx, msgUpdate(botChat, "/ask что в стопе?"))
+	b.HandleUpdate(ctx, msgUpdate(botChat, "сколько осталось лосося"))
+	b.HandleUpdate(ctx, msgUpdate(botChat, "/ask"))
+	if len(got) != 2 || got[0] != "/api/assistant/ask|что в стопе?" || got[1] != "/api/assistant/ask|сколько осталось лосося" {
+		t.Fatalf("запросы к API: %v", got)
+	}
+	texts := out.texts()
+	if len(texts) != 3 || !strings.Contains(texts[0], "В стоп-листе 1") || !strings.Contains(texts[2], "Спросите словами") {
+		t.Fatalf("ответы бота: %v", texts)
+	}
+	api.Close()
+	b.HandleUpdate(ctx, msgUpdate(botChat, "что истекает"))
+	last := out.texts()[len(out.texts())-1]
+	if !strings.Contains(last, "Не получилось спросить склад") || strings.Contains(last, "127.0.0.1") {
+		t.Fatalf("ошибка API: %q", last)
 	}
 }
