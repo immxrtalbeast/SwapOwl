@@ -184,6 +184,8 @@ curl -X POST http://localhost:8080/api/orders \
 
 ### `GET /api/hot-offers?algo=` (viewer)
 
+У предложения есть `margin_minor` (маржа порции: цена блюда − закупочная стоимость рецепта, копейки; поля нет без цены) и `expected_margin_minor` (маржа × `target_today`). Порядок задаёт алгоритм; при строго равном `priority` выше предложение с большей маржой.
+
 `algo` — `a` или `b`, по умолчанию из `HOTOFFERS_ALGO`.
 
 ```json

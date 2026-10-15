@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { HotAlgo, HotOffer } from "../../api/types";
 import { Card, ErrorState, LoadingState, EmptyState, ScreenTitle, SecondaryButton } from "../../components";
 import { formatQty } from "../stock/format";
+import { formatRub } from "../money/format";
 import { productIdFromHash } from "./query";
 import { RealisticBlock } from "./RealisticBlock";
 import { realisticTarget } from "./realistic";
@@ -70,6 +71,12 @@ function OfferCard({ offer, note, prices, onChanged }: { offer: HotOffer; note?:
         ))}
       </ul>
       <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>{offer.explanation}</p>
+      {offer.margin_minor !== undefined && (
+        <p data-testid={`margin-${offer.dish_id}`} style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>
+          Маржа порции {formatRub(offer.margin_minor)}
+          {offer.expected_margin_minor !== undefined && offer.expected_margin_minor > 0 && <> · если продать цель — ≈ +{formatRub(offer.expected_margin_minor)}</>}
+        </p>
+      )}
       {/* Кнопки менеджера всегда внизу карточки: в ряду карточек они на одной линии. */}
       <div style={{ marginTop: "auto", paddingTop: 4 }}>
         <OfferActions offer={offer} onChanged={onChanged} />

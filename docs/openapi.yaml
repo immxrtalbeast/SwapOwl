@@ -1794,6 +1794,14 @@ components:
                     expires_at: {type: string, format: date-time}
                     working_hours_left: {type: number}
               explanation: {type: string}
+              margin_minor:
+                type: integer
+                description: >
+                  Маржа порции, копейки: цена блюда минус закупочная стоимость рецепта (норма × цена продукта / 1000).
+                  Поля нет, если у блюда или хотя бы у одного продукта рецепта нет цены. Может быть отрицательной.
+              expected_margin_minor:
+                type: integer
+                description: margin_minor × target_today — маржа порций, которые надо продать сегодня. Поля нет без margin_minor.
         excluded:
           type: array
           items:

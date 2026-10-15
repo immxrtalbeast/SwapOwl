@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +39,10 @@ type OfferJSON struct {
 	SellUntil      time.Time       `json:"sell_until"`
 	Reasons        []HotReasonJSON `json:"reasons"`
 	Explanation    string          `json:"explanation"`
+	// MarginMinor — маржа порции (цена блюда − закупочная стоимость рецепта), копейки; нет цены блюда или продукта — поля нет.
+	MarginMinor *int64 `json:"margin_minor,omitempty"`
+	// ExpectedMarginMinor — MarginMinor × TargetToday: сколько маржи принесут порции, которые надо продать сегодня.
+	ExpectedMarginMinor *int64 `json:"expected_margin_minor,omitempty"`
 	// Pinned — менеджер ещё и закрепил это блюдо; ManagerNote — его подсказка для зала.
 	Pinned      bool   `json:"pinned,omitempty"`
 	ManagerNote string `json:"manager_note,omitempty"`
@@ -232,9 +237,16 @@ func buildHotOffers(snap store.Snapshot, algo string, cfg hotoffers.Config) HotO
 				domain.WorkingHours(snap.Now, row.SellUntil, snap.Schedule)))
 		}
 		row.TargetToday = targetToday(o.TargetPortions, row.SellUntil, snap)
+		if m, ok := dishMargin(snap, o.DishID); ok {
+			row.MarginMinor = &m
+			em := m * row.TargetToday
+			row.ExpectedMarginMinor = &em
+		}
 		row.Explanation = explainOffer(row, algo)
 		resp.Offers = append(resp.Offers, row)
 	}
+
+	resp.Offers = tieBreakByMargin(resp.Offers)
 
 	stock := snap.Available()
 	if algo != "b" {
@@ -252,6 +264,59 @@ func buildHotOffers(snap store.Snapshot, algo string, cfg hotoffers.Config) HotO
 		resp.Excluded = append(resp.Excluded, ExcludedJSON{DishID: e.DishID, ProductID: e.ProductID, Why: why})
 	}
 	return resp
+}
+
+// dishMargin — маржа порции в копейках: цена блюда − Σ норма × закупочная цена продукта / 1000 (вниз).
+// Неизвестна (ok=false), если у блюда нет цены или у продукта рецепта нет цены. Отрицательная маржа возвращается как есть.
+func dishMargin(snap store.Snapshot, dishID string) (int64, bool) {
+	price := snap.DishPrice[dishID]
+	if price <= 0 {
+		return 0, false
+	}
+	for _, d := range snap.Dishes {
+		if d.ID != dishID {
+			continue
+		}
+		if len(d.Recipe) == 0 {
+			return 0, false
+		}
+		var cost int64
+		for _, it := range d.Recipe {
+			p := snap.Price[it.ProductID]
+			if p <= 0 {
+				return 0, false
+			}
+			cost += int64(it.Quantity) * p / 1000
+		}
+		return price - cost, true
+	}
+	return 0, false
+}
+
+// tieBreakByMargin — порядок задаёт алгоритм; внутри подряд идущих предложений со строго равным приоритетом
+// выше то, что приносит больше маржи (стабильно). Приоритет и порядок между разными приоритетами не меняются.
+func tieBreakByMargin(offers []OfferJSON) []OfferJSON {
+	for i := 0; i < len(offers); {
+		j := i + 1
+		for j < len(offers) && offers[j].Priority == offers[i].Priority {
+			j++
+		}
+		if j-i > 1 {
+			group := offers[i:j]
+			sort.SliceStable(group, func(a, b int) bool {
+				ma, mb := int64(-1<<62), int64(-1<<62)
+				if group[a].MarginMinor != nil {
+					ma = *group[a].MarginMinor
+				}
+				if group[b].MarginMinor != nil {
+					mb = *group[b].MarginMinor
+				}
+				return ma > mb
+			})
+		}
+		i = j
+	}
+	return offers
 }
 
 // targetToday — часть цели, которую нужно продать до закрытия сегодня, пропорционально

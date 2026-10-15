@@ -20,16 +20,17 @@ type SnapshotParams struct {
 // Snapshot — общий согласованный снимок склада для чистых расчётов поверх БД: горячие предложения,
 // предложение поставок, деньги под риском. Ничего не хранится: всё — функция БД и now.
 type Snapshot struct {
-	Now      time.Time
-	Schedule domain.Schedule
-	Batches  []domain.Batch        // доступные: remaining > 0 AND now < expires_at, порядок (expires_at, id)
-	Dishes   []domain.Dish         // с рецептами, порядок (name, id)
-	Products map[string]ProductRef // справочник продуктов
-	Price    map[string]int64      // product_id → копеек за 1000 базовых единиц
-	Stopped  map[string]bool       // блюда в стоп-листе
-	Lambda   map[string]float64    // λ_d, порций в день
-	RateDay  map[string]float64    // rate_p_день
-	RateHour map[string]float64    // rate_p_час
+	Now       time.Time
+	Schedule  domain.Schedule
+	Batches   []domain.Batch        // доступные: remaining > 0 AND now < expires_at, порядок (expires_at, id)
+	Dishes    []domain.Dish         // с рецептами, порядок (name, id)
+	Products  map[string]ProductRef // справочник продуктов
+	Price     map[string]int64      // product_id → копеек за 1000 базовых единиц
+	DishPrice map[string]int64      // dish_id → цена порции, копеек (0 или нет записи — цена неизвестна)
+	Stopped   map[string]bool       // блюда в стоп-листе
+	Lambda    map[string]float64    // λ_d, порций в день
+	RateDay   map[string]float64    // rate_p_день
+	RateHour  map[string]float64    // rate_p_час
 }
 
 // Available — доступный остаток продукта по снимку.
@@ -57,7 +58,7 @@ func (s Snapshotter) Snapshot(ctx context.Context, now time.Time) (Snapshot, err
 func (d *DB) Snapshot(ctx context.Context, now time.Time, p SnapshotParams) (Snapshot, error) {
 	now = now.UTC()
 	snap := Snapshot{Now: now, Schedule: p.Schedule, Products: map[string]ProductRef{},
-		Price: map[string]int64{}, Stopped: map[string]bool{}}
+		Price: map[string]int64{}, DishPrice: map[string]int64{}, Stopped: map[string]bool{}}
 	fail := func(err error) (Snapshot, error) { return Snapshot{}, fmt.Errorf("store: snapshot: %w", err) }
 
 	tx, err := d.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -109,18 +110,19 @@ func (d *DB) Snapshot(ctx context.Context, now time.Time, p SnapshotParams) (Sna
 	}
 
 	priors := map[string]float64{}
-	if err := query(`SELECT d.id, d.name, d.prior_daily::float8, r.product_id, r.quantity
+	if err := query(`SELECT d.id, d.name, d.prior_daily::float8, d.price_minor, r.product_id, r.quantity
 		FROM dishes d JOIN recipe_items r ON r.dish_id = d.id
 		ORDER BY d.name, d.id, r.product_id`, nil, func(r pgx.Rows) error {
 		var id, name, pid string
 		var prior float64
-		var q int64
-		if err := r.Scan(&id, &name, &prior, &pid, &q); err != nil {
+		var price, q int64
+		if err := r.Scan(&id, &name, &prior, &price, &pid, &q); err != nil {
 			return err
 		}
 		if n := len(snap.Dishes); n == 0 || snap.Dishes[n-1].ID != id {
 			snap.Dishes = append(snap.Dishes, domain.Dish{ID: id, Name: name})
 			priors[id] = prior
+			snap.DishPrice[id] = price
 		}
 		last := &snap.Dishes[len(snap.Dishes)-1]
 		last.Recipe = append(last.Recipe, domain.RecipeItem{ProductID: pid, Quantity: domain.Qty(q)})
