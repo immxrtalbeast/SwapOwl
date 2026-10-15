@@ -536,6 +536,12 @@ func (e *validationEnv) routes() map[string]vRoute {
 			{"string", `{"hours":"1"}`, "", ""},
 			{"unknown field", `{"hours":1,"bogus":1}`, "", ""},
 		}},
+		"POST /api/what-if": {path: "/api/what-if", valid: `{"horizon_days":3,"scenarios":[{"type":"demand","dish_id":"` + e.dish + `","factor":1}]}`, cases: []vCase{
+			{"no horizon", `{"scenarios":[]}`, "horizon_days", ""},
+			{"horizon 8", `{"horizon_days":8}`, "horizon_days", ""},
+			{"bad type", `{"horizon_days":1,"scenarios":[{"type":"x"}]}`, "scenarios[0].type", ""},
+			{"unknown field", `{"horizon_days":1,"bogus":1}`, "", ""},
+		}},
 		"POST /api/demo/reset": {path: "/api/demo/reset", noBody: true, headers: bearer()},
 	}
 }
