@@ -261,6 +261,19 @@ curl -i http://localhost:8080/api/public/rescue
 - `GET /api/analytics/shortages?from=&to=` → продукты по числу отклонённых заказов и недостающему количеству.
 - `GET /api/analytics/bench` → `{"available": bool, "runs": 200, "main_algo": "b", "waste_reduction_vs_random_pct": 39.0, "waste_reduction_vs_nearest_pct": 27.0}`; `available: false`, если результата bench нет.
 
+## Привязка Telegram по коду
+
+| Метод | Путь | Кто | Ответ |
+|---|---|---|---|
+| POST | `/api/auth/telegram-link-code` | вошёл в веб (любая роль) | `200 {"code":"123456","expires_in_seconds":600}`; новый вызов отзывает прежний код этого пользователя |
+| POST | `/api/auth/telegram-link` `{"init_data","code"}` | публично | `200` как у `/api/auth/telegram` (сессия и роль) и привязка пользователя к Telegram-аккаунту; код одноразовый |
+| GET | `/api/auth/telegram-link` | вошёл в веб | `{"linked":true\|false}` |
+| DELETE | `/api/auth/telegram-link` | вошёл в веб | `204`, снимает свою привязку |
+
+Ошибки `POST /api/auth/telegram-link`: `400 invalid_link_code` — код неверный, просрочен или использован (одно
+сообщение на все три случая); `401` — неверная подпись `init_data` (код не сгорает); `429` — слишком много
+попыток; `409` — Telegram уже привязан к другому логину. Подробности — [`telegram-miniapp.md`](telegram-miniapp.md).
+
 ## Стенд
 
 - `GET /api/clock` → `{"now", "speed", "timezone", "simulated": bool, "simulator_running": bool}` — открыт всем.
