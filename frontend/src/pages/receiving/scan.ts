@@ -55,6 +55,11 @@ export function lineFromScan(g: Gs1, product: ProductWithPack, key: number): Sca
   return { ...base, quantity: pack ? String(pack) : "", unit: product.unit as ScanLine["unit"] };
 }
 
+/** Позиция, добавленная руками без кода: продукт выбран из справочника, количество и «годен до» вводит оператор. */
+export function manualLine(product: ProductWithPack, key: number): ScanLine {
+  return { key, gtin: "", product_id: product.id, expiryFromCode: false, quantity: "", unit: product.unit as ScanLine["unit"] };
+}
+
 /** Количество в строке — положительное число. */
 export function hasQuantity(l: ScanLine): boolean {
   const n = Number(l.quantity.replace(",", "."));
