@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Order } from "../../api/types";
-import { appendPage, itemsText, rejectionReason, sectionTitle, shortfallText, writeoffLines } from "./view";
+import { appendPage, dishOptionLabel, stoppedLines, itemsText, rejectionReason, sectionTitle, shortfallText, writeoffLines } from "./view";
 
 const w = (batch: number, qty: number, name = "Лосось") => ({
   product_id: "salmon",
@@ -45,5 +45,20 @@ describe("история заказов", () => {
     const o = (id: string): Order => ({ id, status: "accepted", at: "", replayed: false, items: [{ dish_id: "d", portions: 2 }], writeoffs: [], missing: [] });
     expect(itemsText(o("a"), () => "Суп")).toBe("Суп × 2");
     expect(appendPage([o("a"), o("b")], [o("b"), o("c")]).map((x) => x.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("заказ и стоп-лист", () => {
+  const dishes = [
+    { id: "steak", name: "Стейк", available: true, servings: 4, missing: [] },
+    { id: "burger", name: "Бургер", available: false, servings: 0, missing: [{ product_id: "bun", product_name: "Булочка", missing: { qty: 1, unit: "pcs" } }] },
+  ] as never[];
+  it("подпись: доступное — порции, из стоп-листа — чего нет", () => {
+    expect(dishOptionLabel(dishes[0])).toBe("Стейк — можно 4");
+    expect(dishOptionLabel(dishes[1])).toBe("Бургер — стоп-лист (нет: булочка)");
+  });
+  it("блюдо, ушедшее в стоп после выбора, нужно убрать", () => {
+    expect(stoppedLines([{ dish_id: "steak" }, { dish_id: "burger" }], dishes)).toEqual(["Бургер"]);
+    expect(stoppedLines([{ dish_id: "steak" }, { dish_id: "" }], dishes)).toEqual([]);
   });
 });

@@ -4,7 +4,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { RoleGate } from "../../auth/AuthContext";
 import { api } from "../../api/client";
 import { ApiError } from "../../api/types";
-import type { Dish, Order, OrdersPage as Page } from "../../api/types";
+import type { DishServings, Order, OrdersPage as Page } from "../../api/types";
 import { useLive } from "../../app/useLive";
 import { useStandFormat } from "../../app/useStandFormat";
 import { Card, DataTable, EmptyState, ErrorState, LoadingState, ScreenTitle, TextButton, UrgencyBadge } from "../../components";
@@ -36,7 +36,7 @@ type Tab = Order["status"];
 type State =
   | { kind: "loading" }
   | { kind: "error"; message: string; requestId?: string }
-  | { kind: "ready"; dishes: Dish[]; accepted: Page; rejected: Page };
+  | { kind: "ready"; dishes: DishServings[]; accepted: Page; rejected: Page };
 
 export function OrdersPage() {
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -49,7 +49,7 @@ export function OrdersPage() {
   const load = useCallback(async () => {
     try {
       const [dishes, accepted, rejected] = await Promise.all([
-        api.dishes(),
+        api.menu(),
         api.ordersPage("accepted", { limit: PAGE }),
         api.ordersPage("rejected", { limit: PAGE }),
       ]);
@@ -59,7 +59,7 @@ export function OrdersPage() {
     }
   }, []);
 
-  useLive(load, ["order.accepted", "order.rejected", "stock.changed", "stand.reset"]);
+  useLive(load, ["order.accepted", "order.rejected", "stock.changed", "stoplist.changed", "stand.reset"]);
 
   async function loadMore(status: Tab, current: Page) {
     const last = current.orders[current.orders.length - 1];
