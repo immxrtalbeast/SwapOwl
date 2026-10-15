@@ -86,7 +86,7 @@ curl -i -X POST $API/api/deliveries -H 'Content-Type: application/json' -d '{
 | Требование | Код | Тест | На стенде |
 |---|---|---|---|
 | Приоритет от срока, количества, граммовки и числа блюд | `internal/hotoffers/b` (основной), `internal/hotoffers/a` (простой) | `TestRankTable`, `TestPropertyMonotoneByExpiry`, `TestInv11MonotoneInExpiry` | «Горячие предложения» |
-| Объяснение: продукт, партия, количество под риском, срок | `internal/api/hotoffers.go` | `TestInv10HotOffersValid` | карточка: цель в порциях, до какого времени, сколько спасёт |
+| Объяснение: продукт, партия, количество под риском, срок | `internal/api/hotoffers.go` | `TestInv10HotOffersValid` | карточка: цель в порциях, до какого времени, сколько не спишем (≈ N ₽) |
 | Нет блюд из стоп-листа и блюд, съедающих дефицитный продукт | `internal/hotoffers/b` | `TestStoppedAndDoomedSkipped`, `TestScaleScarceIngredientExcludedWithReason` | — |
 | Цель по общему продукту не больше реального риска | `internal/hotoffers/b` | `TestScaleSharedProductTargetWithinRisk`, `TestSharedRiskTargetsWithinProductRisk` | — |
 | Ручная правка менеджером и экран для зала | `internal/api/hot_overrides.go`, `applyOverrides` | `TestHotOffersApplyManagerOverrides`, `TestHotOverridesSetReplaceDelete` | «Горячие предложения»: «Закрепить», «Скрыть», «Добавить блюдо»; «Для зала» |
@@ -107,6 +107,16 @@ curl -i -X POST $API/api/deliveries -H 'Content-Type: application/json' -d '{
 | Безопасность | да | роли, сессии, ключи интеграции, лимит входов, журнал аудита — «Доступ» ниже |
 | Код на GitHub, деплой по ссылке | да | https://swapowl.duckdns.org, CI и автодеплой после зелёного CI |
 
+**Новые возможности**
+
+| Что | Маршрут / экран | Условие |
+|---|---|---|
+| «Что если» | `POST /api/what-if`, `#/what-if` | роль viewer |
+| Помощник | `POST /api/assistant/ask`, бот `/ask`, тема «план на ближайшие дни» | роль viewer |
+| Витрина «Спаси продукты» | `GET /api/public/rescue`, `#/rescue` | `PUBLIC_RESCUE=true`, без входа |
+| Меню гостя | `GET /api/public/menu`, `#/guest-menu` | `PUBLIC_RESCUE=true`, без входа |
+| Вход mini-app | `POST /api/auth/telegram` | подпись Telegram |
+
 ## Что умеет
 
 - **Партии и сроки.** Остаток склада — сумма непросроченных партий; списание строго по FEFO; истекающие партии, количество под риском, стоп-лист пересчитываются от остатков.
@@ -116,6 +126,11 @@ curl -i -X POST $API/api/deliveries -H 'Content-Type: application/json' -d '{
 - **Штучные продукты и упаковки.** Яйца приходят штуками, а норма — граммы (`piece_weight`); поставка в упаковках (`unit: "pack"`) — [`docs/catalog.md`](docs/catalog.md).
 - **Сеть точек.** Один ресторан — один экземпляр; отдельный сервис hub (`cmd/hub`) опрашивает точки и отдаёт сводку, в интерфейсе — экран «Сеть» (виден, когда hub доступен). Много точек на одном сервере — `deploy/scripts/fleet.sh` — [`docs/network.md`](docs/network.md), [`docs/operations.md`](docs/operations.md).
 - **Сторож эксплуатации.** `cmd/watchdog` проверяет `/healthz`, очередь исходящих и диск и пишет инженеру в Telegram — [`docs/operations.md`](docs/operations.md). Управляющему сообщения шлёт `cmd/notifier` — [`docs/notify.md`](docs/notify.md).
+- **«Что если».** `POST /api/what-if`, экран `#/what-if`: скидка на блюдо, «заказать меньше», изменение спроса — прогноз списаний по сценариям на копии склада, ничего не записывается ([`docs/api.md`](docs/api.md)).
+- **Помощник.** `POST /api/assistant/ask` и команда бота `/ask`: ответ на вопрос своими словами по правилам, без модели — стоп-лист, истекающее, что заказать, остаток продукта, порции блюда и тема «план на ближайшие дни» (что истекает и что заказать).
+- **Витрина «Спаси продукты» и меню гостя без входа.** `#/rescue` (`GET /api/public/rescue`) и `#/guest-menu` (`GET /api/public/menu`) — только чтение, без партий, остатков и себестоимости. Публичные маршруты работают при `PUBLIC_RESCUE=true`, иначе `404`.
+- **Официанту и менеджеру.** Тёмная тема (переключатель в шапке); офлайн-очередь заказов официанта — заказы, созданные без сети, уходят после её возвращения; вход mini-app по подписи Telegram ([`docs/telegram-miniapp.md`](docs/telegram-miniapp.md)); настройки бота `/settings` ([`docs/notify.md`](docs/notify.md)).
+- **Формулировка эффекта.** Везде «не спишем ≈ N ₽» — сумма, которую не спишем, а не выручка. На карточке «Горячих предложений» это доля стоимости остатка по действию (скидка 80 %, стафф-питание 100 %, заготовка 70 % — допущения, `SAVE_SHARE` в `realistic.ts`). Цифры питча (6–11 %, +27 тыс. ₽) — из симулятора при допущении, что гость берёт предложенное блюдо в 30 % случаев (измеренной доли нет).
 - **Проверка подключения к iiko.** `go run ./cmd/iiko-check -url … -login … -password …` показывает нераспознанные единицы, продукты без срока и недостающие поля — [`docs/onboarding.md`](docs/onboarding.md), п. 3а.
 
 ## Интеграции и iiko
