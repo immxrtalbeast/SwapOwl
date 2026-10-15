@@ -55,6 +55,9 @@ export function AlertsPage() {
                         {a.status === "expiring" && (
                           <a href={hotOffersUrl(a.product_id)} style={{ font: "var(--type-button)", color: "var(--brand-ink)", textDecoration: "none" }}>Блюда, которые спасают</a>
                         )}
+                        {a.status === "expired" && (
+                          <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>Не продавать — спишется автоматически</span>
+                        )}
                       </td>
                     </tr>
                   );

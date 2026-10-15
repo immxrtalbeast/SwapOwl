@@ -17,7 +17,7 @@ import { BatchOpen } from "./BatchOpen";
 import { openedMark } from "./opened";
 import { needsOpenFirst } from "../label/labelData";
 import { StockCards } from "./StockCards";
-import { buildRows, changedKeys, signature } from "./view";
+import { buildRows, changedKeys, productStateLabel, signature } from "./view";
 import type { StockRow } from "./view";
 
 type State =
@@ -112,7 +112,7 @@ export function StockPage() {
             onClick={() => toggle(r.product.id)}
             aria-expanded={r.expanded}
             aria-label={`${r.expanded ? "Свернуть" : "Раскрыть"} партии: ${r.product.name}`}
-            style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "none", border: 0, padding: 0, cursor: "pointer", font: "var(--type-body-strong)", color: "var(--text)" }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "none", border: 0, padding: 0, cursor: "pointer", font: "var(--type-body-strong)", color: "var(--text)", textAlign: "left", whiteSpace: "nowrap" }}
           >
             {r.expanded ? <IconChevronDown size={16} aria-hidden="true" /> : <IconChevronRight size={16} aria-hidden="true" />}
             {r.product.name}
@@ -144,14 +144,14 @@ export function StockPage() {
     {
       key: "received",
       header: "Поступила",
-      cell: (r) => (r.kind === "batch" ? <span title={f.exact(r.batch.received_at)}>{f.dateTime(r.batch.received_at)}</span> : <span style={{ color: "var(--text-muted)" }}>партий: {r.product.batches_count}</span>),
+      cell: (r) => (r.kind === "batch" ? <span title={f.exact(r.batch.received_at)} style={{ whiteSpace: "nowrap" }}>{f.dateTime(r.batch.received_at)}</span> : <span style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>партий: {r.product.batches_count}</span>),
     },
     {
       key: "expires",
       header: "Годна до",
       cell: (r) => {
         const at = r.kind === "batch" ? r.batch.expires_at : r.product.nearest_expires_at;
-        return at ? <span title={f.exact(at)}>{f.dateTime(at)}</span> : "—";
+        return at ? <span title={f.exact(at)} style={{ whiteSpace: "nowrap" }}>{f.dateTime(at)}</span> : "—";
       },
     },
     {
@@ -160,12 +160,13 @@ export function StockPage() {
       cell: (r) => {
         const at = r.kind === "batch" ? r.batch.expires_at : r.product.nearest_expires_at;
         if (!at) return "—";
-        return <span title={f.exact(at)}>{f.relative(at, { expired: true })}</span>;
+        return <span title={f.exact(at)} style={{ whiteSpace: "nowrap" }}>{f.relative(at, { expired: true })}</span>;
       },
     },
-    { key: "state", header: "Состояние", cell: (r) => <UrgencyBadge def={BATCH_STATES[r.state]} /> },
+    // У строки продукта «Годна до» — ближайшая живая партия, а состояние — худшая: «есть просрочка», а не «просрочена».
+    { key: "state", header: "Состояние", cell: (r) => <UrgencyBadge def={BATCH_STATES[r.state]} label={r.kind === "product" ? productStateLabel(r.state) : undefined} /> },
     { key: "open", header: "Действие", cell: (r) => (r.kind === "batch" ? openAction(r) : null) },
-  ];
+  ].filter((c) => c.key !== "open" || rows.some((r) => r.kind === "batch")); // «Действие» — только у раскрытых партий
 
   const stale = conn === "offline" && updatedAt ? f.time(updatedAt) : null;
 
@@ -173,7 +174,7 @@ export function StockPage() {
     <section>
       <ScreenTitle stale={stale}>Склад</ScreenTitle>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }}>
-        <div style={{ flex: "1 1 560px", minWidth: 0 }}>
+        <div style={{ flex: "1 1 640px", minWidth: 0 }}>
           <Card flush>
             {state.kind === "loading" && (
               <div style={{ padding: "var(--card-pad)" }}>
@@ -203,7 +204,7 @@ export function StockPage() {
           </Card>
         </div>
         <RoleGate min="operator">
-          <div style={{ flex: "0 1 380px", minWidth: "min(100%, 300px)" }}>
+          <div style={{ flex: "0 1 340px", minWidth: "min(100%, 300px)" }}>
             {narrow && (
               <SecondaryButton aria-expanded={formOpen} aria-controls="delivery-form" onClick={() => setFormOpen((o) => !o)} style={{ marginBottom: 12 }}>
                 {formOpen ? "Скрыть приём поставки" : "Приём поставки"}

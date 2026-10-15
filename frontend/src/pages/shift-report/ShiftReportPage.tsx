@@ -90,8 +90,9 @@ export function ShiftReportPage() {
               )}
             </Card>
             <Card title="Цена стопа">
-              <p data-testid="stop-cost" className="big" style={big}>
-                {lostMinor === null ? "недополучено: цены блюд нет в API" : `недополучено ≈ ${formatRub(lostMinor)}`}
+              {/* Без цен блюд — обычный текст, а не крупная цифра (FS-161). */}
+              <p data-testid="stop-cost" className={lostMinor === null ? undefined : "big"} style={lostMinor === null ? { font: "var(--type-body)", color: "var(--text-muted)" } : big}>
+                {lostMinor === null ? "Недополучено: сумму не посчитать — у блюд не заданы цены." : `недополучено ≈ ${formatRub(lostMinor)}`}
               </p>
               <p style={{ fontSize: 12 }}>
                 Истории стоп-листа API не хранит, поэтому считаем по отказам: порции отклонённых заказов × цена блюда.

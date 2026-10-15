@@ -46,7 +46,7 @@ export function AnalyticsPage() {
             {state.shortages.rejected_orders}
           </p>
           <div style={{ marginBottom: 16 }}>
-            <HandNote arrow="down">отклонённых заказов за период</HandNote>
+            <HandNote>отклонённых заказов за период</HandNote>
           </div>
           {state.shortages.by_product.length === 0 ? (
             <EmptyState title="Отказов не было" text="За период отказов из-за нехватки продуктов не было." />

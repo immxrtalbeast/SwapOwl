@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { HubTransfer } from "../../api/network";
-import { Card, EmptyState } from "../../components";
+import { Card, EmptyState, SecondaryButton } from "../../components";
 import { formatQty, formatRub } from "../../lib/format";
 
 /** Текст подсказки: «Лосось 1,2 кг: точка A → точка B, спасёт ≈ N ₽». */
@@ -21,9 +21,9 @@ function CopyInvoice({ invoice }: { invoice: string }) {
   };
   return (
     <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-      <button type="button" onClick={() => void copy()} style={{ font: "var(--type-button)", color: "var(--brand-ink)", cursor: "pointer" }}>
+      <SecondaryButton size="compact-sm" onClick={() => void copy()}>
         Скопировать накладную перемещения
-      </button>
+      </SecondaryButton>
       <span role="status" style={{ color: "var(--text-muted)" }}>
         {state === "done" ? "Скопировано" : state === "failed" ? "Не удалось скопировать" : ""}
       </span>
@@ -38,9 +38,10 @@ export function Transfers({ transfers }: { transfers: HubTransfer[] }) {
       {transfers.length === 0 ? (
         <EmptyState title="Перемещать нечего" text="Нет партий под риском, которые другая точка успеет продать." />
       ) : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 12 }}>
-          {transfers.map((t) => (
-            <li key={`${t.from_id}-${t.batch_id}-${t.to_id}`} style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        // Строки через линию, кнопка справа на одной вертикали (FS-161).
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+          {transfers.map((t, i) => (
+            <li key={`${t.from_id}-${t.batch_id}-${t.to_id}`} style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", padding: "8px 12px", borderTop: i > 0 ? "1px solid var(--border-cell)" : undefined }}>
               <span style={{ font: "var(--type-body-strong)" }}>{transferText(t)}</span>
               <CopyInvoice invoice={t.invoice} />
             </li>
