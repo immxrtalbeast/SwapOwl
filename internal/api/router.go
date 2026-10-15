@@ -143,6 +143,7 @@ func (rt *Router) Routes() {
 	rt.dishHoldRoutes()
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()
+	rt.ladderRoutes()
 	rt.rescueRoutes()
 	rt.publicMenuRoutes()
 	rt.assistantRoutes()

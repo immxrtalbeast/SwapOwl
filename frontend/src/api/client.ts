@@ -1,6 +1,6 @@
 import type { Role } from "../auth/roles";
 import { ApiError, NetworkError } from "./types";
-import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, InvoiceDraft, ExpiryPatch, ReceivingBatch, Dish, DishHold, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, ForecastReport, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput, WhatIfRequest, WhatIfResponse } from "./types";
+import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, InvoiceDraft, ExpiryPatch, ReceivingBatch, Dish, DishHold, DishServings, LadderBatch, HotAlgo, HotOffersResponse, Order, SupplySuggestion, ForecastReport, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput, WhatIfRequest, WhatIfResponse } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
@@ -66,6 +66,7 @@ export const api = {
   shortfalls: (from: string, to: string) => request<MoneyReport>(`/api/analytics/shortfalls?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   shortages: (from: string, to: string) => request<ShortagesReport>(`/api/analytics/shortages?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   bench: () => request<BenchResult>("/api/analytics/bench"),
+  rescueLadder: () => request<LadderBatch[]>("/api/rescue-ladder"),
   products: () => request<ProductStock[]>("/api/products"),
   batches: (productId?: string) =>
     request<Batch[]>(`/api/batches${productId ? `?product_id=${encodeURIComponent(productId)}` : ""}`),

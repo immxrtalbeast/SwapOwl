@@ -6,6 +6,7 @@ import { AlertsPage } from "../pages/alerts";
 import { SupplyPage } from "../pages/supply";
 import { HotOffersPage } from "../pages/hot-offers";
 import { WhatIfPage } from "../pages/what-if";
+import { LadderPage } from "../pages/ladder";
 import { HallPage } from "../pages/hall";
 import { MoneyPage } from "../pages/money";
 import { DemoPage } from "../pages/demo";
@@ -43,6 +44,7 @@ function ScreenView({ id }: { id: string }) {
     case "supply": return <SupplyPage />;
     case "hot-offers": return <HotOffersPage />;
     case "what-if": return <WhatIfPage />;
+    case "ladder": return <LadderPage />;
     case "hall": return <HallPage />;
     case "money": return <MoneyPage />;
     case "shift-report": return <ShiftReportPage />;
