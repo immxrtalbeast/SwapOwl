@@ -11,7 +11,7 @@ import { useHotOffers } from "../hot-offers/useHotOffers";
 import { useRisk } from "../today/useToday";
 import { batchesWord, todaySummary } from "./model";
 import { haptic } from "./sdk";
-import { TgCard, errorText, heading, listReset, muted, section, useBackButton, useMainButton } from "./ui";
+import { TgCard, errorText, heading, listReset, muted, section, useBackButton, useMainButton, InlineBack } from "./ui";
 
 /** Правка горячих: ошибка остаётся в строке, где нажали; успех и ошибка — тактильный отклик. */
 function useEdit(after: () => void | Promise<void>) {
@@ -68,6 +68,7 @@ export function ManagerTab() {
         style={section}
         onSubmit={(e) => { e.preventDefault(); if (dish) void add.run(() => api.setHotOverride(dish, "pin", note)); }}
       >
+        <InlineBack onBack={() => setAdding(false)} />
         <h2 style={heading}>Добавить блюдо</h2>
         <NativeSelect
           label="Блюдо"

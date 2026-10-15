@@ -14,6 +14,8 @@ export interface TgMainButton extends TgButton {
 
 export interface TgWebApp {
   ready(): void;
+  /** «unknown» — SDK подгружен, но страница открыта не в Telegram. */
+  platform?: string;
   expand(): void;
   themeParams?: Record<string, string>;
   onEvent?(name: string, cb: () => void): void;
@@ -59,4 +61,10 @@ export function loadTelegramSdk(): Promise<void> {
     document.head.appendChild(s);
   });
   return sdkLoading;
+}
+
+/** Открыто ли приложение внутри Telegram: SDK умеет грузиться и в обычном браузере, но кнопок Telegram там нет. */
+export function inTelegram(): boolean {
+  const app = getWebApp();
+  return app !== null && app.platform !== "unknown";
 }
