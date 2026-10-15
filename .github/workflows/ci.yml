@@ -1,6 +1,6 @@
 # .github/workflows/ci.yml
 #
-# Проверки и AI-ревью PR в main (спецификация, 2.9).
+# Проверки и AI-ревью PR в main (правила ревью — .github/review-prompt.md).
 #
 #   prep ─┬─ checks (тесты с PostgreSQL, фронтенд) ─┐
 #         └─ review (модель) ───────────────────────┴─ verdict
@@ -184,7 +184,7 @@ jobs:
           github_token: ${{ github.token }}
           prompt: |
             Ты — ревьюер PR #${{ env.PR }} в репозитории ${{ github.repository }}.
-            Правила ревью — в описании к заданию ниже; следуй им, включая раздел «Протокол».
+            Правила ревью — в файле .github/review-prompt.md. Прочитай его целиком и следуй ему, включая раздел «Протокол».
             Номер раунда: ${{ needs.prep.outputs.n }}.
             Head-коммит: ${{ needs.prep.outputs.head }} (ветка PR уже извлечена).
             Прошлые итоги и ответы исполнителя — в файле prior-rounds.md.
