@@ -200,10 +200,9 @@ export function TodayPage() {
 
         <Block title="Проверить" testid="today-check">
           <Pending what="партии на проверку" state={receiving} reload={() => void reloadReceiving()}>
-            <h3 style={{ margin: "0 0 8px", font: "var(--type-label)" }}>Срок не подтверждён · {unconfirmed.length}</h3>
-            {unconfirmed.length === 0 ? (
-              <p style={{ margin: "0 0 12px", color: "var(--text-muted)" }}>Все сроки подтверждены.</p>
-            ) : (
+            {/* Срок теперь обязателен в поставке (FS-160); здесь — только партии со сроком из справочника, принятые раньше. */}
+            {unconfirmed.length > 0 && <h3 style={{ margin: "0 0 8px", font: "var(--type-label)" }}>Срок не подтверждён · {unconfirmed.length}</h3>}
+            {unconfirmed.length > 0 && (
               <ul style={{ ...list, marginBottom: 12 }}>
                 {unconfirmed.slice(0, 5).map((b: ReceivingBatch) => (
                   <li key={b.id} className={cls(`r${b.id}`)} style={row}>

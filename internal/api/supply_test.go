@@ -21,12 +21,14 @@ func (f fakeSupply) SupplyData(context.Context, time.Time) (store.SupplyData, er
 
 func TestSupplySuggestionsEndpoint(t *testing.T) {
 	now := time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC)
+	shelf := 72
 	data := store.SupplyData{
 		Products: map[string]store.ProductRef{"salmon": {Name: "Лосось", Unit: domain.UnitG}, "salt": {Name: "Соль", Unit: domain.UnitG}},
 		Input: domain.SupplyInput{Now: now, CoverDays: 3, MinPortions: 10, Products: []domain.SupplyProduct{
 			{ID: "salmon", Name: "Лосось", LeadDays: 1, PackSize: 500, UsableStock: 400, RatePerDay: 1000, MaxRecipeNorm: 200, BlocksDishes: 1},
 			{ID: "salt", Name: "Соль", LeadDays: 1, PackSize: 1, UsableStock: 5000, RatePerDay: 10, MaxRecipeNorm: 5},
 		}},
+		Meta: map[string]store.SupplyMeta{"salmon": {ShelfLifeHours: &shelf}},
 	}
 	rt := NewRouter(Deps{Supply: fakeSupply{data}, Now: func() time.Time { return now }})
 	rec := httptest.NewRecorder()
@@ -43,7 +45,8 @@ func TestSupplySuggestionsEndpoint(t *testing.T) {
 	}
 	r := out[0]
 	if r.ProductID != "salmon" || r.Urgency != "now" || r.Quantity.Unit != domain.UnitG || r.Quantity.Qty != 4000 ||
-		r.StockoutAt == nil || r.BlocksDishes != 1 || !strings.Contains(r.Explanation, "Блокирует") {
+		r.StockoutAt == nil || r.BlocksDishes != 1 || !strings.Contains(r.Explanation, "Блокирует") ||
+		r.ShelfLifeHours == nil || *r.ShelfLifeHours != 72 { // срок поставщика — явно в строке (FS-160)
 		t.Fatalf("row: %+v", r)
 	}
 }

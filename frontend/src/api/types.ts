@@ -226,6 +226,8 @@ export interface SupplySuggestion {
   blocks_dishes: number;
   urgency: "now" | "soon" | "planned";
   explanation: string;
+  /** Обычный срок поставщика из карточки, ч: уходит в поставку явно (FS-160). null — срок вводит оператор. */
+  shelf_life_hours: number | null;
 }
 
 // GET /api/analytics/writeoffs и /shortfalls (7.4): деньги — целые копейки.

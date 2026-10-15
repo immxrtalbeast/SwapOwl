@@ -13,16 +13,18 @@ const row: SupplySuggestion = {
   blocks_dishes: 0,
   urgency: "now",
   explanation: "",
+  shelf_life_hours: null,
 };
 
 describe("supply accept", () => {
-  it("тело: количество и единица из строки, срок не передаётся", () => {
-    const b = buildAcceptBody(row, "12345678-aaaa", "2026-01-01T00:00:00Z");
-    expect(b.items).toEqual([{ product_id: "p1", quantity: "1500", unit: "g" }]);
+  it("тело: количество, единица и срок поставщика из строки — срок всегда явно (FS-160)", () => {
+    const b = buildAcceptBody({ ...row, shelf_life_hours: 96 }, "12345678-aaaa", "2026-01-01T00:00:00Z");
+    expect(b.items).toEqual([{ product_id: "p1", quantity: "1500", unit: "g", shelf_life_hours: 96 }]);
     expect(b.id).toBe("12345678-aaaa");
   });
-  it("срок вводится вручную", () => {
-    expect(buildAcceptBody(row, "x", "t", 72).items[0].shelf_life_hours).toBe(72);
+  it("срок, введённый вручную, главнее; без срока поставщика поле срока не подставляется", () => {
+    expect(buildAcceptBody({ ...row, shelf_life_hours: 96 }, "x", "t", 72).items[0].shelf_life_hours).toBe(72);
+    expect(buildAcceptBody(row, "x", "t").items[0]).not.toHaveProperty("shelf_life_hours");
   });
   it("ключ меняется с количеством", () => {
     expect(offerKey(row)).not.toBe(offerKey({ ...row, quantity: { qty: 2000, unit: "g" } }));
@@ -32,7 +34,7 @@ describe("supply accept", () => {
     expect(outcomeFromResult(false).kind).toBe("accepted");
   });
   it("400 про срок хранения → поле ввода срока", () => {
-    const e = new ApiError(400, "validation_error", 'product "p1" has no default shelf life: pass shelf_life_hours or expires_on', {});
+    const e = new ApiError(400, "validation_error", "срок годности обязателен в каждой позиции поставки", { field: "items[0].expires_on" });
     expect(outcomeFromError(e).kind).toBe("need-shelf-life");
     expect(outcomeFromError(new ApiError(500, "internal", "boom")).kind).toBe("error");
   });

@@ -25,6 +25,9 @@ type SupplyJSON struct {
 	BlocksDishes int           `json:"blocks_dishes"`
 	Urgency      string        `json:"urgency"`
 	Explanation  string        `json:"explanation"`
+	// ShelfLifeHours — обычный срок поставщика из карточки; «Принять предложенное» передаёт его в поставку явно,
+	// потому что поставка без срока не принимается (FS-160). null — срок нужно ввести.
+	ShelfLifeHours *int `json:"shelf_life_hours"`
 }
 
 func (rt *Router) supplyRoutes() {
@@ -56,7 +59,8 @@ func buildSupply(data store.SupplyData, loc *time.Location) []SupplyJSON {
 			Quantity:     store.QtyJSON{Qty: int64(s.Quantity), Unit: u},
 			UsableStock:  store.QtyJSON{Qty: int64(s.UsableStock), Unit: u},
 			RatePerDay:   store.QtyJSON{Qty: int64(s.RatePerDay), Unit: u},
-			BlocksDishes: s.BlocksDishes, Urgency: string(s.Urgency), Explanation: s.Explanation}
+			BlocksDishes: s.BlocksDishes, Urgency: string(s.Urgency), Explanation: s.Explanation,
+			ShelfLifeHours: data.Meta[s.ProductID].ShelfLifeHours}
 		if s.StockoutAt != nil {
 			t := s.StockoutAt.In(loc)
 			row.StockoutAt = &t

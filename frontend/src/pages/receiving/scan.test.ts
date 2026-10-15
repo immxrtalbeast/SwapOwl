@@ -26,6 +26,15 @@ describe("toDeliveryItem", () => {
     expect(isLineReady(l)).toBe(false);
     expect(isLineReady({ ...l, quantity: "500" })).toBe(true);
   });
+  it("без срока в коде (нет AI 17) отправить нельзя, пока не введён «годен до» (FS-160)", () => {
+    const x = { id: "salt", name: "Соль", unit: "g" } as ProductStock;
+    const l = lineFromScan(parseGs1("0104607001234567")!, x, 1);
+    expect(l.expiryFromCode).toBe(false);
+    expect(isLineReady({ ...l, quantity: "500" })).toBe(false);
+    const ready = { ...l, quantity: "500", expires_on: "2026-10-20" };
+    expect(isLineReady(ready)).toBe(true);
+    expect(toDeliveryItem(ready, [x])).toMatchObject({ expires_on: "2026-10-20" });
+  });
   it("пример молока привязан к milk без запоминания", () => {
     expect(loadGtinMap()["04607001234567"]).toBe("milk");
   });
