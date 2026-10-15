@@ -86,7 +86,7 @@ curl -i -X POST $API/api/deliveries -H 'Content-Type: application/json' -d '{
 | Требование | Код | Тест | На стенде |
 |---|---|---|---|
 | Приоритет от срока, количества, граммовки и числа блюд | `internal/hotoffers/b` (основной), `internal/hotoffers/a` (простой) | `TestRankTable`, `TestPropertyMonotoneByExpiry`, `TestInv11MonotoneInExpiry` | «Горячие предложения» |
-| Объяснение: продукт, партия, количество под риском, срок | `internal/api/hotoffers.go` | `TestInv10HotOffersValid` | карточка: цель в порциях, до какого времени, сколько не спишем (≈ N ₽, допущение 30 %) |
+| Объяснение: продукт, партия, количество под риском, срок | `internal/api/hotoffers.go` | `TestInv10HotOffersValid` | карточка: цель в порциях, до какого времени, сколько не спишем (≈ N ₽) |
 | Нет блюд из стоп-листа и блюд, съедающих дефицитный продукт | `internal/hotoffers/b` | `TestStoppedAndDoomedSkipped`, `TestScaleScarceIngredientExcludedWithReason` | — |
 | Цель по общему продукту не больше реального риска | `internal/hotoffers/b` | `TestScaleSharedProductTargetWithinRisk`, `TestSharedRiskTargetsWithinProductRisk` | — |
 | Ручная правка менеджером и экран для зала | `internal/api/hot_overrides.go`, `applyOverrides` | `TestHotOffersApplyManagerOverrides`, `TestHotOverridesSetReplaceDelete` | «Горячие предложения»: «Закрепить», «Скрыть», «Добавить блюдо»; «Для зала» |
