@@ -34,6 +34,11 @@ func Reminder(a Alert, left time.Duration, loc *time.Location) string {
 func (n *Notifier) RemindTick(ctx context.Context, alerts []Alert) {
 	now := n.now(ctx)
 	loc := n.loc(ctx)
+	// Тихие часы и пауза: напоминание в очереди пришло бы после срока и с устаревшим «через N мин». Не шлём и не
+	// помечаем: если окно часа ещё открыто к концу тишины, напоминание уйдёт на ближайшем проходе с верным временем.
+	if n.Settings != nil && n.Settings.Muted(now, loc) {
+		return
+	}
 	n.sendMu.Lock()
 	defer n.sendMu.Unlock()
 	if n.reminded == nil {

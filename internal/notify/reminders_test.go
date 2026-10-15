@@ -90,3 +90,34 @@ func TestHoldEventRespectsDisabledKind(t *testing.T) {
 		t.Fatalf("%q", bot.texts())
 	}
 }
+
+// Тихие часы: напоминание не уходит и не откладывается в очередь (после срока оно было бы бесполезным и с неверным
+// «через N мин»); пока тишина — ничего не помечено, поэтому вне тихих часов оно уйдёт один раз.
+func TestReminderNotQueuedInQuietHours(t *testing.T) {
+	n, bot, _ := newNotifier(t, "2026-10-09T17:20:00+03:00")
+	n.Settings = LoadSettings("", t.Logf)
+	if err := n.Settings.SetQuiet(true, "17:00", "19:00"); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	n.RemindTick(ctx, []Alert{{BatchID: 17, ProductID: "salmon", ProductName: "Лосось", Remaining: Qty{Qty: 1400, Unit: "g"},
+		ExpiresAt: time.Date(2026, 10, 9, 18, 0, 0, 0, time.FixedZone("MSK", 3*3600)), Status: "expiring"}})
+	if got := bot.texts(); len(got) != 0 {
+		t.Fatalf("в тихие часы ушло: %q", got)
+	}
+	if q := len(n.Settings.d.Queue); q != 0 {
+		t.Fatalf("напоминание легло в очередь: %d", q)
+	}
+	if len(n.reminded) != 0 {
+		t.Fatalf("напоминание помечено отправленным: %v", n.reminded)
+	}
+	// Тишина закончилась (границы поменяли), окно часа ещё открыто — напоминание уходит.
+	if err := n.Settings.SetQuiet(false, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	n.RemindTick(ctx, []Alert{{BatchID: 17, ProductID: "salmon", ProductName: "Лосось", Remaining: Qty{Qty: 1400, Unit: "g"},
+		ExpiresAt: time.Date(2026, 10, 9, 18, 0, 0, 0, time.FixedZone("MSK", 3*3600)), Status: "expiring"}})
+	if got := countWith(bot.texts(), "Через 40 мин"); got != 1 {
+		t.Fatalf("после тишины: %q", bot.texts())
+	}
+}
