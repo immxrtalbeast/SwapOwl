@@ -3,7 +3,7 @@ import { api } from "../../api/client";
 import type { ProductStock } from "../../api/types";
 import { Card, PrimaryButton, SecondaryButton } from "../../components";
 import { SAMPLE_MILK, parseGs1 } from "../../lib/gs1";
-import { hasQuantity, isLineReady, loadGtinMap, lineFromScan, rememberGtin, toDeliveryItem, type ScanLine } from "./scan";
+import { hasQuantity, isLineReady, loadGtinMap, lineFromScan, manualLine, rememberGtin, toDeliveryItem, type ScanLine } from "./scan";
 
 /** Камера: BarcodeDetector, где он есть, иначе лениво подгружаемый @zxing/browser. */
 async function startCamera(video: HTMLVideoElement, onCode: (s: string) => void): Promise<() => void> {
@@ -48,6 +48,7 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
   const [pending, setPending] = useState<ReturnType<typeof parseGs1>>(null);
   const [manual, setManual] = useState("");
   const [pick, setPick] = useState("");
+  const [manualPick, setManualPick] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [streaming, setStreaming] = useState(false);
@@ -112,6 +113,14 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
     last.current = "";
   }
 
+  // Позиция без кода: упаковка без маркировки, самодельная заготовка, поставка по накладной на бумаге.
+  function addManualLine() {
+    const p = products.find((x) => x.id === manualPick);
+    if (!p) return;
+    setLines((ls) => [...ls, manualLine(p, ++seq.current)]);
+    setManualPick("");
+  }
+
   async function send() {
     setBusy(true);
     try {
@@ -136,7 +145,7 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
 
   if (!open)
     return (
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ marginBottom: 16, display: "flex", justifyContent: "center" }}>
         <PrimaryButton style={{ height: 48 }} onClick={() => void openCamera()}>
           Сканировать упаковку
         </PrimaryButton>
@@ -144,6 +153,7 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
     );
 
   return (
+    <div style={{ marginBottom: 16 }}>
     <Card>
       <div style={{ display: "grid", gap: 12 }}>
         {/* Скрыт, пока камера не дала поток: без неё это чёрный прямоугольник во всю ширину. */}
@@ -164,6 +174,17 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
           </SecondaryButton>
           <SecondaryButton style={{ height: 48 }} onClick={() => setOpen(false)}>
             Закрыть
+          </SecondaryButton>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select aria-label="Позиция без кода" value={manualPick} onChange={(e) => setManualPick(e.target.value)} style={{ height: 48, flex: 1, minWidth: 200 }}>
+            <option value="">Позиция без кода — выберите продукт</option>
+            {products.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <SecondaryButton style={{ height: 48 }} disabled={!manualPick} onClick={addManualLine}>
+            Добавить позицию
           </SecondaryButton>
         </div>
         {msg && <p role="alert" style={{ margin: 0 }}>{msg}</p>}
@@ -218,5 +239,6 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
         )}
       </div>
     </Card>
+    </div>
   );
 }

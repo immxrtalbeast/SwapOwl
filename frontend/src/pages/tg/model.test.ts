@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { overlayAllowed, tgSchemeToApply } from "./model";
 import type { Alert, DishServings } from "../../api/types";
 import { batchesWord, isTgHash, stoppedDishes, tgHash, tgTabFromHash, themeToVars, todaySummary } from "./model";
 
@@ -63,5 +64,21 @@ describe("стоп-лист и слова", () => {
   });
   it("склоняет «партия»", () => {
     expect([1, 2, 5, 11, 21, 12].map(batchesWord)).toEqual(["1 партия", "2 партии", "5 партий", "11 партий", "21 партия", "12 партий"]);
+  });
+});
+
+describe("тема мини-приложения", () => {
+  it("схема Telegram по умолчанию, выбор в приложении главнее", () => {
+    expect(tgSchemeToApply("dark", null)).toBe("dark");
+    expect(tgSchemeToApply("light", "dark")).toBe("dark");
+    expect(tgSchemeToApply("dark", "light")).toBe("light");
+    expect(tgSchemeToApply(undefined, null)).toBeNull();
+    expect(tgSchemeToApply("sepia", "")).toBeNull();
+  });
+  it("цвета Telegram накладываются только на совпавшую схему", () => {
+    expect(overlayAllowed("dark", "dark")).toBe(true);
+    expect(overlayAllowed("dark", "light")).toBe(false);
+    expect(overlayAllowed("light", "light")).toBe(true);
+    expect(overlayAllowed(undefined, "light")).toBe(false);
   });
 });

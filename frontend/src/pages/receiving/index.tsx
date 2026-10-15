@@ -90,13 +90,23 @@ export function ReceivingPage() {
   const stale = conn === "offline" ? loadedAt : null;
 
   return (
-    <section>
-      <ScreenTitle stale={stale}>Приёмка</ScreenTitle>
+    <section style={{ maxWidth: 760, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "center", textAlign: "center" }}>
+        <ScreenTitle stale={stale}>Приёмка</ScreenTitle>
+      </div>
       <ScanPanel onSent={reload} />
-      <p style={{ margin: "0 0 16px", color: "var(--text-muted)", maxWidth: 760 }}>
+      <p style={{ margin: "0 auto 24px", color: "var(--text-muted)", maxWidth: 560, textAlign: "center" }}>
         Срок годности — обязательная часть поставки: позицию без срока система не примет. Сканер читает «годен до» из
-        маркировки (DataMatrix / GS1, AI 17); если в коде срока нет — перепишите его с упаковки.
+        маркировки (DataMatrix / GS1, AI 17); если в коде срока нет — перепишите его с упаковки. Без кода — «Добавить позицию».
       </p>
+      {state.kind === "ready" && state.rows.length === 0 && (
+        <Card>
+          <div data-testid="receiving-empty" style={{ display: "grid", gap: 6, justifyItems: "center", textAlign: "center", padding: "20px 0" }}>
+            <h2 style={{ margin: 0, font: "var(--type-h3)" }}>Подтверждать нечего</h2>
+            <p style={{ margin: 0, color: "var(--text-muted)" }}>Все партии приняты со сроком годности. Новая поставка появится в «Складе».</p>
+          </div>
+        </Card>
+      )}
       {state.kind === "loading" && <ScreenStates.Loading label="Загрузка приёмки" rows={3} />}
       {state.kind === "error" && <ScreenStates.Error what="приёмку" reason={state.message} onRetry={() => void reload()} />}
       {state.kind === "ready" && state.rows.length > 0 && (
@@ -105,7 +115,7 @@ export function ReceivingPage() {
         </p>
       )}
       {state.kind === "ready" && state.rows.length > 0 && (
-        <ul style={{ margin: 0, padding: 0, display: "grid", gap: 12, maxWidth: 760 }}>
+        <ul style={{ margin: 0, padding: 0, display: "grid", gap: 12 }}>
           {state.rows.map((b) => (
             <BatchCard key={b.id} b={b} onDone={reload} />
           ))}

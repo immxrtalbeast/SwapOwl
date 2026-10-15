@@ -200,6 +200,23 @@ export interface LadderBatch {
   steps: LadderStep[];
 }
 
+// Точность прогноза спроса (GET /api/analytics/forecast-accuracy).
+export interface ForecastAccuracy {
+  days: number;
+  days_used: number;
+  enough_data: boolean;
+  wape_pct: number;
+  baseline_wape_pct: number;
+  dishes: {
+    dish_id: string;
+    dish_name: string;
+    actual_per_day: number;
+    predicted_per_day: number;
+    wape_pct: number;
+    baseline_wape_pct: number;
+  }[];
+}
+
 // Ручная пауза блюда (GET /api/dish-holds): менеджер снял блюдо с продажи, заказ на него отклоняется (409 dish_on_hold).
 export interface DishHold {
   dish_id: string;

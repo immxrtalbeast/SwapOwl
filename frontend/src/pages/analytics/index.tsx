@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "../../api/client";
+import type { ForecastAccuracy } from "../../api/types";
+import { accuracyDays, accuracySentence, worstDishes } from "./accuracy";
 import { Card, DataTable, EmptyState, ErrorState, HandNote, LoadingState, ScreenTitle, SecondaryButton } from "../../components";
 import type { Column } from "../../components";
 import type { ShortageRow } from "../../api/types";
@@ -11,6 +14,34 @@ const PERIODS = [
   { days: 7, label: "7 дней" },
   { days: 30, label: "30 дней" },
 ];
+
+/** Точность прогноза спроса: ошибка с обучением против «только априор». Нет маршрута или ошибка — карточки нет. */
+function AccuracyCard({ days }: { days: number }) {
+  const [acc, setAcc] = useState<ForecastAccuracy | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api.forecastAccuracy(accuracyDays(days)).then((a) => { if (alive) setAcc(a); }).catch(() => { if (alive) setAcc(null); });
+    return () => { alive = false; };
+  }, [days]);
+  if (!acc) return null;
+  const rows = acc.enough_data ? worstDishes(acc) : [];
+  const columns: Column<ForecastAccuracy["dishes"][number]>[] = [
+    { key: "d", header: "Блюдо", cell: (r) => r.dish_name },
+    { key: "a", header: "Факт, порций в сутки", numeric: true, cell: (r) => r.actual_per_day.toLocaleString("ru-RU") },
+    { key: "p", header: "Прогноз", numeric: true, cell: (r) => r.predicted_per_day.toLocaleString("ru-RU") },
+    { key: "w", header: "Ошибка", numeric: true, cell: (r) => `${r.wape_pct.toLocaleString("ru-RU")} %` },
+  ];
+  return (
+    <Card title="Точность прогноза спроса" style={{ marginBottom: 16 }}>
+      <p data-testid="accuracy" style={{ margin: 0, font: "var(--type-h2)" }}>{accuracySentence(acc)}</p>
+      {rows.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <DataTable caption="Где прогноз ошибается сильнее всего" columns={columns} rows={rows} rowKey={(r) => r.dish_id} />
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export function AnalyticsPage() {
   const [days, setDays] = useState(7);
@@ -31,6 +62,7 @@ export function AnalyticsPage() {
           </p>
         </Card>
       )}
+      <AccuracyCard days={days} />
       <div role="group" aria-label="Период" style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {PERIODS.map((p) => (
           <SecondaryButton key={p.days} aria-pressed={p.days === days} onClick={() => setDays(p.days)}>

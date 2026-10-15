@@ -700,6 +700,26 @@ paths:
           content:
             application/json:
               schema: {type: array, items: {$ref: '#/components/schemas/LadderBatch'}}
+  /api/analytics/forecast-accuracy:
+    get:
+      tags: [analytics]
+      summary: Точность прогноза спроса — насколько движок угадывал прошедшие сутки (viewer)
+      description: |
+        Для каждых из последних `days` суток берётся λ, какой её посчитал бы движок на начало суток (только заказы
+        до этого момента, окно N и априор n0 — те же, что у горячих предложений), и сравнивается с фактом суток.
+        `wape_pct` = Σ|прогноз − факт| / Σ факт × 100; `baseline_wape_pct` — то же для прогноза «только априор»
+        без обучения. Сутки с прыжком времени стенда и сутки до начала истории пропускаются. Отклонённый заказ входит
+        в факт не больше чем `RejectedCap` порциями (как в оценке спроса). `enough_data=false`, если дней с
+        историей меньше 3 или фактического спроса нет: проценты тогда 0. Ничего не пишется.
+      parameters:
+        - {name: days, in: query, description: "Сколько прошедших суток проверять, 1…30, по умолчанию 7", schema: {type: integer, minimum: 1, maximum: 30, default: 7}}
+      responses:
+        '200':
+          description: Точность по всему меню и по блюдам (с наибольшей ошибкой сверху)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ForecastAccuracy'}
+        '400': {$ref: '#/components/responses/Validation'}
         '401': {$ref: '#/components/responses/Unauthorized'}
   /api/dish-holds:
     get:
@@ -1887,6 +1907,15 @@ components:
         best: {type: string, enum: ['', sell, discount]}
         combined_minor: {type: integer}
         steps:
+    ForecastAccuracy:
+      type: object
+      properties:
+        days: {type: integer}
+        days_used: {type: integer}
+        enough_data: {type: boolean}
+        wape_pct: {type: number, description: "Ошибка прогноза с обучением, %"}
+        baseline_wape_pct: {type: number, description: "Ошибка прогноза только по априору, %"}
+        dishes:
           type: array
           items:
             type: object
@@ -1898,6 +1927,12 @@ components:
               net_minor: {type: integer}
               status: {type: string, enum: [roadmap, network, unavailable, no_price], description: Нет поля — ступень посчитана}
               detail: {type: string}
+              dish_id: {type: string}
+              dish_name: {type: string}
+              actual_per_day: {type: number}
+              predicted_per_day: {type: number}
+              wape_pct: {type: number}
+              baseline_wape_pct: {type: number}
     DishHold:
       type: object
       properties:
