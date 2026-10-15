@@ -329,3 +329,7 @@ data: {"at":"2026-10-09T12:00:00+03:00","order_id":"5b0c0c3e-…","product_ids":
 | `stand.reset` | сброс завершён | — |
 
 Если партия из-за прыжка времени стала просроченной, минуя «истекает», `batch.expiring` для неё не шлётся — только `batch.expired`.
+
+### Привязка Telegram по коду: `POST /api/auth/telegram-link-code`, `GET`/`DELETE`/`POST /api/auth/telegram-link`
+
+Вошедший в веб получает одноразовый код (`POST …-link-code`, 10 минут), вводит его в mini-app: `POST /api/auth/telegram-link {"init_data","code"}` — привязка и сессия с теми же правами. `GET` — привязан ли пользователь, `DELETE` — отвязать себя. Подробности и коды ошибок — в `docs/openapi.yaml` и `docs/telegram-miniapp.md`.

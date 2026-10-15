@@ -66,6 +66,19 @@ func (d *DB) LinkTelegram(ctx context.Context, login string, telegramUserID int6
 	return nil
 }
 
+// TelegramLinked — привязан ли пользователь к какому-либо Telegram-аккаунту.
+func (d *DB) TelegramLinked(ctx context.Context, login string) (bool, error) {
+	var one int
+	err := d.Pool.QueryRow(ctx, `SELECT 1 FROM telegram_links WHERE login = $1`, login).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("store: telegram linked: %w", err)
+	}
+	return true, nil
+}
+
 // UnlinkTelegram снимает привязку пользователя; auth.ErrNotFound — привязки не было.
 func (d *DB) UnlinkTelegram(ctx context.Context, login string) error {
 	tag, err := d.Pool.Exec(ctx, `DELETE FROM telegram_links WHERE login = $1`, login)

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { LoadingState } from "../../components/ScreenStates";
 import { PrimaryButton } from "../../components/Buttons";
-import { classifyTgSignIn } from "./signin";
+import { classifyTgSignIn, linkCodeErrorText, normalizeLinkInput } from "./signin";
 import type { TgSignInOutcome } from "./signin";
 import { getWebApp, loadTelegramSdk } from "./sdk";
 
@@ -16,7 +16,32 @@ const wrap = { minHeight: "100vh", display: "grid", placeItems: "center", paddin
  * и страница открыта как #/tg. Нет подписи (не Telegram) или вход не включён — обычная форма пароля (`fallback`).
  */
 export function TgSignIn({ fallback }: { fallback: ReactNode }) {
-  const { telegramLogin } = useAuth();
+  const { telegramLogin, telegramLinkWithCode } = useAuth();
+  const [code, setCode] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+
+  async function linkByCode() {
+    const normalized = normalizeLinkInput(code);
+    if (!normalized) {
+      setLinkError("Введите код из 8 знаков, например ABCD-EFGH.");
+      return;
+    }
+    const initData = getWebApp()?.initData;
+    if (!initData) {
+      setLinkError("Откройте приложение из бота в Telegram.");
+      return;
+    }
+    setLinking(true);
+    setLinkError(null);
+    try {
+      await telegramLinkWithCode(initData, normalized);
+    } catch (e) {
+      setLinkError(linkCodeErrorText(e));
+    } finally {
+      setLinking(false);
+    }
+  }
   const [phase, setPhase] = useState<Phase>({ kind: "working" });
   const [attempt, setAttempt] = useState(0);
 
@@ -54,7 +79,23 @@ export function TgSignIn({ fallback }: { fallback: ReactNode }) {
           <>
             <h1 style={{ margin: 0, font: "var(--type-h2)" }}>Аккаунт не привязан</h1>
             <p style={{ margin: 0, color: "var(--text-muted)" }}>
-              Передайте администратору ваш Telegram ID — он привяжет вас к учётной записи SwapOwl.
+              В веб-версии откройте «Аккаунт» → «Привязать Telegram» и введите код сюда — права будут такие же, как в вебе.
+            </p>
+            <input
+              aria-label="Код привязки"
+              placeholder="ABCD-EFGH"
+              autoCapitalize="characters"
+              autoComplete="off"
+              maxLength={12}
+              value={code}
+              onChange={(e) => setCode(e.currentTarget.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void linkByCode(); }}
+              style={{ height: 48, textAlign: "center", font: "700 22px/28px var(--font-display)", letterSpacing: 2, border: "2px solid var(--border-strong)", borderRadius: "var(--radius-control)", background: "var(--surface)", color: "var(--text)" }}
+            />
+            <PrimaryButton loading={linking} onClick={() => void linkByCode()}>Привязать</PrimaryButton>
+            {linkError && <p role="alert" style={{ margin: 0, color: "var(--urgency-critical-fg)" }}>{linkError}</p>}
+            <p style={{ margin: 0, color: "var(--text-muted)", font: "var(--type-small)" }}>
+              Или передайте администратору ваш Telegram ID — он привяжет вас вручную.
             </p>
             {phase.telegramUserId && (
               <code className="so-num" style={{ font: "700 22px/28px var(--font-display)", userSelect: "all" }}>{phase.telegramUserId}</code>
