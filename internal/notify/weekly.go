@@ -106,7 +106,11 @@ func FormatWeekly(r *WeeklyReport, standURL string) string {
 		if max > 0 {
 			n = int((v*8 + max - 1) / max)
 		}
-		fmt.Fprintf(&b, "%02d %s %s\n", r.DayLabels[i], strings.Repeat("▇", n), Rub(v))
+		bar := strings.Repeat("🟩", n) // «▇» в обычном тексте Telegram полупрозрачный и разной ширины
+		if n == 0 {
+			bar = "—"
+		}
+		fmt.Fprintf(&b, "%02d %s %s\n", r.DayLabels[i], bar, Rub(v))
 	}
 	if r.Forecast != nil {
 		fmt.Fprintf(&b, "⏳ Под угрозой на следующей неделе: %s\n", Rub(r.Forecast.TotalMinor))

@@ -120,7 +120,7 @@ func TestWeeklyNoForecastRouteSkipsLine(t *testing.T) {
 	if err := n.SendWeekly(context.Background(), o, nil); err != nil {
 		t.Fatal(err)
 	}
-	if len(o.texts) != 1 || strings.Contains(o.texts[0], "Под угрозой") || !strings.Contains(o.texts[0], "▇") {
+	if len(o.texts) != 1 || strings.Contains(o.texts[0], "Под угрозой") || !strings.Contains(o.texts[0], "🟩") {
 		t.Fatalf("текст: %v", o.texts)
 	}
 }
