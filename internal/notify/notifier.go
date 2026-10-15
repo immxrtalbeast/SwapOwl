@@ -36,9 +36,9 @@ type Notifier struct {
 	stopInit    bool
 	hallDate    string
 
-	recvSent   map[int64]bool // партии без срока, о которых уже написали
-	sendMu     sync.Mutex     // сериализует отправку и защищает sent
-	sent       map[int64]bool // партии, о которых уже написали
+	recvSent   map[int64]bool  // партии без срока, о которых уже написали
+	sendMu     sync.Mutex      // сериализует отправку и защищает sent
+	sent       map[int64]bool  // партии, о которых уже написали
 	reminded   map[string]bool // напоминания «меньше часа до срока», уже отправленные (под sendMu)
 	mu         sync.Mutex
 	digestDate string // дата последней сводки
