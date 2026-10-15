@@ -160,7 +160,7 @@ export function TodayPage() {
             {offers.length === 0 ? (
               <EmptyState title="Продвигать нечего" text="Партий под риском нет." />
             ) : (
-              // Каждое блюдо — отдельный блок через линию (FS-161): название и «спасёт ₽» в одной строке,
+              // Каждое блюдо — отдельный блок через линию (FS-161): название и «не спишем ₽» в одной строке,
               // цель — плашкой с числом, остаток и что с ним делать — таблицей ниже.
               <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
                 {offers.map((o, i) => {
@@ -178,7 +178,7 @@ export function TodayPage() {
                         <a href={hotOffersUrl(o.reasons[0]?.product_id ?? "")} style={{ font: "var(--type-h3)", fontSize: 16, color: "var(--brand-ink)", textDecoration: "none" }}>{o.dish_name}</a>
                         {saved > 0 && (
                           <span className="so-num" style={{ padding: "2px 10px", borderRadius: "var(--radius-pill)", background: "var(--brand-tint)", color: "var(--brand-ink)", font: "600 13px/20px var(--font-body)", whiteSpace: "nowrap" }}>
-                            спасёт {formatRub(saved)}
+                            не спишем {formatRub(saved)}
                           </span>
                         )}
                       </div>

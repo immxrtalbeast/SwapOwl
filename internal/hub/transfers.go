@@ -200,7 +200,7 @@ func SuggestTransfers(states []PointState, transferHours float64, prices map[str
 		}
 		t.Text = fmt.Sprintf("%s %s: %s → %s", t.ProductName, FormatQty(t.Qty), t.FromName, t.ToName)
 		if t.SavesMinor != nil {
-			t.Text += fmt.Sprintf(", спасёт ≈ %s", formatRubMinor(*t.SavesMinor))
+			t.Text += fmt.Sprintf(", не спишем ≈ %s", formatRubMinor(*t.SavesMinor))
 		}
 		t.Invoice = invoiceText(t)
 		out = append(out, t)
@@ -243,7 +243,7 @@ func invoiceText(t Transfer) string {
 	fmt.Fprintf(&b, "Партия: №%d, годна до %s\n", t.BatchID, t.ExpiresAt.Format("02.01.2006 15:04"))
 	fmt.Fprintf(&b, "Количество: %s (%d %s)\n", FormatQty(t.Qty), t.Qty.Qty, t.Qty.Unit)
 	if t.SavesMinor != nil {
-		fmt.Fprintf(&b, "Ожидаемо спасёт: ≈ %s\n", formatRubMinor(*t.SavesMinor))
+		fmt.Fprintf(&b, "Не спишем: ≈ %s\n", formatRubMinor(*t.SavesMinor))
 	}
 	b.WriteString("Hub только подсказывает: перемещение в API точек не выполняется.")
 	return b.String()
