@@ -265,11 +265,9 @@ curl -i http://localhost:8080/api/public/rescue
 
 ## Привязка Telegram по коду
 
-> **Планируется (FS-180), ещё не реализовано.** Эндпоинты и экраны ниже появятся с PR `feat/tg-link-code`; до его мержа они недоступны (`404`). Тексты нужно сверить с реализацией.
-
 | Метод | Путь | Кто | Ответ |
 |---|---|---|---|
-| POST | `/api/auth/telegram-link-code` | вошёл в веб (любая роль) | `200 {"code":"123456","expires_in_seconds":600}`; новый вызов отзывает прежний код этого пользователя |
+| POST | `/api/auth/telegram-link-code` | вошёл в веб (любая роль) | `200 {"code":"ABCD-EFGH","expires_in_seconds":600}`; новый вызов отзывает прежний код этого пользователя |
 | POST | `/api/auth/telegram-link` `{"init_data","code"}` | публично | `200` как у `/api/auth/telegram` (сессия и роль) и привязка пользователя к Telegram-аккаунту; код одноразовый |
 | GET | `/api/auth/telegram-link` | вошёл в веб | `{"linked":true\|false}` |
 | DELETE | `/api/auth/telegram-link` | вошёл в веб | `204`, снимает свою привязку |
@@ -330,6 +328,3 @@ data: {"at":"2026-10-09T12:00:00+03:00","order_id":"5b0c0c3e-…","product_ids":
 
 Если партия из-за прыжка времени стала просроченной, минуя «истекает», `batch.expiring` для неё не шлётся — только `batch.expired`.
 
-### Привязка Telegram по коду: `POST /api/auth/telegram-link-code`, `GET`/`DELETE`/`POST /api/auth/telegram-link`
-
-Вошедший в веб получает одноразовый код (`POST …-link-code`, 10 минут), вводит его в mini-app: `POST /api/auth/telegram-link {"init_data","code"}` — привязка и сессия с теми же правами. `GET` — привязан ли пользователь, `DELETE` — отвязать себя. Подробности и коды ошибок — в `docs/openapi.yaml` и `docs/telegram-miniapp.md`.
