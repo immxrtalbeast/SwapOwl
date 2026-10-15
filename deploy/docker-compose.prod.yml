@@ -66,6 +66,10 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       INVOICE_MODEL: ${INVOICE_MODEL:-claude-haiku-5-5}
       INVOICE_PER_HOUR: ${INVOICE_PER_HOUR:-30}
+      # Публичная витрина «Спаси продукты» (FS-168): без входа, только чтение; по умолчанию выключена.
+      PUBLIC_RESCUE: ${PUBLIC_RESCUE:-false}
+      # Вход в mini-app по подписи Telegram (FS-163): токен бота, из которого открывается mini-app. MINIAPP_BOT_TOKEN — если он не тот, что у notifier; иначе берётся TELEGRAM_BOT_TOKEN. Пусто — маршрута нет.
+      TELEGRAM_BOT_TOKEN: ${MINIAPP_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 10s
