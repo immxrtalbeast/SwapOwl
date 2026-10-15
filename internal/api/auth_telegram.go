@@ -47,6 +47,33 @@ func (rt *Router) telegramRoutes() {
 	rt.HandlePublic(http.MethodPost, "/api/auth/telegram", rt.telegramLogin)
 	rt.HandleRole(http.MethodPut, "/api/users/{login}/telegram", auth.Admin, rt.linkTelegram)
 	rt.HandleRole(http.MethodDelete, "/api/users/{login}/telegram", auth.Admin, rt.unlinkTelegram)
+	rt.telegramLinkCodeRoutes()
+}
+
+// startSession создаёт сессию пользователя и ставит cookie — общий шаг входа через Telegram.
+func (rt *Router) startSession(w http.ResponseWriter, r *http.Request, u auth.User) error {
+	svc := rt.deps.Auth
+	token, err := auth.NewToken()
+	if err == nil {
+		err = svc.Repo.CreateSession(r.Context(), auth.HashToken(token), u.ID, svc.Now().Add(svc.SessionTTL))
+	}
+	if err != nil {
+		return err
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    token,
+		Path:     "/",
+		Expires:  svc.Now().Add(svc.SessionTTL),
+		MaxAge:   int(svc.SessionTTL / time.Second),
+		HttpOnly: true,
+		Secure:   svc.SecureCookie,
+		SameSite: http.SameSiteStrictMode,
+	})
+	if ai, ok := r.Context().Value(authInfoKey).(*authInfo); ok {
+		ai.set(auth.Principal{Kind: auth.KindSession, Role: u.Role, UserID: u.ID, Login: u.Login})
+	}
+	return nil
 }
 
 var (

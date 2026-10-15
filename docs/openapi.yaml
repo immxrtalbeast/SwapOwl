@@ -1339,6 +1339,87 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
+  /api/auth/telegram-link-code:
+    post:
+      tags: [access]
+      summary: Одноразовый код привязки Telegram к своему аккаунту (веб-сессия, любая роль)
+      description: |
+        Только для вошедшего в веб: ключи доступа и режим без входа получают 403. Код — 8 знаков без похожих
+        (I, L, O, 0, 1), живёт 10 минут, одноразовый; новый вызов отзывает прежний код этого пользователя. В журнале
+        аудита только факт выдачи, не сам код; хранится хеш. Есть, только когда включён вход через Telegram.
+      responses:
+        '200':
+          description: Код и срок
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: {type: string, example: ABCD-EFGH}
+                  expires_in_seconds: {type: integer, example: 600}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/auth/telegram-link:
+    get:
+      tags: [access]
+      summary: Привязан ли мой аккаунт к Telegram (веб-сессия)
+      responses:
+        '200':
+          description: Состояние привязки
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  linked: {type: boolean}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    delete:
+      tags: [access]
+      summary: Снять свою привязку Telegram (веб-сессия; повтор тоже 204)
+      responses:
+        '204': {description: Привязка снята}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [access]
+      summary: Привязать Telegram по коду из веба и войти в mini-app (публичный)
+      description: |
+        Подпись `init_data` доказывает, какой Telegram-аккаунт пишет, код из «Аккаунта» — какой логин веба он
+        привязывает. Успех: привязка, cookie `session`, роль как в вебе; код сгорает только здесь. Неверный,
+        просроченный и использованный код — одинаковый `400 invalid_link_code` (по причине код не угадать). Неверная
+        подпись — `401`, код не сгорает и попытка не считается. 5 неудачных попыток с адреса за 10 минут — `429`.
+        Аккаунт Telegram уже привязан к другому пользователю — `409`. При `AUTH_REQUIRED=false` — `409`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [init_data, code]
+              properties:
+                init_data: {type: string, description: "Telegram.WebApp.initData как есть"}
+                code: {type: string, description: "Код из «Аккаунта», регистр и дефис не важны", example: ABCD-EFGH}
+      responses:
+        '200':
+          description: Привязано, сессия выдана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  login: {type: string}
+                  role: {$ref: '#/components/schemas/Role'}
+                  auth_required: {type: boolean}
+        '400':
+          description: "`invalid_link_code` — код неверен, просрочен или уже использован; либо ошибка валидации"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '401': {description: Подпись init_data неверна или устарела, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: Telegram-аккаунт уже привязан к другому пользователю или вход не включён, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {description: Слишком много неверных кодов, content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/auth/logout:
     post:
       tags: [access]

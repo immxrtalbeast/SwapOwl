@@ -47,6 +47,13 @@ export const api = {
   login: (login: string, password: string) =>
     request<{ login: string; role: Role }>("/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) }),
   logout: () => request<null>("/api/auth/logout", { method: "POST" }),
+  /** Одноразовый код привязки Telegram к своему аккаунту (веб-сессия): 10 минут. */
+  telegramLinkCode: () => request<{ code: string; expires_in_seconds: number }>("/api/auth/telegram-link-code", { method: "POST" }),
+  telegramLinkStatus: () => request<{ linked: boolean }>("/api/auth/telegram-link"),
+  telegramUnlink: () => request<null>("/api/auth/telegram-link", { method: "DELETE" }),
+  /** mini-app: подпись Telegram + код из веба → привязка и сессия. */
+  telegramLinkWithCode: (initData: string, code: string) =>
+    request<{ login: string | null; role: Role }>("/api/auth/telegram-link", { method: "POST", body: JSON.stringify({ init_data: initData, code }) }),
   telegramLogin: (initData: string) =>
     request<{ login: string | null; role: Role }>("/api/auth/telegram", { method: "POST", body: JSON.stringify({ init_data: initData }) }),
   changePassword: (old: string, next: string) =>

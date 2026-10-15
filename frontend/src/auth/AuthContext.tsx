@@ -16,6 +16,8 @@ interface AuthValue {
   epoch: number;
   login: (login: string, password: string) => Promise<void>;
   telegramLogin: (initData: string) => Promise<void>;
+  /** Привязать Telegram кодом из веба и войти (mini-app). */
+  telegramLinkWithCode: (initData: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   reload: () => Promise<void>;
 }
@@ -55,6 +57,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setEpoch((n) => n + 1);
   }, [reload]);
 
+  const telegramLinkWithCode = useCallback(async (initData: string, code: string) => {
+    await api.telegramLinkWithCode(initData, code);
+    await reload();
+    setEpoch((n) => n + 1);
+  }, [reload]);
+
   const logout = useCallback(async () => {
     try {
       await api.logout();
@@ -63,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ state, epoch, login, telegramLogin, logout, reload }), [state, epoch, login, telegramLogin, logout, reload]);
+  const value = useMemo(() => ({ state, epoch, login, telegramLogin, telegramLinkWithCode, logout, reload }), [state, epoch, login, telegramLogin, telegramLinkWithCode, logout, reload]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

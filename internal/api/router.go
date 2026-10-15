@@ -105,6 +105,7 @@ type Router struct {
 	mux    *http.ServeMux
 	routes map[string]map[string]http.Handler // шаблон → метод → хендлер
 	access map[string]map[string]access       // шаблон → метод → требуемый доступ
+	links  *linkCodes                         // коды привязки Telegram; есть, только если включён вход через Telegram
 }
 
 // NewRouter собирает роутер с маршрутами каркаса.
