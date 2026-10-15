@@ -101,7 +101,7 @@ export function StockPage() {
     );
   };
 
-  const columns: Column<StockRow>[] = [
+  const allColumns: Column<StockRow>[] = [
     {
       key: "name",
       header: "Продукт · партия",
@@ -166,7 +166,9 @@ export function StockPage() {
     // У строки продукта «Годна до» — ближайшая живая партия, а состояние — худшая: «есть просрочка», а не «просрочена».
     { key: "state", header: "Состояние", cell: (r) => <UrgencyBadge def={BATCH_STATES[r.state]} label={r.kind === "product" ? productStateLabel(r.state) : undefined} /> },
     { key: "open", header: "Действие", cell: (r) => (r.kind === "batch" ? openAction(r) : null) },
-  ].filter((c) => c.key !== "open" || rows.some((r) => r.kind === "batch")); // «Действие» — только у раскрытых партий
+  ];
+  // «Действие» — только когда раскрыты партии: у строк продуктов колонка пустая.
+  const columns = allColumns.filter((c) => c.key !== "open" || rows.some((r) => r.kind === "batch"));
 
   const stale = conn === "offline" && updatedAt ? f.time(updatedAt) : null;
 
