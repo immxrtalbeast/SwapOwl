@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getWebApp, loadTelegramSdk } from "./sdk";
+import { getWebApp, inTelegram, loadTelegramSdk } from "./sdk";
 
 type Script = { src: string; async: boolean; onload: (() => void) | null; onerror: (() => void) | null };
 
@@ -36,5 +36,16 @@ describe("loadTelegramSdk", () => {
     scripts[0]!.onerror?.();
     await expect(p).resolves.toBeUndefined();
     expect(getWebApp()).toBeNull();
+  });
+});
+
+describe("inTelegram", () => {
+  it("SDK без Telegram (platform unknown) — не Telegram: кнопки рисуются на странице", async () => {
+    const { w } = fakeDom();
+    expect(inTelegram()).toBe(false);
+    w.Telegram = { WebApp: { ready() {}, platform: "unknown" } as never };
+    expect(inTelegram()).toBe(false);
+    w.Telegram = { WebApp: { ready() {}, platform: "ios" } as never };
+    expect(inTelegram()).toBe(true);
   });
 });

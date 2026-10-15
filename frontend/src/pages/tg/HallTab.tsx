@@ -7,7 +7,7 @@ import { OrderForm } from "../orders/OrderForm";
 import { reasonText } from "../stop-list/reason";
 import { stoppedDishes } from "./model";
 import { haptic } from "./sdk";
-import { TgCard, heading, listReset, muted, section, useBackButton, useMainButton } from "./ui";
+import { InlineBack, TgCard, heading, listReset, muted, section, useBackButton, useMainButton } from "./ui";
 
 /** «Зал»: что предлагать гостям, стоп-лист с причинами, быстрый заказ. */
 export function HallTab() {
@@ -22,6 +22,7 @@ export function HallTab() {
   if (ordering)
     return (
       <div style={section}>
+        <InlineBack onBack={() => setOrdering(false)} />
         <h2 style={heading}>Быстрый заказ</h2>
         <OrderForm
           dishes={state.menu}

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { getWebApp } from "./sdk";
+import { TextButton } from "../../components";
+import { getWebApp, inTelegram } from "./sdk";
 import type { TgButton } from "./sdk";
 
 export const section: CSSProperties = { display: "grid", gap: 12, minWidth: 0 };
@@ -27,7 +28,7 @@ export function TgCard({ children, accent, testid }: { children: ReactNode; acce
 export function useMainButton(text: string | null, onClick: () => void): boolean {
   const cb = useRef(onClick);
   cb.current = onClick;
-  const mb = getWebApp()?.MainButton;
+  const mb = inTelegram() ? getWebApp()?.MainButton : undefined;
   useEffect(() => {
     if (!mb || !text) return;
     const handler = () => cb.current();
@@ -81,9 +82,15 @@ export function useBackButton(onBack: (() => void) | null, priority = 1): void {
   const cb = useRef(onBack);
   cb.current = onBack;
   const active = onBack !== null;
-  const bb = getWebApp()?.BackButton;
+  const bb = inTelegram() ? getWebApp()?.BackButton : undefined;
   useEffect(() => {
     if (!bb || !active) return;
     return pushBack(bb, { cb, priority });
   }, [bb, active, priority]);
+}
+
+/** «Назад» на странице: вне Telegram системной кнопки нет, а вложенный экран иначе не закрыть. */
+export function InlineBack({ onBack }: { onBack: () => void }) {
+  if (inTelegram()) return null;
+  return <TextButton onClick={onBack} style={{ justifySelf: "start" }}>← Назад</TextButton>;
 }
