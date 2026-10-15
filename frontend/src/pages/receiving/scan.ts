@@ -55,6 +55,11 @@ export function lineFromScan(g: Gs1, product: ProductWithPack, key: number): Sca
   return { ...base, quantity: pack ? String(pack) : "", unit: product.unit as ScanLine["unit"] };
 }
 
+/** Продукт по коду поставщика: серверное сопоставление главнее локального (оно общее для устройств); нет нигде — undefined. */
+export function resolveProductId(code: string, server: Readonly<Record<string, string>>, local: Readonly<Record<string, string>>): string | undefined {
+  return server[code] ?? local[code];
+}
+
 /** Позиция, добавленная руками без кода: продукт выбран из справочника, количество и «годен до» вводит оператор. */
 export function manualLine(product: ProductWithPack, key: number): ScanLine {
   return { key, gtin: "", product_id: product.id, expiryFromCode: false, quantity: "", unit: product.unit as ScanLine["unit"] };

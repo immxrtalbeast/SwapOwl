@@ -25,17 +25,18 @@ type (
 		HotOffersSource
 		AccuracySource
 	}
-	allSupply       struct{ SupplySource }
-	allSupplyOrd    struct{ SupplyOrders }
-	allOutbox       struct{ Outbox }
-	allAnalytics    struct{ Analytics }
-	allMonitor      struct{ Monitor }
-	allDemo         struct{ Demo }
-	allSim          struct{ SimControl }
-	allAudit        struct{ AuditLog }
-	allTelegram     struct{ TelegramLinks }
-	allHotOverrides struct{ HotOverrides }
-	allDishHolds    struct{ DishHolds }
+	allSupply        struct{ SupplySource }
+	allSupplyOrd     struct{ SupplyOrders }
+	allOutbox        struct{ Outbox }
+	allAnalytics     struct{ Analytics }
+	allMonitor       struct{ Monitor }
+	allDemo          struct{ Demo }
+	allSim           struct{ SimControl }
+	allAudit         struct{ AuditLog }
+	allTelegram      struct{ TelegramLinks }
+	allHotOverrides  struct{ HotOverrides }
+	allDishHolds     struct{ DishHolds }
+	allSupplierCodes struct{ SupplierCodes }
 )
 
 // routerPairs — множество «МЕТОД шаблон» всех маршрутов полностью собранного роутера.
@@ -45,7 +46,7 @@ func routerPairs() map[string]bool {
 		Auth: &auth.Service{}, Telegram: allTelegram{}, TelegramBotToken: "t", Audit: allAudit{}, Stock: allStock{}, Catalog: allCatalog{},
 		Orders: allOrders{}, Corrections: allCorrections{}, Menu: allMenu{}, HotOffers: allHot{},
 		Supply: allSupply{}, SupplyOrders: allSupplyOrd{}, Outbox: allOutbox{}, Analytics: allAnalytics{}, Monitor: allMonitor{},
-		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(), Invoices: &Invoices{}, HotOverrides: allHotOverrides{}, DishHolds: allDishHolds{}, PublicRescue: true,
+		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(), Invoices: &Invoices{}, HotOverrides: allHotOverrides{}, DishHolds: allDishHolds{}, SupplierCodes: allSupplierCodes{}, PublicRescue: true,
 	})
 	out := map[string]bool{}
 	for pattern, byMethod := range rt.routes {

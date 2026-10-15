@@ -168,7 +168,7 @@ func run() error {
 				WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}}},
 		HotConfig: api.HotOffersConfig{DefaultAlgo: cfg.HotOffersAlgo, Rank: hotoffers.Config{
 			TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter, HorizonHours: cfg.HotHorizon}},
-		Invoices: invoiceDeps(cfg, log), HotOverrides: db, DishHolds: db, PublicRescue: cfg.PublicRescue})
+		Invoices: invoiceDeps(cfg, log), HotOverrides: db, DishHolds: db, SupplierCodes: db, PublicRescue: cfg.PublicRescue})
 	go newHotWatcher(bus, store.Snapshotter{DB: db, Params: store.SnapshotParams{
 		WindowDays: float64(cfg.DemandWindowDays), PriorDays: float64(cfg.DemandPriorDays), Schedule: schedule}},
 		hotoffers.Config{TopN: cfg.HotTopN, WMin: cfg.HotWMinHours, CoverHours: cfg.HotCoverHours, MaxIter: cfg.HotMaxIter, HorizonHours: cfg.HotHorizon},

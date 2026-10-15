@@ -73,6 +73,10 @@ export const api = {
   shortfalls: (from: string, to: string) => request<MoneyReport>(`/api/analytics/shortfalls?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   shortages: (from: string, to: string) => request<ShortagesReport>(`/api/analytics/shortages?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   bench: () => request<BenchResult>("/api/analytics/bench"),
+  /** Сопоставление «код поставщика → продукт», общее для всех устройств приёмки. */
+  supplierCodes: () => request<{ code: string; product_id: string }[]>("/api/supplier-codes"),
+  setSupplierCode: (code: string, productId: string) =>
+    request<{ code: string; product_id: string }>(`/api/supplier-codes/${encodeURIComponent(code)}`, { method: "PUT", body: JSON.stringify({ product_id: productId }) }),
   rescueLadder: () => request<LadderBatch[]>("/api/rescue-ladder"),
   forecastAccuracy: (days: number) => request<ForecastAccuracy>(`/api/analytics/forecast-accuracy?days=${days}`),
   products: () => request<ProductStock[]>("/api/products"),

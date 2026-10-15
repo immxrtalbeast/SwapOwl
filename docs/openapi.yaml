@@ -725,6 +725,55 @@ paths:
               schema: {$ref: '#/components/schemas/ForecastAccuracy'}
         '400': {$ref: '#/components/responses/Validation'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/supplier-codes:
+    get:
+      tags: [menu]
+      summary: Сопоставление кодов поставщика с продуктами (viewer)
+      description: |
+        Код поставщика (GTIN из маркировки или артикул) → продукт справочника. Общее для всех устройств приёмки:
+        раньше сопоставление жило в localStorage одного устройства. Новые первыми.
+      responses:
+        '200':
+          description: Список сопоставлений
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/SupplierCode'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/supplier-codes/{code}:
+    parameters:
+      - {name: code, in: path, required: true, schema: {type: string, pattern: '^[0-9A-Za-z._-]{1,64}$'}}
+    put:
+      tags: [menu]
+      summary: Сопоставить код поставщика с продуктом (operator)
+      description: Один код — один продукт; повтор идемпотентен, прежний продукт заменяется. Продукт удалён из справочника — запись уходит вместе с ним; сброс стенда очищает справочник.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [product_id]
+              additionalProperties: false
+              properties:
+                product_id: {type: string}
+      responses:
+        '200':
+          description: Сопоставление записано
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SupplierCode'}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: "`unknown_product` — продукта нет в справочнике", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    delete:
+      tags: [menu]
+      summary: Снять сопоставление (operator; повтор тоже 204)
+      responses:
+        '204': {description: Снято}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /api/dish-holds:
     get:
       tags: [menu]
@@ -2022,6 +2071,13 @@ components:
               predicted_per_day: {type: number}
               wape_pct: {type: number}
               baseline_wape_pct: {type: number}
+    SupplierCode:
+      type: object
+      properties:
+        code: {type: string}
+        product_id: {type: string}
+        set_at: {type: string, format: date-time}
+        set_by: {type: string, description: "Логин, если вход включён"}
     DishHold:
       type: object
       properties:

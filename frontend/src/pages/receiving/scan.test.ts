@@ -57,3 +57,12 @@ describe("позиция без кода", () => {
     expect(isLineReady({ ...manualLine(beef, 1), quantity: "1" })).toBe(false);
   });
 });
+
+describe("сопоставление кодов поставщика", () => {
+  it("серверное главнее локального, локальное — запасное", async () => {
+    const { resolveProductId } = await import("./scan");
+    expect(resolveProductId("460700", { "460700": "milk" }, { "460700": "cream" })).toBe("milk");
+    expect(resolveProductId("460700", {}, { "460700": "cream" })).toBe("cream");
+    expect(resolveProductId("460700", {}, {})).toBeUndefined();
+  });
+});
