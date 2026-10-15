@@ -7,6 +7,8 @@ import { RealisticBlock } from "./RealisticBlock";
 import { realisticTarget } from "./realistic";
 import { useHotOffers } from "./useHotOffers";
 import { useUnitPrices } from "./useUnitPrices";
+import { ManagerPanel, OfferActions } from "./ManagerControls";
+import { IconPin } from "@tabler/icons-react";
 import type { UnitPrices } from "../../api/today";
 import { filterByProduct, formatUntil, handNote, portionsWord } from "./view";
 
@@ -20,7 +22,7 @@ function useProductFilter(): string | null {
   return id;
 }
 
-function OfferCard({ offer, note, prices }: { offer: HotOffer; note?: string; prices: UnitPrices }) {
+function OfferCard({ offer, note, prices, onChanged }: { offer: HotOffer; note?: string; prices: UnitPrices; onChanged: () => void | Promise<void> }) {
   const hasTarget = offer.target_portions > 0;
   const capped = realisticTarget(offer) !== null;
   return (
@@ -29,6 +31,11 @@ function OfferCard({ offer, note, prices }: { offer: HotOffer; note?: string; pr
       style={{ display: "grid", gap: 8, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, boxShadow: "var(--shadow-sm)", padding: "var(--card-pad)", minWidth: 0 }}
     >
       <h2 style={{ margin: 0, font: "var(--type-h3)" }}>{offer.dish_name}</h2>
+      {offer.pinned && (
+        <p style={{ margin: 0, display: "flex", gap: 6, alignItems: "center", font: "var(--type-small)", color: "var(--primary)" }}>
+          <IconPin size={14} aria-hidden="true" /> закреплено менеджером{offer.manager_note ? ` — ${offer.manager_note}` : ""}
+        </p>
+      )}
       {hasTarget && !capped && (
         <p style={{ margin: 0, display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "2px 12px" }}>
           <span style={{ font: "var(--type-kpi)", fontSize: 32, lineHeight: 1.1, color: "var(--primary)" }}>
@@ -59,6 +66,7 @@ function OfferCard({ offer, note, prices }: { offer: HotOffer; note?: string; pr
         ))}
       </ul>
       <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>{offer.explanation}</p>
+      <OfferActions offer={offer} onChanged={onChanged} />
     </article>
   );
 }
@@ -87,7 +95,7 @@ export function HotOffersPage() {
       )}
       {state.kind === "loading" && <LoadingState rows={3} label="Загрузка предложений" />}
       {state.kind === "error" && <ErrorState what="горячие предложения" reason={state.message} onRetry={() => void reload()} />}
-      {state.kind === "ready" && <Body state={state} productId={productId} />}
+      {state.kind === "ready" && <Body state={state} productId={productId} reload={reload} />}
     </section>
   );
 }
@@ -97,7 +105,7 @@ function productName(offers: HotOffer[], id: string): string {
   return id;
 }
 
-function Body({ state, productId }: { state: Extract<ReturnType<typeof useHotOffers>[0], { kind: "ready" }>; productId: string | null }) {
+function Body({ state, productId, reload }: { state: Extract<ReturnType<typeof useHotOffers>[0], { kind: "ready" }>; productId: string | null; reload: () => Promise<void> }) {
   const prices = useUnitPrices();
   const offers = filterByProduct(state.data.offers, productId);
   const excluded = productId ? state.data.excluded.filter((e) => e.product_id === productId) : state.data.excluded;
@@ -105,15 +113,16 @@ function Body({ state, productId }: { state: Extract<ReturnType<typeof useHotOff
     <>
       {offers.length === 0 && (
         <EmptyState
-          title={productId ? "Нет подходящих блюд" : "Продвигать нечего"}
+          title={productId ? "Нет подходящих блюд" : (state.data.manager_picks ?? []).length ? "Расчёт ничего не предлагает" : "Продвигать нечего"}
           text={productId ? "Нет блюд, которые спасают этот продукт." : "Сейчас продвигать нечего: продукты не под угрозой."}
         />
       )}
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
         {offers.map((o, i) => (
-          <OfferCard key={o.dish_id} offer={o} note={i === 0 ? handNote(o) : undefined} prices={prices} />
+          <OfferCard key={o.dish_id} offer={o} note={i === 0 ? handNote(o) : undefined} prices={prices} onChanged={reload} />
         ))}
       </div>
+      {!productId && <ManagerPanel data={state.data} menu={state.menu} onChanged={reload} />}
       {excluded.length > 0 && (
         <div style={{ marginTop: 24 }}>
           <Card title="Исключены из предложений">

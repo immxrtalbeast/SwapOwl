@@ -83,6 +83,8 @@ type Deps struct {
 	Metrics *metrics.Registry
 	// MetricsToken — значение METRICS_TOKEN; пустой — /metrics отвечает 404.
 	MetricsToken string
+	// HotOverrides — ручная правка горячих предложений менеджером (FS-159). nil — маршруты правки не регистрируются.
+	HotOverrides HotOverrides
 	// Invoices — распознавание фото накладной (FS-158). nil — маршрут не регистрируется.
 	Invoices *Invoices
 }

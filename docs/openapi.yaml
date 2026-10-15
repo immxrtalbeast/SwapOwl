@@ -520,6 +520,54 @@ paths:
                   - {dish_id: caprese, product_id: tomato, why: Помидоров осталось на 5 рабочих часов}
         '400': {$ref: '#/components/responses/Validation'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/hot-offers/overrides:
+    get:
+      tags: [menu]
+      summary: Решения менеджера по горячим предложениям — закреплённые и скрытые блюда (viewer)
+      responses:
+        '200':
+          description: Новые первыми
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/HotOverride'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/hot-offers/overrides/{dish_id}:
+    parameters:
+      - {name: dish_id, in: path, required: true, schema: {type: string}}
+    put:
+      tags: [menu]
+      summary: Закрепить блюдо в горячих предложениях или скрыть его (operator)
+      description: |
+        `pin` — блюдо показывается менеджеру и официанту: если расчёт его и так предлагает — с пометкой `pinned`,
+        иначе — в `manager_picks` ответа `GET /api/hot-offers` (у таких блюд нет партии-причины, поэтому они не в `offers`).
+        Закреплённое блюдо из стоп-листа не предлагается — оно в `excluded` с причиной. `hide` — блюдо убирается из `offers`.
+        Повтор идемпотентен, новое решение заменяет прежнее. Открытые экраны получают `hotoffers.changed`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              additionalProperties: false
+              properties:
+                mode: {type: string, enum: [pin, hide]}
+                note: {type: string, maxLength: 200, description: "Подсказка для зала, например «предлагать к обеду»"}
+      responses:
+        '200':
+          description: Решение записано
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HotOverride'}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: "`unknown_dish` — блюда нет в справочнике", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    delete:
+      tags: [menu]
+      summary: Снять решение — блюдо снова только под расчётом (operator)
+      responses:
+        '204': {description: Снято (или решения не было)}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /api/orders:
     post:
       tags: [orders]
@@ -1498,6 +1546,14 @@ components:
           type: string
           format: date-time
           description: Время отмены принятого заказа (`POST /api/orders/{id}/cancel`); только в `GET /api/orders`, у неотменённых поля нет.
+    HotOverride:
+      type: object
+      properties:
+        dish_id: {type: string}
+        mode: {type: string, enum: [pin, hide]}
+        note: {type: string}
+        set_at: {type: string, format: date-time}
+        set_by: {type: string, description: "Логин, если вход включён"}
     CorrectionLine:
       type: object
       properties:

@@ -297,6 +297,27 @@ export interface HotOffer {
   sell_until: string;
   reasons: HotReason[];
   explanation: string;
+  /** Менеджер ещё и закрепил это блюдо (FS-159); manager_note — подсказка для зала. */
+  pinned?: boolean;
+  manager_note?: string;
+}
+
+/** Блюдо, добавленное менеджером вручную: партии-причины нет, поэтому оно не в offers. */
+export interface ManagerPick {
+  dish_id: string;
+  dish_name: string;
+  note: string;
+  set_at: string;
+  set_by: string;
+}
+
+/** Блюдо, скрытое менеджером; in_offers — без скрытия расчёт поставил бы его в список. */
+export interface HiddenDish {
+  dish_id: string;
+  dish_name: string;
+  in_offers: boolean;
+  set_at: string;
+  set_by: string;
 }
 
 export interface HotExcluded {
@@ -311,6 +332,8 @@ export interface HotOffersResponse {
   algo: HotAlgo;
   offers: HotOffer[];
   excluded: HotExcluded[];
+  manager_picks?: ManagerPick[];
+  hidden?: HiddenDish[];
 }
 
 // POST /api/supply-orders и GET /api/supply-orders/{id} (FS-121): заказ поставщику через outbox.

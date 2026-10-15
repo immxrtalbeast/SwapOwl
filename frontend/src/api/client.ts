@@ -51,6 +51,10 @@ export const api = {
     request<null>("/api/auth/password", { method: "POST", body: JSON.stringify({ old, new: next }) }),
   alerts: () => request<Alert[]>("/api/alerts"),
   hotOffers: (algo?: HotAlgo) => request<HotOffersResponse>(`/api/hot-offers${algo ? `?algo=${algo}` : ""}`),
+  setHotOverride: (dishId: string, mode: "pin" | "hide", note = "") =>
+    request<unknown>(`/api/hot-offers/overrides/${encodeURIComponent(dishId)}`, { method: "PUT", body: JSON.stringify({ mode, note }) }),
+  deleteHotOverride: (dishId: string) =>
+    request<null>(`/api/hot-offers/overrides/${encodeURIComponent(dishId)}`, { method: "DELETE" }),
   supplySuggestions: () => request<SupplySuggestion[]>("/api/supply-suggestions"),
   createSupplyOrder: (o: SupplyOrderInput) =>
     request<SupplyOrder>("/api/supply-orders", { method: "POST", body: JSON.stringify(o) }),

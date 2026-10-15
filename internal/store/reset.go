@@ -21,6 +21,7 @@ var resetOrder = []string{
 	`DELETE FROM clock_jumps`,
 	// Справочники целиком лежат в сиде, а импорт каталога (PUT /api/catalog) мог добавить или
 	// переписать блюда, рецепты и продукты: чистим всё и даём сиду загрузить эталон заново.
+	`DELETE FROM hot_overrides`,
 	`DELETE FROM recipe_items`,
 	`DELETE FROM dishes`,
 	`DELETE FROM products`,

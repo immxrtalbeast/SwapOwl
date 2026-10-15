@@ -16,20 +16,21 @@ import (
 // Пустые реализации: хендлеры не вызываются, нужна лишь непустая зависимость,
 // чтобы роутер зарегистрировал все маршруты.
 type (
-	allStock       struct{ Stock }
-	allCatalog     struct{ Catalog }
-	allOrders      struct{ Orders }
-	allCorrections struct{ Corrections }
-	allMenu        struct{ MenuSource }
-	allHot         struct{ HotOffersSource }
-	allSupply      struct{ SupplySource }
-	allSupplyOrd   struct{ SupplyOrders }
-	allOutbox      struct{ Outbox }
-	allAnalytics   struct{ Analytics }
-	allMonitor     struct{ Monitor }
-	allDemo        struct{ Demo }
-	allSim         struct{ SimControl }
-	allAudit       struct{ AuditLog }
+	allStock        struct{ Stock }
+	allCatalog      struct{ Catalog }
+	allOrders       struct{ Orders }
+	allCorrections  struct{ Corrections }
+	allMenu         struct{ MenuSource }
+	allHot          struct{ HotOffersSource }
+	allSupply       struct{ SupplySource }
+	allSupplyOrd    struct{ SupplyOrders }
+	allOutbox       struct{ Outbox }
+	allAnalytics    struct{ Analytics }
+	allMonitor      struct{ Monitor }
+	allDemo         struct{ Demo }
+	allSim          struct{ SimControl }
+	allAudit        struct{ AuditLog }
+	allHotOverrides struct{ HotOverrides }
 )
 
 // routerPairs — множество «МЕТОД шаблон» всех маршрутов полностью собранного роутера.
@@ -39,7 +40,7 @@ func routerPairs() map[string]bool {
 		Auth: &auth.Service{}, Audit: allAudit{}, Stock: allStock{}, Catalog: allCatalog{},
 		Orders: allOrders{}, Corrections: allCorrections{}, Menu: allMenu{}, HotOffers: allHot{},
 		Supply: allSupply{}, SupplyOrders: allSupplyOrd{}, Outbox: allOutbox{}, Analytics: allAnalytics{}, Monitor: allMonitor{},
-		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(), Invoices: &Invoices{},
+		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(), Invoices: &Invoices{}, HotOverrides: allHotOverrides{},
 	})
 	out := map[string]bool{}
 	for pattern, byMethod := range rt.routes {
