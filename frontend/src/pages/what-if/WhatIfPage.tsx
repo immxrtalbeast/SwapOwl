@@ -34,7 +34,7 @@ const horizonLabel = (h: number) => `${h} ${h === 1 ? "день" : h < 5 ? "дн
 
 const productColumns: Column<{ product_id: string; product_name: string; base_minor: number; scenario_minor: number; delta_minor: number }>[] = [
   { key: "p", header: "Продукт", cell: (r) => r.product_name },
-  { key: "b", header: "Если ничего не делать", numeric: true, cell: (r) => formatRub(r.base_minor) },
+  { key: "b", header: "Сейчас", numeric: true, cell: (r) => formatRub(r.base_minor) },
   { key: "s", header: "По сценарию", numeric: true, cell: (r) => formatRub(r.scenario_minor) },
   { key: "d", header: "Разница", numeric: true, cell: (r) => (r.delta_minor > 0 ? "+" : "") + formatRub(r.delta_minor) },
 ];
