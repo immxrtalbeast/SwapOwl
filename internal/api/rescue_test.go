@@ -99,3 +99,34 @@ func TestRescueRateLimitAndReadOnly(t *testing.T) {
 	}
 	_ = domain.Qty(0)
 }
+
+func TestRescueRateLimitPerClientBehindProxy(t *testing.T) {
+	rt := rescueRouter(rescueSnap(), true, nil)
+	get := func(remote, xff string) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/public/rescue", nil)
+		req.RemoteAddr = remote
+		if xff != "" {
+			req.Header.Set("X-Forwarded-For", xff)
+		}
+		rt.Handler().ServeHTTP(rec, req)
+		return rec.Code
+	}
+	// Один гость за прокси исчерпал лимит — другой гость за тем же прокси не затронут.
+	for i := 0; i < rescuePerMinute; i++ {
+		get("172.18.0.2:4000", "203.0.113.7")
+	}
+	if c := get("172.18.0.2:4000", "203.0.113.7"); c != http.StatusTooManyRequests {
+		t.Fatalf("первый гость: %d", c)
+	}
+	if c := get("172.18.0.2:4000", "203.0.113.8"); c != http.StatusOK {
+		t.Fatalf("второй гость: %d", c)
+	}
+	// С публичного адреса подставленный заголовок игнорируется.
+	for i := 0; i < rescuePerMinute; i++ {
+		get("198.51.100.9:1", "10.0.0.1")
+	}
+	if c := get("198.51.100.9:1", "10.0.0.2"); c != http.StatusTooManyRequests {
+		t.Fatalf("подмена XFF с публичного адреса: %d", c)
+	}
+}

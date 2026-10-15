@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -69,10 +70,7 @@ func (rt *Router) rescueRoutes() {
 	}
 	lim := &ipLimiter{hits: map[string][]time.Time{}, max: rescuePerMinute}
 	rt.HandlePublic(http.MethodGet, "/api/public/rescue", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			ip = r.RemoteAddr
-		}
+		ip := rescueClientIP(r)
 		if !lim.allow(ip, time.Now()) {
 			w.Header().Set("Retry-After", "60")
 			WriteError(w, http.StatusTooManyRequests, CodeOverloaded, "too many requests", nil)
@@ -148,4 +146,23 @@ func (rt *Router) getRescue(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age="+strconv.Itoa(rescueMaxAge))
 	WriteJSON(w, http.StatusOK, out)
+}
+
+// rescueClientIP — адрес гостя для лимита. За Caddy RemoteAddr — адрес прокси, поэтому для loopback и частных
+// адресов берётся крайнее правое значение X-Forwarded-For (его дописывает сам прокси); с публичного адреса
+// заголовок игнорируется — иначе клиент обошёл бы лимит, подставив свой.
+func rescueClientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	peer := net.ParseIP(host)
+	if peer == nil || !(peer.IsLoopback() || peer.IsPrivate()) {
+		return host
+	}
+	parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	if last := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); last != nil {
+		return last.String()
+	}
+	return host
 }
