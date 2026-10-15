@@ -262,8 +262,6 @@ curl -i -X POST $API/api/deliveries -H 'Content-Type: application/json' -d '{
 
 ### Привязка Telegram
 
-> **Планируется (FS-180), ещё не реализовано.** Эндпоинты и экраны ниже появятся с PR `feat/tg-link-code`; до его мержа они недоступны (`404`). Тексты нужно сверить с реализацией.
-
 Сотрудник сам привязывает Telegram к веб-аккаунту: в вебе «Аккаунт» → «Привязать Telegram» показывает одноразовый код (10 минут), его вводят в mini-app — и mini-app входит с той же ролью, что и веб. Отвязка — там же. Админ может по-прежнему привязать вручную (`PUT /api/users/{login}/telegram`). Шаги и ошибки — [`docs/telegram-miniapp.md`](docs/telegram-miniapp.md), эндпоинты — [`docs/api.md`](docs/api.md).
 
 ## Заказы
