@@ -700,6 +700,7 @@ paths:
           content:
             application/json:
               schema: {type: array, items: {$ref: '#/components/schemas/LadderBatch'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /api/analytics/forecast-accuracy:
     get:
       tags: [analytics]
@@ -1907,6 +1908,17 @@ components:
         best: {type: string, enum: ['', sell, discount]}
         combined_minor: {type: integer}
         steps:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: {type: string, enum: [sell, discount, prep, transfer]}
+              title: {type: string}
+              saved_minor: {type: integer}
+              cost_minor: {type: integer}
+              net_minor: {type: integer}
+              status: {type: string, enum: [roadmap, network, unavailable, no_price], description: Нет поля — ступень посчитана}
+              detail: {type: string}
     ForecastAccuracy:
       type: object
       properties:
@@ -1920,13 +1932,6 @@ components:
           items:
             type: object
             properties:
-              kind: {type: string, enum: [sell, discount, prep, transfer]}
-              title: {type: string}
-              saved_minor: {type: integer}
-              cost_minor: {type: integer}
-              net_minor: {type: integer}
-              status: {type: string, enum: [roadmap, network, unavailable, no_price], description: Нет поля — ступень посчитана}
-              detail: {type: string}
               dish_id: {type: string}
               dish_name: {type: string}
               actual_per_day: {type: number}
