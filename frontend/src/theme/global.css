@@ -26,16 +26,16 @@ body {
   border: 1px solid var(--glass-edge);
   box-shadow: inset 0 1px 0 var(--glass-highlight), 0 8px 24px rgba(16, 48, 32, .08);
 }
+/* Боковая панель — сплошной зелёный градиент без backdrop-filter: размытие на краю скруглённой панели
+   подмешивало тёмный фон и рисовало тёмный ободок в левом верхнем углу. Стекло остаётся у шапки и KPI. */
 .so-nav-glass {
   background: var(--glass-nav);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border: 1px solid rgba(255, 255, 255, .22);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 16px 40px rgba(9, 72, 44, .28);
+  border: 1px solid rgba(255, 255, 255, .18);
+  background-clip: padding-box;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 14px 32px rgba(9, 72, 44, .22);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .so-glass, .so-header { background: var(--surface); }
-  .so-nav-glass { background: var(--primary); }
 }
 :focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 /* Поля ввода: явный контур при Tab (не зависит от сброса outline в браузере и обрезки в контейнерах) */
