@@ -51,9 +51,13 @@ export function OrderForm({ dishes, onPlaced }: { dishes: DishServings[]; onPlac
       await onPlaced();
     } catch (err) {
       if (err instanceof NetworkError) {
-        outbox.put(orderId, lines.map((l) => ({ dish_id: l.dish_id, portions: Number(l.portions) })));
-        setLines([{ dish_id: "", portions: "1" }]);
-        setOrderId(crypto.randomUUID());
+        const saved = outbox.put(orderId, lines.map((l) => ({ dish_id: l.dish_id, portions: Number(l.portions) })));
+        if (saved) {
+          setLines([{ dish_id: "", portions: "1" }]);
+          setOrderId(crypto.randomUUID());
+        } else {
+          setError("Очередь заказов без связи заполнена — заказ не сохранён. Дождитесь связи и оформите снова.");
+        }
         return;
       }
       if (err instanceof ApiError && err.code === "order_conflict") setOrderId(crypto.randomUUID());
