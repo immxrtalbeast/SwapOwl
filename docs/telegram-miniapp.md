@@ -19,7 +19,7 @@ Mini-app менеджера и официанта открывается из б
 
 Проверка — по [документации Telegram](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app):
 `secret = HMAC_SHA256("WebAppData", TELEGRAM_BOT_TOKEN)`, `hash = hex(HMAC_SHA256(secret, data_check_string))`,
-сравнение за постоянное время. `auth_date` не старше 24 часов по часам API.
+сравнение за постоянное время. `auth_date` не старше 24 часов по *реальным* часам сессий (`auth.Options.Now`), а не по ускоренным часам стенда (`CLOCK_MODE=simulated`): Telegram ставит настоящее время.
 
 | Ответ | Когда |
 |---|---|
@@ -33,6 +33,11 @@ Mini-app менеджера и официанта открывается из б
 
 **Демо-стенд** (`AUTH_REQUIRED=false`): подпись проверяется так же, но после неё API отвечает
 гостем-оператором (`login: null`, `role: operator`, `auth_required: false`) без cookie и без привязки.
+
+## Поддерживаемые клиенты
+
+Только нативные клиенты Telegram (iOS, Android, Desktop). Cookie `session` имеет `SameSite=Strict`
+и не уйдёт из iframe `web.telegram.org`, поэтому Telegram Web не поддерживается.
 
 ## Привязка аккаунта (admin)
 

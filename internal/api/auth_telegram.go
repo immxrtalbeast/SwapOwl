@@ -119,7 +119,13 @@ func (rt *Router) telegramLogin(w http.ResponseWriter, r *http.Request) {
 		validationError(w, "init_data", "init_data is required (Telegram.WebApp.initData)")
 		return
 	}
-	tgID, err := verifyInitData(in.InitData, rt.deps.TelegramBotToken, rt.deps.Now())
+	// auth_date ставит Telegram по реальным часам, поэтому сверяем с часами сессий,
+	// а не с (возможно ускоренными) часами стенда.
+	now := time.Now
+	if rt.deps.Auth != nil && rt.deps.Auth.Now != nil {
+		now = rt.deps.Auth.Now
+	}
+	tgID, err := verifyInitData(in.InitData, rt.deps.TelegramBotToken, now())
 	if err != nil {
 		// В журнал идёт только причина, ни init_data, ни токен.
 		rt.audit(r, "telegram_login_failed", slog.String("reason", err.Error()))

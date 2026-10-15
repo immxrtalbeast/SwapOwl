@@ -214,6 +214,18 @@ func TestTelegramLoginExpiredAuthDate(t *testing.T) {
 	}
 }
 
+// На стенде с ускоренными часами Deps.Now уходит вперёд, а Telegram ставит реальное время.
+func TestTelegramLoginIgnoresStandClock(t *testing.T) {
+	e := newTgEnv(t, true)
+	e.links.byID[777] = "waiter"
+	e.h = NewRouter(Deps{Log: slog.New(slog.NewJSONHandler(e.log, nil)), DB: fakeDB{},
+		Now:  func() time.Time { return standTime.Add(48 * time.Hour) },
+		Auth: e.svc, Telegram: e.links, TelegramBotToken: tgToken}).Handler()
+	if rec := e.tgLogin(signInitData(tgToken, 777, standTime)); rec.Code != 200 {
+		t.Fatalf("вход при сдвинутых часах стенда: %d %s", rec.Code, rec.Body)
+	}
+}
+
 func TestTelegramLoginNotLinked(t *testing.T) {
 	e := newTgEnv(t, true)
 	rec := e.tgLogin(signInitData(tgToken, 4242, standTime))
