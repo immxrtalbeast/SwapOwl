@@ -24,6 +24,10 @@ type Notifier struct {
 	Weekly   *WeeklyConfig // необязательно: недельный отчёт собственнику
 	Hall     *HallConfig   // необязательно: подсказки залу к смене
 
+	Settings *Settings           // необязательно: настройки /settings, тихие часы, дедупликация
+	Attempts int                 // попытки отправки в Telegram; 0 — DefaultSendAttempts
+	Sleep    func(time.Duration) // пауза между повторами; nil — реальное ожидание
+
 	StopWindow time.Duration // окно склейки stoplist.changed; 0 — DefaultStopWindow
 	stopMu     sync.Mutex
 	stopTimer  *time.Timer
@@ -129,7 +133,8 @@ func (n *Notifier) notifyAlert(ctx context.Context, a Alert) {
 		n.logf("горячие предложения недоступны: %v", err)
 	}
 	prices := n.prices(ctx)
-	if err := n.Out.Send(ctx, FormatExpiring(a, offers, prices, n.loc(ctx))); err != nil {
+	key := fmt.Sprintf("expiring:%d:%d", a.BatchID, a.ExpiresAt.Unix())
+	if err := n.deliver(ctx, KindExpiring, key, FormatExpiring(a, offers, prices, n.loc(ctx)), n.Out); err != nil {
 		n.logf("партия %d: %v", a.BatchID, err)
 		return // повторим на следующем проходе CatchUp
 	}
@@ -175,6 +180,7 @@ func (n *Notifier) Tick(ctx context.Context) {
 	n.WeeklyTick(ctx)
 	n.HallTick(ctx)
 	n.FlushStopBaseline(ctx)
+	n.FlushQuiet(ctx)
 	c, err := n.API.Clock(ctx)
 	if err != nil {
 		n.logf("часы стенда: %v", err)
@@ -239,7 +245,7 @@ func (n *Notifier) sendDigest(ctx context.Context, from, to time.Time, date stri
 	if err != nil {
 		return err
 	}
-	if err := n.Out.Send(ctx, FormatDigest(date, wo, sf, alerts, n.prices(ctx))); err != nil {
+	if err := n.deliver(ctx, KindDigest, "digest:"+date, FormatDigest(date, wo, sf, alerts, n.prices(ctx)), n.Out); err != nil {
 		return err
 	}
 	if msg, none := n.SendSuggestions(ctx); msg != "" && !none {

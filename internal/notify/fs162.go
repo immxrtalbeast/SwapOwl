@@ -102,7 +102,7 @@ func (n *Notifier) FlushStop(ctx context.Context) {
 		return
 	}
 	sort.Strings(lines)
-	if err := n.Out.Send(ctx, strings.Join(lines, "\n")); err != nil {
+	if err := n.deliver(ctx, KindStop, "", strings.Join(lines, "\n"), n.Out); err != nil {
 		n.logf("стоп-лист: %v", err)
 		return // снимок не обновлён — изменения уйдут со следующим событием
 	}
@@ -376,7 +376,7 @@ func (n *Notifier) HallTick(ctx context.Context) {
 		n.logf("подсказки залу: %v", err)
 		return
 	}
-	if err := n.Hall.Out.Send(ctx, text); err != nil {
+	if err := n.deliver(ctx, KindHall, "hall:"+date, text, n.Hall.Out); err != nil {
 		n.logf("подсказки залу: %v", err)
 		return
 	}
