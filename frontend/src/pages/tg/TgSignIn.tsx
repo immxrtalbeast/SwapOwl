@@ -32,6 +32,8 @@ export function TgSignIn({ fallback }: { fallback: ReactNode }) {
       }
       try {
         await telegramLogin(initData);
+        // Вход принят, но сессии нет (например, cookie не сохранилась): компонент остался — не вешаем «Входим…» навсегда.
+        if (live) setPhase({ kind: "rejected" });
       } catch (e) {
         if (live) {
           const o = classifyTgSignIn(e);
