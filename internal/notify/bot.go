@@ -68,6 +68,10 @@ func (b *Bot) HandleUpdate(ctx context.Context, u Update) {
 			return
 		}
 		_ = b.TG.AnswerCallback(ctx, u.Callback.ID)
+		if strings.HasPrefix(u.Callback.Data, settingsPrefix) {
+			b.onSettingsButton(ctx, u.Callback.Message.ID, u.Callback.Data)
+			return
+		}
 		b.onButton(ctx, u.Callback.ID, u.Callback.Data)
 	case u.Message != nil:
 		if u.Message.Chat.ID != b.ChatID {
@@ -106,6 +110,10 @@ func (b *Bot) onText(ctx context.Context, text string) {
 			if msg, _ := b.N.SendSuggestions(ctx); msg != "" {
 				b.reply(ctx, msg)
 			}
+		case "/settings":
+			b.showSettings(ctx)
+		case "/quiet":
+			b.quietCommand(ctx, text)
 		case "/start", "/help":
 			b.start(ctx, cmd == "/start")
 		default:
@@ -150,7 +158,7 @@ func (b *Bot) onText(ctx context.Context, text string) {
 	b.reply(ctx, b.N.ApplyExpiry(ctx, id, on, hours))
 }
 
-const commandList = "/hot, /stop, /expiring, /summary, /week, /order"
+const commandList = "/hot, /stop, /expiring, /summary, /week, /order, /settings"
 
 func (b *Bot) start(ctx context.Context, withApp bool) {
 	text := "Команды: " + commandList

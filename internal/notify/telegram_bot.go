@@ -52,6 +52,7 @@ type Chat struct {
 }
 
 type Message struct {
+	ID   int64  `json:"message_id"`
 	Chat Chat   `json:"chat"`
 	Text string `json:"text"`
 }
@@ -167,4 +168,20 @@ func (t *Telegram) SendPhoto(ctx context.Context, img []byte, caption string) er
 		return fmt.Errorf("telegram: статус %d: %s", resp.StatusCode, t.redact(strings.TrimSpace(string(b))))
 	}
 	return nil
+}
+
+// SendKeyboard отправляет текст с несколькими рядами инлайн-кнопок.
+func (t *Telegram) SendKeyboard(ctx context.Context, text string, rows [][]Button) error {
+	return t.call(ctx, "sendMessage", map[string]any{
+		"chat_id": t.ChatID, "text": text,
+		"reply_markup": map[string]any{"inline_keyboard": rows},
+	}, nil)
+}
+
+// EditKeyboard обновляет текст и кнопки уже отправленного сообщения.
+func (t *Telegram) EditKeyboard(ctx context.Context, messageID int64, text string, rows [][]Button) error {
+	return t.call(ctx, "editMessageText", map[string]any{
+		"chat_id": t.ChatID, "message_id": messageID, "text": text,
+		"reply_markup": map[string]any{"inline_keyboard": rows},
+	}, nil)
 }

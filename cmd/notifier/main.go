@@ -77,6 +77,9 @@ func run() error {
 		DigestAt: digestAt,
 		Logf:     lg.Printf,
 	}
+	if path := env("NOTIFY_STATE_FILE", ""); path != "" {
+		n.Settings = notify.LoadSettings(path, lg.Printf)
+	}
 	if owner := os.Getenv("NOTIFY_OWNER_CHAT"); owner != "" {
 		weeklyAt := env("NOTIFY_WEEKLY_AT", "09:00")
 		if _, err := time.Parse("15:04", weeklyAt); err != nil {
