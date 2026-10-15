@@ -99,14 +99,24 @@ func (n *Notifier) FlushStop(ctx context.Context) {
 	}
 	if len(lines) == 0 {
 		n.stopSnap = cur
+		n.stopPending = false
 		return
 	}
 	sort.Strings(lines)
+	switch send, done := n.allowed(ctx, KindStop); {
+	case done: // тип выключен — изменения не нужны, снимок продвигаем
+		n.stopSnap, n.stopPending = cur, false
+		return
+	case !send: // тишина или пауза — снимок не трогаем, разницу отправит Tick, когда она кончится
+		n.stopPending = true
+		return
+	}
 	if err := n.deliver(ctx, KindStop, "", strings.Join(lines, "\n"), n.Out); err != nil {
 		n.logf("стоп-лист: %v", err)
 		return // снимок не обновлён — изменения уйдут со следующим событием
 	}
 	n.stopSnap = cur
+	n.stopPending = false
 }
 
 func formatStopped(d StopDish) string {
@@ -369,6 +379,15 @@ func (n *Notifier) HallTick(ctx context.Context) {
 	skip := n.hallDate == date || now.Before(due)
 	n.mu.Unlock()
 	if skip {
+		return
+	}
+	switch send, done := n.allowed(ctx, KindHall); {
+	case done: // тип выключен — день обработан
+		n.mu.Lock()
+		n.hallDate = date
+		n.mu.Unlock()
+		return
+	case !send: // тишина или пауза — подсказки залу не копим, повторим на следующем тике
 		return
 	}
 	text, err := n.HallText(ctx)

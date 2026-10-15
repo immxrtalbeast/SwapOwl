@@ -429,7 +429,7 @@ func (n *Notifier) deliver(ctx context.Context, kind Kind, key, text string, out
 		return nil
 	}
 	if s.Muted(now, n.loc(ctx)) {
-		if kind != KindStop { // стоп-лист в тихие часы устаревает — не копим
+		if kind != KindStop && kind != KindHall { // стоп-лист устаревает; подсказки залу уходят другому адресату — их повторит HallTick
 			s.enqueue(queued{Kind: kind, Key: key, Text: text, At: now})
 		}
 		return nil

@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -98,8 +99,8 @@ func TestQuietHoursQueueAndMerge(t *testing.T) {
 	if len(out.texts()) != 0 {
 		t.Fatalf("в тихие часы ушло: %v", out.texts())
 	}
-	if n.Settings.QueueLen() != 2 {
-		t.Fatalf("в очереди %d, нужно 2 (стоп-лист не копится)", n.Settings.QueueLen())
+	if n.Settings.QueueLen() != 1 {
+		t.Fatalf("в очереди %d, нужно 1 (стоп-лист и подсказки залу не копятся)", n.Settings.QueueLen())
 	}
 	// утро, новый процесс
 	n2, out2, _ := settingsN(t, "2026-10-10T07:05:00+03:00", file)
@@ -109,12 +110,12 @@ func TestQuietHoursQueueAndMerge(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("утром нужно одно сообщение: %v", got)
 	}
-	for _, want := range []string{"Лосось", "Подсказка залу"} {
+	for _, want := range []string{"Лосось"} {
 		if !strings.Contains(got[0], want) {
 			t.Errorf("нет %q: %s", want, got[0])
 		}
 	}
-	if strings.Contains(got[0], "Паста") {
+	if strings.Contains(got[0], "Паста") || strings.Contains(got[0], "Подсказка залу") {
 		t.Error("стоп-лист попал в накопленное")
 	}
 	if n2.Settings.QueueLen() != 0 {
@@ -232,5 +233,79 @@ func TestRetryGivesUpAndDoesNotBlockOthers(t *testing.T) {
 	n.Sleep = func(time.Duration) { t.Fatal("4xx (кроме 429) не повторяется") }
 	if err := n.sendRetry(context.Background(), n.Out, "c"); err == nil {
 		t.Fatal("ждали ошибку 400")
+	}
+}
+
+// Подсказки залу в тихие часы не копятся в общей очереди (она ушла бы менеджеру): HallTick повторит их, когда тишина кончится.
+func TestHallTipsWaitForQuietEndAndGoToHall(t *testing.T) {
+	n, _, tgf, api := newN(t)
+	n.Settings = LoadSettings(filepath.Join(t.TempDir(), "state.json"), t.Logf)
+	hall := &fakeTG{}
+	hs := httptest.NewServer(hall)
+	defer hs.Close()
+	n.Hall = &HallConfig{At: "10:00", Out: &Telegram{Base: hs.URL, Token: "TOK", ChatID: "-100", HC: hs.Client()}}
+	api.set(func() {
+		api.hot = `{"offers":[{"dish_id":"steak","dish_name":"Стейк","reasons":[{"product_name":"Лосось","expires_at":"2026-10-12T18:00:00+03:00"}]}]}`
+	})
+	_ = n.Settings.SetQuiet(true, "10:00", "11:00") // часы стенда — 10:30
+	ctx := context.Background()
+	n.HallTick(ctx)
+	if len(hall.sent("sendMessage")) != 0 || len(tgf.sent("sendMessage")) != 0 || n.Settings.QueueLen() != 0 {
+		t.Fatalf("в тишину ушло: зал %v, менеджер %v, очередь %d", hall.sent("sendMessage"), tgf.sent("sendMessage"), n.Settings.QueueLen())
+	}
+	_ = n.Settings.SetQuiet(false, "", "")
+	n.HallTick(ctx)
+	if got := hall.sent("sendMessage"); len(got) != 1 || !strings.Contains(got[0], "Стейк") {
+		t.Fatalf("залу после тишины: %v", got)
+	}
+	if len(tgf.sent("sendMessage")) != 0 {
+		t.Fatalf("подсказки залу ушли менеджеру: %v", tgf.sent("sendMessage"))
+	}
+}
+
+// Изменение стоп-листа в тишину не теряется: снимок не продвигается, разницу отправляет Tick после окончания тишины.
+func TestStopChangeDuringQuietIsSentAfter(t *testing.T) {
+	n, _, tgf, api := newN(t)
+	n.Settings = LoadSettings(filepath.Join(t.TempDir(), "state.json"), t.Logf)
+	ctx := context.Background()
+	n.SeedStop(ctx)
+	_ = n.Settings.SetQuiet(true, "10:00", "11:00")
+	api.set(func() { api.stop = stopBurger })
+	n.FlushStop(ctx)
+	if len(tgf.sent("sendMessage")) != 0 {
+		t.Fatalf("в тишину ушло: %v", tgf.sent("sendMessage"))
+	}
+	_ = n.Settings.SetQuiet(false, "", "")
+	n.FlushStop(ctx)
+	got := tgf.sent("sendMessage")
+	if len(got) != 1 || !strings.Contains(got[0], "Бургер") {
+		t.Fatalf("после тишины: %v", got)
+	}
+	n.FlushStop(ctx)
+	if len(tgf.sent("sendMessage")) != 1 {
+		t.Fatal("повтор той же разницы")
+	}
+}
+
+// Подсказки поставок идут следом за сводкой: если сводка отложена в тишину, их не шлют.
+func TestSuggestionsFollowDigestNotQuiet(t *testing.T) {
+	n, _, _ := settingsN(t, "2026-10-09T22:30:00+03:00", filepath.Join(t.TempDir(), "state.json"))
+	var logs []string
+	n.Logf = func(f string, a ...any) { logs = append(logs, fmt.Sprintf(f, a...)) }
+	ctx := context.Background()
+	from, to := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC), time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+	_ = n.Settings.SetQuiet(true, "22:00", "07:00")
+	if err := n.sendDigest(ctx, from, to, "2026-10-09"); err != nil {
+		t.Fatal(err)
+	}
+	if n.Settings.QueueLen() != 1 || strings.Contains(strings.Join(logs, "\n"), "предложения поставок") {
+		t.Fatalf("в тишину: очередь %d, логи %v", n.Settings.QueueLen(), logs)
+	}
+	_ = n.Settings.SetQuiet(false, "", "")
+	if err := n.sendDigest(ctx, from, to, "2026-10-10"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(logs, "\n"), "предложения поставок") {
+		t.Fatalf("после тишины подсказок нет: %v", logs)
 	}
 }

@@ -28,12 +28,13 @@ type Notifier struct {
 	Attempts int                 // попытки отправки в Telegram; 0 — DefaultSendAttempts
 	Sleep    func(time.Duration) // пауза между повторами; nil — реальное ожидание
 
-	StopWindow time.Duration // окно склейки stoplist.changed; 0 — DefaultStopWindow
-	stopMu     sync.Mutex
-	stopTimer  *time.Timer
-	stopSnap   map[string]StopDish
-	stopInit   bool
-	hallDate   string
+	StopWindow  time.Duration // окно склейки stoplist.changed; 0 — DefaultStopWindow
+	stopMu      sync.Mutex
+	stopTimer   *time.Timer
+	stopSnap    map[string]StopDish
+	stopPending bool // изменение стоп-листа ждёт конца тишины (под stopMu)
+	stopInit    bool
+	hallDate    string
 
 	recvSent   map[int64]bool // партии без срока, о которых уже написали
 	sendMu     sync.Mutex     // сериализует отправку и защищает sent
@@ -181,6 +182,12 @@ func (n *Notifier) Tick(ctx context.Context) {
 	n.HallTick(ctx)
 	n.FlushStopBaseline(ctx)
 	n.FlushQuiet(ctx)
+	n.stopMu.Lock()
+	stopPending := n.stopPending
+	n.stopMu.Unlock()
+	if stopPending {
+		n.FlushStop(ctx)
+	}
 	c, err := n.API.Clock(ctx)
 	if err != nil {
 		n.logf("часы стенда: %v", err)
@@ -245,8 +252,12 @@ func (n *Notifier) sendDigest(ctx context.Context, from, to time.Time, date stri
 	if err != nil {
 		return err
 	}
+	digestNow, _ := n.allowed(ctx, KindDigest) // подсказки поставок идут следом за сводкой, не раньше неё
 	if err := n.deliver(ctx, KindDigest, "digest:"+date, FormatDigest(date, wo, sf, alerts, n.prices(ctx)), n.Out); err != nil {
 		return err
+	}
+	if !digestNow {
+		return nil
 	}
 	if msg, none := n.SendSuggestions(ctx); msg != "" && !none {
 		n.logf("предложения поставок: %s", msg)
