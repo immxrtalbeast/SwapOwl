@@ -69,7 +69,7 @@ export function LadderPage() {
                       <span style={{ display: "grid", justifyItems: "end", gap: 4 }}>
                         <span style={{ font: "var(--type-num)", whiteSpace: "nowrap" }}>{stepValue(s)}</span>
                         {link && (
-                          <a href={link.href} style={{ font: "var(--type-small)", color: "var(--primary)", textDecoration: "underline" }}>{link.label}</a>
+                          <a href={link.href} style={{ font: "var(--type-small)", color: "var(--brand-ink)", textDecoration: "underline" }}>{link.label}</a>
                         )}
                       </span>
                     </li>
