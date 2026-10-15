@@ -2,7 +2,8 @@ import { useState } from "react";
 import { NativeSelect, TextInput } from "@mantine/core";
 import { IconEye, IconEyeOff, IconPin, IconPinnedOff, IconPlus } from "@tabler/icons-react";
 import { api } from "../../api/client";
-import { RoleGate } from "../../auth/AuthContext";
+import { RoleGate, useAuth } from "../../auth/AuthContext";
+import { hasRole } from "../../auth/roles";
 import { ErrorState, LoadingState, PrimaryButton, SecondaryButton } from "../../components";
 import { formatRub } from "../../lib/format";
 import { pickableDishes } from "../hot-offers/manager";
@@ -42,10 +43,12 @@ export function ManagerTab() {
   const [adding, setAdding] = useState(false);
   const [dish, setDish] = useState("");
   const [note, setNote] = useState("");
+  const { state: auth } = useAuth();
+  const canEdit = auth.kind === "user" && hasRole(auth.role, "operator");
   const edit = useEdit(reload);
   const add = useEdit(async () => { setDish(""); setNote(""); setAdding(false); await reload(); });
   useBackButton(adding ? () => setAdding(false) : null);
-  const inline = useMainButton(adding ? (dish ? "Добавить в предложения" : null) : "Добавить блюдо", () => {
+  const inline = useMainButton(!canEdit ? null : adding ? (dish ? "Добавить в предложения" : null) : "Добавить блюдо", () => {
     if (!adding) setAdding(true);
     else if (dish) void add.run(() => api.setHotOverride(dish, "pin", note));
   });

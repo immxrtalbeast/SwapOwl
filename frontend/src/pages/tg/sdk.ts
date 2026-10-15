@@ -40,3 +40,23 @@ export function haptic(kind: "success" | "error"): void {
     /* отклик не критичен */
   }
 }
+
+const SDK_URL = "https://telegram.org/js/telegram-web-app.js";
+let sdkLoading: Promise<void> | null = null;
+
+/**
+ * Подгружает Telegram SDK динамически и асинхронно — только для #/tg, чтобы недоступный telegram.org не блокировал
+ * остальное приложение. Промис всегда успешен (ошибка загрузки = работа вне Telegram); после него getWebApp() перечитывают.
+ */
+export function loadTelegramSdk(): Promise<void> {
+  if (getWebApp()) return Promise.resolve();
+  sdkLoading ??= new Promise<void>((resolve) => {
+    const s = document.createElement("script");
+    s.src = SDK_URL;
+    s.async = true;
+    s.onload = () => { sdkLoading = null; resolve(); };
+    s.onerror = () => { sdkLoading = null; resolve(); };
+    document.head.appendChild(s);
+  });
+  return sdkLoading;
+}
