@@ -215,6 +215,18 @@ curl -X POST http://localhost:8080/api/what-if -H 'Authorization: Bearer <key>' 
 - Ответ: `base` (`total_minor` и продукты — как `GET /api/forecast/writeoffs`) и по каждому сценарию `total_minor`, `delta_minor`, `delta_pct`, `products` и `assumptions` словами. Пример — в `docs/openapi.yaml`.
 - `400 validation_error` с `details.field` вида `scenarios[0].percent`.
 
+## `GET /api/public/rescue` (без входа)
+
+Витрина «Спаси продукты»: блюда из горячих предложений, которые выгодно заказать сегодня со скидкой. Только чтение. Включается `PUBLIC_RESCUE=true` (по умолчанию выключено — `404`). Не больше 50 строк, лимит 60 запросов в минуту с адреса (`429`), `Cache-Control: public, max-age=15`.
+
+```
+curl -i http://localhost:8080/api/public/rescue
+[{"dish_id": "salmon-steak", "dish_name": "Стейк из лосося", "servings_left": 4, "discount_percent": 20,
+  "valid_until": "2026-10-09T16:00:00+03:00", "note": "Скидка на блюдо дня"}]
+```
+
+В список не попадают блюда из стоп-листа и скрытые менеджером; `servings_left` не больше порций, собираемых из доступного остатка. `discount_percent` — скидка экрана «Сегодня» (20, допустимо 5–50). Партий, себестоимости, причин и остатков в ответе нет.
+
 ## Аналитика (viewer)
 
 - `GET /api/analytics/writeoffs?from=&to=` → по продуктам и причинам: количество и стоимость.

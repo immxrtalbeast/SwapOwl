@@ -171,9 +171,25 @@ func (n *Notifier) WeeklyTick(ctx context.Context) {
 	if skip {
 		return
 	}
+	key := "weekly:" + date
+	if n.Settings != nil {
+		send, done := n.allowed(ctx, KindWeekly)
+		if !send && !done {
+			return // тихие часы или пауза: отправим, когда кончатся
+		}
+		if done || n.Settings.seen(key) {
+			n.mu.Lock()
+			n.weeklyDate = date
+			n.mu.Unlock()
+			return
+		}
+	}
 	if err := n.SendWeekly(ctx, n.Weekly.Text, n.Weekly.Photo); err != nil {
 		n.logf("недельный отчёт: %v", err)
 		return
+	}
+	if n.Settings != nil {
+		n.Settings.markSent(key, n.now(ctx))
 	}
 	n.mu.Lock()
 	n.weeklyDate = date
