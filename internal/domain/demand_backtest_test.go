@@ -101,3 +101,20 @@ func TestBacktestValidation(t *testing.T) {
 		t.Fatal("n0 = 0 должен быть ошибкой")
 	}
 }
+
+// Прыжок часов растягивает окно оценки назад: с полной историей прогноз по стабильному спросу точен
+// (регрессия на обрезанную историю: заказы до прыжка не должны пропадать из окна).
+func TestBacktestWindowCrossesJumpWithFullHistory(t *testing.T) {
+	jump := TimeJump{From: btNow.Add(-10 * day), To: btNow.Add(-5*day + time.Hour)}
+	// В пропущенном прыжком интервале заказов быть не могло.
+	var h []OrderedDish
+	for _, o := range history("soup", 40, 10) {
+		if !(o.At.After(jump.From) && o.At.Before(jump.To)) {
+			h = append(h, o)
+		}
+	}
+	r := backtest(t, BacktestInput{Days: 3, WindowDays: 14, PriorDays: 3, Priors: map[string]float64{"soup": 10}, History: h, Jumps: []TimeJump{jump}})
+	if r.WAPEPct != 0 {
+		t.Fatalf("WAPE %v при стабильном спросе, равном априору: %+v", r.WAPEPct, r)
+	}
+}

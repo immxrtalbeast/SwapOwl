@@ -69,11 +69,11 @@ func (d *DB) ForecastAccuracy(ctx context.Context, now time.Time, days int, p Sn
 		return fail(err)
 	}
 
-	// История с запасом на окно оценки: самые ранние проверяемые сутки опираются на N суток до себя.
-	from := now.Add(-time.Duration(float64(days)+p.WindowDays+2) * 24 * time.Hour)
+	// История целиком до now, как в Snapshot: окно оценки переходит через прыжки часов назад на суммарную длину
+	// прыжков, поэтому нижняя граница по числу суток обрезала бы заказы и занижала бы λ.
 	var history []domain.OrderedDish
 	hr, err := tx.Query(ctx, `SELECT o.at, i.dish_id, i.portions, o.status = 'rejected' FROM orders o JOIN order_items i ON i.order_id = o.id
-		WHERE o.at > $1 AND o.at <= $2 ORDER BY o.at, o.id, i.dish_id`, from, now)
+		WHERE o.at <= $1 ORDER BY o.at, o.id, i.dish_id`, now)
 	if err != nil {
 		return fail(err)
 	}
