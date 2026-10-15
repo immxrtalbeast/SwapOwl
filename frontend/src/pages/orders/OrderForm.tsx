@@ -2,11 +2,13 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { IconMinus, IconPlus, IconX } from "@tabler/icons-react";
 import { api } from "../../api/client";
-import { ApiError } from "../../api/types";
+import { ApiError, NetworkError } from "../../api/types";
 import type { DishServings, Order } from "../../api/types";
 import { Card } from "../../components";
 import { PrimaryButton, SecondaryButton, TextButton } from "../../components";
 import { OrderResult } from "./OrderResult";
+import { OutboxBanner } from "./OutboxBanner";
+import { useOutbox } from "./useOutbox";
 import { dishOptionLabel, stoppedLines } from "./view";
 
 interface Line {
@@ -21,6 +23,8 @@ export function OrderForm({ dishes, onPlaced }: { dishes: DishServings[]; onPlac
   const [sending, setSending] = useState(false);
   // Идентификатор заказа создаётся на каждое нажатие; при ошибке сети повтор идёт с тем же id (идемпотентность).
   const [orderId, setOrderId] = useState(() => crypto.randomUUID());
+  // Нет связи — заказ уходит в очередь с тем же id и доедет сам, без дублей (идемпотентность API).
+  const outbox = useOutbox(onPlaced);
 
   // Любое изменение состава заказа — новый заказ: тот же id допустим только для повтора того же тела.
   const edit = (fn: (ls: Line[]) => Line[]) => {
@@ -46,6 +50,16 @@ export function OrderForm({ dishes, onPlaced }: { dishes: DishServings[]; onPlac
       setOrderId(crypto.randomUUID());
       await onPlaced();
     } catch (err) {
+      if (err instanceof NetworkError) {
+        const saved = outbox.put(orderId, lines.map((l) => ({ dish_id: l.dish_id, portions: Number(l.portions) })));
+        if (saved) {
+          setLines([{ dish_id: "", portions: "1" }]);
+          setOrderId(crypto.randomUUID());
+        } else {
+          setError("Очередь заказов без связи заполнена — заказ не сохранён. Дождитесь связи и оформите снова.");
+        }
+        return;
+      }
       if (err instanceof ApiError && err.code === "order_conflict") setOrderId(crypto.randomUUID());
       setError(err instanceof Error ? err.message : "Не удалось отправить заказ");
     } finally {
@@ -55,6 +69,7 @@ export function OrderForm({ dishes, onPlaced }: { dishes: DishServings[]; onPlac
 
   return (
     <Card title="Новый заказ">
+      <OutboxBanner outbox={outbox} dishes={dishes} />
       <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
         {/* Строки — карточками в сетке (FS-161): новое блюдо встаёт рядом, а не под предыдущим. */}
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))" }}>

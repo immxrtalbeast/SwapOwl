@@ -1,5 +1,5 @@
 import type { Role } from "../auth/roles";
-import { ApiError } from "./types";
+import { ApiError, NetworkError } from "./types";
 import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, InvoiceDraft, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, ForecastReport, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput, WhatIfRequest, WhatIfResponse } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
@@ -17,7 +17,7 @@ async function requestRaw<T>(path: string, init?: RequestInit): Promise<{ body: 
     });
   } catch {
     // Обрыв связи: браузер даёт «Failed to fetch» — показываем человеческий текст.
-    throw new Error("Нет связи с сервером — данные обновятся сами");
+    throw new NetworkError("Нет связи с сервером — данные обновятся сами");
   }
   const body = await res.json().catch(() => null);
   if (!res.ok) {
