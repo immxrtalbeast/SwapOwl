@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,17 +64,30 @@ func (l *ipLimiter) allow(ip string, now time.Time) bool {
 	return true
 }
 
+// clientIP — адрес гостя для лимита. За reverse-прокси (RemoteAddr — loopback или частный адрес)
+// берётся крайнее правое значение X-Forwarded-For: его дописывает прокси, клиент подделать не может.
+// С публичного адреса заголовок игнорируется.
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if ip := net.ParseIP(host); ip != nil && (ip.IsLoopback() || ip.IsPrivate()) {
+		parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+		if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
+			return last
+		}
+	}
+	return host
+}
+
 func (rt *Router) rescueRoutes() {
 	if !rt.deps.PublicRescue || rt.deps.HotOffers == nil {
 		return
 	}
 	lim := &ipLimiter{hits: map[string][]time.Time{}, max: rescuePerMinute}
 	rt.HandlePublic(http.MethodGet, "/api/public/rescue", func(w http.ResponseWriter, r *http.Request) {
-		ip, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			ip = r.RemoteAddr
-		}
-		if !lim.allow(ip, time.Now()) {
+		if !lim.allow(clientIP(r), time.Now()) {
 			w.Header().Set("Retry-After", "60")
 			WriteError(w, http.StatusTooManyRequests, CodeOverloaded, "too many requests", nil)
 			return

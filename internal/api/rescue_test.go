@@ -99,3 +99,39 @@ func TestRescueRateLimitAndReadOnly(t *testing.T) {
 	}
 	_ = domain.Qty(0)
 }
+
+func TestRescueClientIPBehindProxy(t *testing.T) {
+	get := func(remote, xff string) string {
+		r := httptest.NewRequest(http.MethodGet, "/api/public/rescue", nil)
+		r.RemoteAddr = remote
+		if xff != "" {
+			r.Header.Set("X-Forwarded-For", xff)
+		}
+		return clientIP(r)
+	}
+	if got := get("172.18.0.2:1", "9.9.9.9"); got != "9.9.9.9" {
+		t.Fatalf("за прокси: %s", got)
+	}
+	if got := get("127.0.0.1:1", "6.6.6.6, 9.9.9.9"); got != "9.9.9.9" {
+		t.Fatalf("крайнее правое: %s", got)
+	}
+	if got := get("8.8.8.8:1", "9.9.9.9"); got != "8.8.8.8" {
+		t.Fatalf("публичный адрес, XFF игнорируется: %s", got)
+	}
+	// Разные клиенты за одним прокси расходуют разные лимиты.
+	rt := rescueRouter(rescueSnap(), true, nil)
+	do := func(xff string) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/public/rescue", nil)
+		req.RemoteAddr = "172.18.0.2:1"
+		req.Header.Set("X-Forwarded-For", xff)
+		rt.Handler().ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for i := 0; i < rescuePerMinute; i++ {
+		do("1.1.1.1")
+	}
+	if do("1.1.1.1") != http.StatusTooManyRequests || do("2.2.2.2") != 200 {
+		t.Fatal("лимит должен быть по клиенту, не по прокси")
+	}
+}
