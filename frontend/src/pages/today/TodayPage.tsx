@@ -1,3 +1,4 @@
+import { AskBox } from "./AskBox";
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { api } from "../../api/client";
@@ -117,6 +118,7 @@ export function TodayPage() {
   return (
     <section>
       <ScreenTitle>Сегодня</ScreenTitle>
+      <AskBox />
       {/* Высоту карточки задаёт содержимое (FS-161): соседи не растягивают друг друга. */}
       <div className="so-today-grid">
         <Block title="Под риском сегодня, ₽" testid="today-risk" glass area="risk">

@@ -544,6 +544,11 @@ func (e *validationEnv) routes() map[string]vRoute {
 			{"bad type", `{"horizon_days":1,"scenarios":[{"type":"x"}]}`, "scenarios[0].type", ""},
 			{"unknown field", `{"horizon_days":1,"bogus":1}`, "", ""},
 		}},
+		"POST /api/assistant/ask": {path: "/api/assistant/ask", valid: `{"question":"что в стопе"}`, cases: []vCase{
+			{"empty", `{"question":""}`, "question", ""},
+			{"missing", `{}`, "question", ""},
+			{"unknown field", `{"question":"x","bogus":1}`, "", ""},
+		}},
 		"POST /api/demo/reset": {path: "/api/demo/reset", noBody: true, headers: bearer()},
 	}
 }
