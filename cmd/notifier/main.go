@@ -99,6 +99,10 @@ func run() error {
 			lg.Printf("кнопка mini-app: %v", err)
 		}
 	}
+	// Все команды видны сразу, как человек открыл чат: меню «/», описание бота, кнопка mini-app для всех чатов.
+	if err := tg.SetupBotProfile(ctx, miniApp); err != nil {
+		lg.Printf("профиль бота: %v", err)
+	}
 	n.MarkHallStartup(ctx)
 	n.SeedStop(ctx)
 	n.MarkDigestStartup(ctx)

@@ -119,7 +119,7 @@ func (b *Bot) onText(ctx context.Context, text string) {
 		case "/start", "/help":
 			b.start(ctx, cmd == "/start")
 		default:
-			b.reply(ctx, "Неизвестная команда. Доступно: "+commandList)
+			b.reply(ctx, "Неизвестная команда. Доступно: "+commandListText())
 		}
 		return
 	}
@@ -161,10 +161,8 @@ func (b *Bot) onText(ctx context.Context, text string) {
 	b.reply(ctx, b.N.ApplyExpiry(ctx, id, on, hours))
 }
 
-const commandList = "/ask, /hot, /stop, /expiring, /summary, /week, /order, /settings"
-
 func (b *Bot) start(ctx context.Context, withApp bool) {
-	text := "Команды: " + commandList
+	text := helpText()
 	if withApp && b.MiniAppURL != "" {
 		err := b.TG.SendButtons(ctx, text, []Button{{Text: MiniAppText, WebApp: &WebAppInfo{URL: b.MiniAppURL}}})
 		if err != nil {
