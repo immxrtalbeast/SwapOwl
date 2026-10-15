@@ -1065,6 +1065,47 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
+  /api/auth/telegram:
+    post:
+      tags: [access]
+      summary: Вход в mini-app по Telegram initData
+      description: |
+        Публичный маршрут; есть только при заданном `TELEGRAM_BOT_TOKEN`. Подпись `init_data`
+        проверяется по документации Telegram (HMAC-SHA256, сравнение за постоянное время),
+        `auth_date` не старше 24 ч по часам API. Успех — та же cookie `session`, что у `/api/auth/login`,
+        и ответ как у `GET /api/auth/me`. При `AUTH_REQUIRED=false` подпись проверяется,
+        но ответ — гость-оператор (`login: null`), cookie не выдаётся. Подробности — docs/telegram-miniapp.md.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [init_data]
+              properties: {init_data: {type: string, description: "Telegram.WebApp.initData как есть"}}
+      responses:
+        '200':
+          description: Вход выполнен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  login: {type: [string, 'null']}
+                  role: {$ref: '#/components/schemas/Role'}
+                  auth_required: {type: boolean}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401':
+          description: Подпись неверна или `auth_date` старше 24 ч
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '403':
+          description: "`telegram_not_linked` — аккаунт не привязан; `details.telegram_user_id` — id для привязки админом"
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
   /api/auth/logout:
     post:
       tags: [access]
@@ -1155,6 +1196,48 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
+  /api/users/{login}/telegram:
+    put:
+      tags: [access]
+      summary: Привязать Telegram-аккаунт к пользователю (admin)
+      description: Заменяет прежнюю привязку пользователя. Один аккаунт Telegram — один пользователь.
+      parameters:
+        - {name: login, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [telegram_user_id]
+              properties: {telegram_user_id: {type: integer, format: int64, minimum: 1}}
+      responses:
+        '200':
+          description: Привязано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {login: {type: string}, telegram_user_id: {type: integer, format: int64}}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: Аккаунт уже привязан к другому пользователю
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+    delete:
+      tags: [access]
+      summary: Снять привязку Telegram (admin)
+      parameters:
+        - {name: login, in: path, required: true, schema: {type: string}}
+      responses:
+        '204': {description: Привязка снята}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /api/api-keys:
     get:
       tags: [access]
