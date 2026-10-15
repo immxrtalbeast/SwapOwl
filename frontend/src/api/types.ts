@@ -317,6 +317,10 @@ export interface HotReason {
 }
 
 export interface HotOffer {
+  /** Маржа порции, копейки; поля нет, если цена блюда или продукта неизвестна. */
+  margin_minor?: number;
+  /** margin_minor × target_today: маржа порций, которые надо продать сегодня. */
+  expected_margin_minor?: number;
   dish_id: string;
   dish_name: string;
   priority: number;
