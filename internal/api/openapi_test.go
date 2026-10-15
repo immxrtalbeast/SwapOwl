@@ -41,7 +41,7 @@ func routerPairs() map[string]bool {
 		Auth: &auth.Service{}, Telegram: allTelegram{}, TelegramBotToken: "t", Audit: allAudit{}, Stock: allStock{}, Catalog: allCatalog{},
 		Orders: allOrders{}, Corrections: allCorrections{}, Menu: allMenu{}, HotOffers: allHot{},
 		Supply: allSupply{}, SupplyOrders: allSupplyOrd{}, Outbox: allOutbox{}, Analytics: allAnalytics{}, Monitor: allMonitor{},
-		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(), Invoices: &Invoices{}, HotOverrides: allHotOverrides{},
+		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(), Invoices: &Invoices{}, HotOverrides: allHotOverrides{}, PublicRescue: true,
 	})
 	out := map[string]bool{}
 	for pattern, byMethod := range rt.routes {

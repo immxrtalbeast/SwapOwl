@@ -521,6 +521,36 @@ paths:
                   - {dish_id: caprese, product_id: tomato, why: Помидоров осталось на 5 рабочих часов}
         '400': {$ref: '#/components/responses/Validation'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/public/rescue:
+    get:
+      tags: [menu]
+      summary: Витрина «Спаси продукты» (без входа, `PUBLIC_RESCUE=true`)
+      description: >
+        Блюда со скидкой из горячих предложений без стоп-листа и скрытых менеджером. Не больше 50 строк,
+        лимит 60 запросов в минуту с адреса, `Cache-Control: public, max-age=15`. При выключенной настройке — 404.
+      responses:
+        '200':
+          description: Список блюд со скидкой
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 50
+                items:
+                  type: object
+                  required: [dish_id, dish_name, servings_left, discount_percent, valid_until, note]
+                  properties:
+                    dish_id: {type: string}
+                    dish_name: {type: string}
+                    servings_left: {type: integer}
+                    discount_percent: {type: integer, minimum: 5, maximum: 50}
+                    valid_until: {type: string, format: date-time}
+                    note: {type: string}
+              example:
+                - {dish_id: salmon-steak, dish_name: Стейк из лосося, servings_left: 4, discount_percent: 20,
+                   valid_until: '2026-10-09T16:00:00+03:00', note: Скидка на блюдо дня}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '429': {description: Слишком много запросов}
   /api/hot-offers/overrides:
     get:
       tags: [menu]

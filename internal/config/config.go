@@ -75,6 +75,8 @@ type Config struct {
 	// в час на экземпляр (деньги за вызовы модели). Ключ — ANTHROPIC_API_KEY, в Config не хранится.
 	InvoiceModel   string
 	InvoicePerHour int
+	// PublicRescue — PUBLIC_RESCUE: публичная витрина «Спаси продукты» (FS-168).
+	PublicRescue bool
 }
 
 // Load читает окружение через getenv (os.Getenv в проде), подставляет значения
@@ -118,6 +120,7 @@ func Load(getenv func(string) string) (Config, error) {
 		SeedProfile:       p.str("SEED_PROFILE", "demo"),
 		InvoiceModel:      p.str("INVOICE_MODEL", "claude-haiku-5-5"),
 		InvoicePerHour:    p.int("INVOICE_PER_HOUR", 30),
+		PublicRescue:      p.bool("PUBLIC_RESCUE", false),
 	}
 	c.OpenAt = p.clock("OPEN_AT", "10:00")
 	c.CloseAt = p.clock("CLOSE_AT", "23:00")
