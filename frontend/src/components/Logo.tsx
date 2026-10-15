@@ -28,7 +28,7 @@ export function Logo({ variant = "full", size = 40, withWord = false }: LogoProp
         <path d="M25.5 46.5l2 1.8 2-1.8M33.5 46.5l2 1.8 2-1.8" stroke={accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity=".55" />
       </svg>
       {withWord && (
-        <span className="so-nav-brand-word" style={{ font: "400 26px/1 var(--font-body)", color: inverse ? "var(--on-primary)" : "var(--brand-strong)" }}>
+        <span className="so-nav-brand-word" style={{ font: "400 26px/1 var(--font-body)", color: inverse ? "var(--on-urgency-solid)" : "var(--brand-strong)" }}>
           SwapOwl
         </span>
       )}

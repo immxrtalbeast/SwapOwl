@@ -49,14 +49,14 @@ export function AppNav({ screens, current }: Props) {
           aria-label={n ? `${s.title}: ${n}` : s.title}
           style={{
             display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, textDecoration: "none", minWidth: 0,
-            color: "var(--on-primary)", font: "var(--type-body-strong)",
+            color: "var(--on-urgency-solid)", font: "var(--type-body-strong)",
             background: active ? "rgba(255,255,255,.18)" : "transparent",
           }}
         >
           <Icon size={20} aria-hidden="true" style={{ flexShrink: 0 }} />
           <span className="so-nav-label" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
           {n ? (
-            <span className="so-num so-nav-label" style={{ background: "var(--on-primary)", color: "var(--primary)", borderRadius: 999, padding: "0 8px" }}>
+            <span className="so-num so-nav-label" style={{ background: "var(--on-urgency-solid)", color: "#0b4a2d", borderRadius: 999, padding: "0 8px" }}>
               {n}
             </span>
           ) : null}

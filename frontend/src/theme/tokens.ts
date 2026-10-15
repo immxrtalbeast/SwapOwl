@@ -1,5 +1,5 @@
 // Токены дизайн-системы SwapOwl. Источник — docs/design/tokens.css; совпадение проверяет tokens.test.ts.
-// Имена ключей = имена CSS-переменных. Тема одна, светлая.
+// Имена ключей = имена CSS-переменных. Основная тема светлая; тёмная — поверх неё в dark.ts.
 export const TOKENS: Record<string, string> = {
   "--brand": "#1fb46e",
   "--brand-strong": "#13915a",
@@ -122,9 +122,3 @@ export const TOKENS: Record<string, string> = {
   "--bp-xl": "1408px",
 };
 
-/** Раскладывает токены по :root через Mantine; тёмной темы нет, поэтому `dark` повторяет `light`. */
-export const cssVariablesResolver = () => ({
-  variables: {},
-  light: TOKENS,
-  dark: TOKENS,
-});
