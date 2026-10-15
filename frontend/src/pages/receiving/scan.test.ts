@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProductStock } from "../../api/types";
 import { SAMPLE_MILK, parseGs1 } from "../../lib/gs1";
-import { isLineReady, lineFromScan, loadGtinMap, toDeliveryItem } from "./scan";
+import { isLineReady, lineFromScan, loadGtinMap, manualLine, toDeliveryItem } from "./scan";
 
 const p = { id: "milk", name: "Молоко", unit: "ml" } as ProductStock;
 
@@ -37,5 +37,23 @@ describe("toDeliveryItem", () => {
   });
   it("пример молока привязан к milk без запоминания", () => {
     expect(loadGtinMap()["04607001234567"]).toBe("milk");
+  });
+});
+
+describe("позиция без кода", () => {
+  const beef = { id: "beef", name: "Говядина", unit: "g" } as ProductStock;
+  it("создаётся пустой: количество и срок вводит оператор, отправить нельзя", () => {
+    const l = manualLine(beef, 7);
+    expect(l).toMatchObject({ key: 7, gtin: "", product_id: "beef", unit: "g", quantity: "", expiryFromCode: false });
+    expect(l.expires_on).toBeUndefined();
+    expect(isLineReady(l)).toBe(false);
+  });
+  it("готова, когда есть количество и срок; уходит в поставку с expires_on", () => {
+    const l = { ...manualLine(beef, 1), quantity: "2,5", expires_on: "2026-10-20" };
+    expect(isLineReady(l)).toBe(true);
+    expect(toDeliveryItem(l, [beef])).toMatchObject({ product_id: "beef", quantity: "2.5", unit: "g", expires_on: "2026-10-20" });
+  });
+  it("без срока не готова даже с количеством (FS-160)", () => {
+    expect(isLineReady({ ...manualLine(beef, 1), quantity: "1" })).toBe(false);
   });
 });
