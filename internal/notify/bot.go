@@ -16,10 +16,16 @@ type Bot struct {
 	TG     *Telegram
 	ChatID int64 // единственный чат, из которого принимаются команды
 	Logf   func(string, ...any)
+	// MiniAppURL — адрес mini-app; задан — /start отвечает кнопкой «Открыть SwapOwl».
+	MiniAppURL string
 
-	mu      sync.Mutex
-	pending int64 // партия, для которой ждём новый срок («Изменить срок»)
+	mu         sync.Mutex
+	pending    int64         // партия, для которой ждём новый срок («Изменить срок»)
+	pendingSup pendingSupply // поставка, для которой ждём срок годности («Принять»)
 }
+
+// pendingSupply — нажатое «Принять»: продукт и id нажатия (callback_query.id), из него строится id поставки.
+type pendingSupply struct{ product, callbackID string }
 
 func (b *Bot) logf(f string, a ...any) {
 	if b.Logf != nil {
@@ -62,7 +68,7 @@ func (b *Bot) HandleUpdate(ctx context.Context, u Update) {
 			return
 		}
 		_ = b.TG.AnswerCallback(ctx, u.Callback.ID)
-		b.onButton(ctx, u.Callback.Data)
+		b.onButton(ctx, u.Callback.ID, u.Callback.Data)
 	case u.Message != nil:
 		if u.Message.Chat.ID != b.ChatID {
 			b.logf("игнорирую сообщение из чужого чата %d", u.Message.Chat.ID)
@@ -83,6 +89,7 @@ func (b *Bot) onText(ctx context.Context, text string) {
 		cmd := strings.ToLower(strings.SplitN(strings.Fields(text + " ")[0], "@", 2)[0])
 		b.mu.Lock()
 		b.pending = 0
+		b.pendingSup = pendingSupply{}
 		b.mu.Unlock()
 		switch cmd {
 		case "/hot":
@@ -95,16 +102,40 @@ func (b *Bot) onText(ctx context.Context, text string) {
 			b.reply(ctx, b.N.SummaryText(ctx))
 		case "/week":
 			b.week(ctx)
+		case "/order":
+			if msg, _ := b.N.SendSuggestions(ctx); msg != "" {
+				b.reply(ctx, msg)
+			}
 		case "/start", "/help":
-			b.reply(ctx, "Команды: /hot, /stop, /expiring, /summary, /week")
+			b.start(ctx, cmd == "/start")
 		default:
-			b.reply(ctx, "Неизвестная команда. Доступно: /hot, /stop, /expiring, /summary, /week")
+			b.reply(ctx, "Неизвестная команда. Доступно: "+commandList)
 		}
 		return
 	}
 	b.mu.Lock()
-	id := b.pending
+	id, sup := b.pending, b.pendingSup
 	b.mu.Unlock()
+	if sup.product != "" {
+		now := time.Now()
+		if c, err := b.N.API.Clock(ctx); err == nil {
+			now = c.Now.In(b.N.loc(ctx))
+		}
+		on, hours, ok := ParseSupplyExpiry(text, now)
+		if !ok {
+			b.reply(ctx, "Не понял срок. Напишите «годен до ДД.ММ» или «72 ч».")
+			return
+		}
+		if on != "" && on < now.Format("2006-01-02") {
+			b.reply(ctx, "Дата в прошлом — партия уже просрочена. Напишите будущую дату или «72 ч».")
+			return
+		}
+		b.mu.Lock()
+		b.pendingSup = pendingSupply{}
+		b.mu.Unlock()
+		b.reply(ctx, b.N.AcceptSuggestion(ctx, sup.product, sup.callbackID, on, hours))
+		return
+	}
 	if id == 0 {
 		return
 	}
@@ -119,7 +150,35 @@ func (b *Bot) onText(ctx context.Context, text string) {
 	b.reply(ctx, b.N.ApplyExpiry(ctx, id, on, hours))
 }
 
-func (b *Bot) onButton(ctx context.Context, data string) {
+const commandList = "/hot, /stop, /expiring, /summary, /week, /order"
+
+func (b *Bot) start(ctx context.Context, withApp bool) {
+	text := "Команды: " + commandList
+	if withApp && b.MiniAppURL != "" {
+		err := b.TG.SendButtons(ctx, text, []Button{{Text: MiniAppText, WebApp: &WebAppInfo{URL: b.MiniAppURL}}})
+		if err != nil {
+			b.logf("/start: %v", err)
+		}
+		return
+	}
+	b.reply(ctx, text)
+}
+
+func (b *Bot) onButton(ctx context.Context, callbackID, data string) {
+	if pid, ok := strings.CutPrefix(data, "acc:"); ok && pid != "" {
+		text, ok := b.N.AcceptPrompt(ctx, pid)
+		if !ok {
+			b.reply(ctx, text)
+			return
+		}
+		b.mu.Lock()
+		b.pending, b.pendingSup = 0, pendingSupply{product: pid, callbackID: callbackID}
+		b.mu.Unlock()
+		if err := b.TG.ForceReply(ctx, text); err != nil {
+			b.logf("запрос срока: %v", err)
+		}
+		return
+	}
 	kind, rest, _ := strings.Cut(data, ":")
 	id, err := strconv.ParseInt(rest, 10, 64)
 	if err != nil || id < 1 {
@@ -130,7 +189,7 @@ func (b *Bot) onButton(ctx context.Context, data string) {
 		b.reply(ctx, b.N.ConfirmExpiry(ctx, id))
 	case "ed":
 		b.mu.Lock()
-		b.pending = id
+		b.pending, b.pendingSup = id, pendingSupply{}
 		b.mu.Unlock()
 		if err := b.TG.ForceReply(ctx, fmt.Sprintf("Партия №%d: пришлите новый срок — число часов от приёмки или дату ДД.ММ.ГГГГ.", id)); err != nil {
 			b.logf("запрос срока: %v", err)
@@ -240,7 +299,7 @@ func (n *Notifier) notifyReceiving(ctx context.Context) {
 		}
 		text := fmt.Sprintf("📦 Партия пришла без срока: %s\nПартия №%d, поставка %s, %s\nСрок по умолчанию: %s\nПодтвердите или измените срок.",
 			it.ProductName, it.ID, it.DeliveryNumber, FormatQty(it.Quantity), it.ExpiresAt.In(loc).Format("02.01 15:04"))
-		btns := []Button{{"Подтвердить срок", fmt.Sprintf("ok:%d", it.ID)}, {"Изменить срок", fmt.Sprintf("ed:%d", it.ID)}}
+		btns := []Button{{Text: "Подтвердить срок", Data: fmt.Sprintf("ok:%d", it.ID)}, {Text: "Изменить срок", Data: fmt.Sprintf("ed:%d", it.ID)}}
 		if err := n.Buttons.SendButtons(ctx, text, btns); err != nil {
 			n.logf("партия %d: %v", it.ID, err)
 			return

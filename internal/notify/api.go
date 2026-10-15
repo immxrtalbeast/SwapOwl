@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -33,8 +34,10 @@ type Alert struct {
 
 // Reason — партия, ради которой блюдо в горячих предложениях.
 type Reason struct {
-	ProductID string `json:"product_id"`
-	BatchID   int64  `json:"batch_id"`
+	ProductID   string    `json:"product_id"`
+	ProductName string    `json:"product_name"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	BatchID     int64     `json:"batch_id"`
 }
 
 // Offer — блюдо из GET /api/hot-offers.
@@ -43,6 +46,37 @@ type Offer struct {
 	DishName       string   `json:"dish_name"`
 	TargetPortions int64    `json:"target_portions"`
 	Reasons        []Reason `json:"reasons"`
+	ManagerNote    string   `json:"manager_note"`
+}
+
+// HotData — полный ответ GET /api/hot-offers: расчёт, закреплённое и скрытое менеджером.
+type HotData struct {
+	Offers       []Offer `json:"offers"`
+	ManagerPicks []struct {
+		DishID   string `json:"dish_id"`
+		DishName string `json:"dish_name"`
+		Note     string `json:"note"`
+	} `json:"manager_picks"`
+	Hidden []struct {
+		DishID string `json:"dish_id"`
+	} `json:"hidden"`
+}
+
+// Suggestion — строка GET /api/supply-suggestions.
+type Suggestion struct {
+	ProductID   string `json:"product_id"`
+	ProductName string `json:"product_name"`
+	Quantity    Qty    `json:"quantity"`
+	Urgency     string `json:"urgency"`
+	Explanation string `json:"explanation"`
+	// ShelfLifeHours — обычный срок поставщика (FS-160); nil — неизвестен.
+	ShelfLifeHours *int `json:"shelf_life_hours"`
+}
+
+// ProductInfo — продукт из GET /api/products; ShelfLifeHours — обычный срок из карточки, если API его отдаёт.
+type ProductInfo struct {
+	ID             string `json:"id"`
+	ShelfLifeHours *int   `json:"shelf_life_hours"`
 }
 
 // MoneyRow — строка отчёта о потерях.
@@ -73,9 +107,12 @@ type ReceivingBatch struct {
 
 // StopDish — блюдо из GET /api/stop-list.
 type StopDish struct {
+	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Missing []struct {
 		ProductName string `json:"product_name"`
+		Required    Qty    `json:"required"`
+		Available   Qty    `json:"available"`
 		Missing     Qty    `json:"missing"`
 	} `json:"missing"`
 }
@@ -200,4 +237,50 @@ func (c *APIClient) PatchExpiry(ctx context.Context, id int64, expiresOn string,
 		return &APIError{Status: resp.StatusCode, Body: strings.TrimSpace(string(b))}
 	}
 	return nil
+}
+
+// HotData — GET /api/hot-offers целиком (с manager_picks и hidden).
+func (c *APIClient) HotData(ctx context.Context) (r HotData, err error) {
+	err = c.get(ctx, "/api/hot-offers", nil, &r)
+	return
+}
+
+// SupplySuggestions — GET /api/supply-suggestions.
+func (c *APIClient) SupplySuggestions(ctx context.Context) (r []Suggestion, err error) {
+	err = c.get(ctx, "/api/supply-suggestions", nil, &r)
+	return
+}
+
+// Products — GET /api/products.
+func (c *APIClient) Products(ctx context.Context) (r []ProductInfo, err error) {
+	err = c.get(ctx, "/api/products", nil, &r)
+	return
+}
+
+// PostDelivery — POST /api/deliveries с одной позицией и явным сроком (ровно одно из expiresOn и shelfHours).
+// Идемпотентна по id: повтор возвращает ту же поставку (200), новая — 201; created=true только для 201.
+func (c *APIClient) PostDelivery(ctx context.Context, id string, createdAt time.Time, productID string, q Qty, expiresOn string, shelfHours int) (created bool, err error) {
+	item := map[string]any{"product_id": productID, "quantity": strconv.FormatInt(q.Qty, 10), "unit": q.Unit}
+	if expiresOn != "" {
+		item["expires_on"] = expiresOn
+	} else {
+		item["shelf_life_hours"] = shelfHours
+	}
+	body, _ := json.Marshal(map[string]any{"id": id, "number": id, "created_at": createdAt.Format(time.RFC3339), "items": []any{item}})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.Base, "/")+"/api/deliveries", bytes.NewReader(body))
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Key)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HC.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("api deliveries: %w", err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode/100 != 2 {
+		return false, &APIError{Status: resp.StatusCode, Body: strings.TrimSpace(string(b))}
+	}
+	return resp.StatusCode == http.StatusCreated, nil
 }

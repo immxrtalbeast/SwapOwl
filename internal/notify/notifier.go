@@ -22,6 +22,14 @@ type Notifier struct {
 	Logf     func(string, ...any)
 	Buttons  ButtonSender  // необязательно: сообщения с кнопками о партиях без срока
 	Weekly   *WeeklyConfig // необязательно: недельный отчёт собственнику
+	Hall     *HallConfig   // необязательно: подсказки залу к смене
+
+	StopWindow time.Duration // окно склейки stoplist.changed; 0 — DefaultStopWindow
+	stopMu     sync.Mutex
+	stopTimer  *time.Timer
+	stopSnap   map[string]StopDish
+	stopInit   bool
+	hallDate   string
 
 	recvSent   map[int64]bool // партии без срока, о которых уже написали
 	sendMu     sync.Mutex     // сериализует отправку и защищает sent
@@ -41,6 +49,10 @@ func (n *Notifier) logf(f string, a ...any) {
 func (n *Notifier) Handle(ctx context.Context, ev Event) {
 	if ev.Type == "delivery.accepted" {
 		n.notifyReceiving(ctx)
+		return
+	}
+	if ev.Type == "stoplist.changed" {
+		n.onStopChanged(ctx)
 		return
 	}
 	if ev.Type != "batch.expiring" {
@@ -161,6 +173,8 @@ func (n *Notifier) loc(ctx context.Context) *time.Location {
 func (n *Notifier) Tick(ctx context.Context) {
 	n.CatchUp(ctx)
 	n.WeeklyTick(ctx)
+	n.HallTick(ctx)
+	n.FlushStopBaseline(ctx)
 	c, err := n.API.Clock(ctx)
 	if err != nil {
 		n.logf("часы стенда: %v", err)
@@ -225,7 +239,13 @@ func (n *Notifier) sendDigest(ctx context.Context, from, to time.Time, date stri
 	if err != nil {
 		return err
 	}
-	return n.Out.Send(ctx, FormatDigest(date, wo, sf, alerts, n.prices(ctx)))
+	if err := n.Out.Send(ctx, FormatDigest(date, wo, sf, alerts, n.prices(ctx))); err != nil {
+		return err
+	}
+	if msg, none := n.SendSuggestions(ctx); msg != "" && !none {
+		n.logf("предложения поставок: %s", msg)
+	}
+	return nil
 }
 
 func parseHM(s string) (h, m int, ok bool) {
