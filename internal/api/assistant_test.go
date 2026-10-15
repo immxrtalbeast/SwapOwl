@@ -73,3 +73,20 @@ func TestAssistantIsReadOnlyAndDeterministic(t *testing.T) {
 		t.Fatalf("ответы различаются:\n%s\n%s", a.Body, b.Body)
 	}
 }
+
+// Источник темы не подключён (нет Analytics, HotOffers) — честный ответ, а не пустой.
+func TestAssistantNewTopicsUnavailable(t *testing.T) {
+	rt := askRouter()
+	for q, intent := range map[string]string{
+		"сколько списали вчера":   assistant.IntentMoney,
+		"что делать с овощами":    assistant.IntentLadder,
+		"на чём заработаем":       assistant.IntentMargin,
+		"насколько точен прогноз": assistant.IntentAccuracy,
+	} {
+		var got assistant.Reply
+		rec := ask(rt, `{"question":"`+q+`"}`)
+		if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &got) != nil || got.Intent != intent || !strings.Contains(got.Answer, "недоступны") {
+			t.Errorf("%q: %d %s", q, rec.Code, rec.Body)
+		}
+	}
+}
