@@ -41,19 +41,31 @@ export function AnalyticsPage() {
       {state.kind === "loading" && <LoadingState label="Загрузка аналитики" />}
       {state.kind === "error" && <ErrorState what="аналитику" reason={state.message} onRetry={() => void reload()} />}
       {state.kind === "ready" && (
-        <Card title="Дефицит: чего не хватило заказам">
-          <p data-testid="rejected-total" style={{ margin: "0 0 8px", font: "var(--type-kpi)" }}>
-            {state.shortages.rejected_orders}
-          </p>
-          <div style={{ marginBottom: 16 }}>
-            <HandNote>отклонённых заказов за период</HandNote>
-          </div>
-          {state.shortages.by_product.length === 0 ? (
-            <EmptyState title="Отказов не было" text="За период отказов из-за нехватки продуктов не было." />
-          ) : (
-            <DataTable caption="Дефицит по продуктам" columns={columns} rows={state.shortages.by_product} rowKey={(r) => r.product_id} />
-          )}
-        </Card>
+        state.shortages.rejected_orders === 0 && state.shortages.by_product.length === 0 ? (
+          // Пусто — только заголовок блока по центру и строка пояснения; заголовок слева — когда есть отказы.
+          <Card>
+            <div style={{ display: "grid", gap: 6, justifyItems: "center", textAlign: "center", padding: "28px 0" }}>
+              <h2 style={{ margin: 0, font: "var(--type-h3)" }}>Дефицит: чего не хватило заказам</h2>
+              <p data-testid="rejected-total" style={{ margin: 0, font: "var(--type-body)", color: "var(--text-muted)" }}>
+                За период отказов из-за нехватки продуктов не было.
+              </p>
+            </div>
+          </Card>
+        ) : (
+          <Card title="Дефицит: чего не хватило заказам">
+            <p data-testid="rejected-total" style={{ margin: "0 0 8px", font: "var(--type-kpi)" }}>
+              {state.shortages.rejected_orders}
+            </p>
+            <div style={{ marginBottom: 16 }}>
+              <HandNote>отклонённых заказов за период</HandNote>
+            </div>
+            {state.shortages.by_product.length === 0 ? (
+              <EmptyState title="Отказов не было" text="За период отказов из-за нехватки продуктов не было." />
+            ) : (
+              <DataTable caption="Дефицит по продуктам" columns={columns} rows={state.shortages.by_product} rowKey={(r) => r.product_id} />
+            )}
+          </Card>
+        )
       )}
     </section>
   );

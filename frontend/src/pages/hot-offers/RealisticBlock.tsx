@@ -21,8 +21,8 @@ export function RealisticBlock({ offer, prices, compact }: { offer: HotOffer; pr
       )}
       {r.leftover && r.leftover.qty.qty > 0 && (
         <>
-          <p style={{ margin: 0, font: "var(--type-body)" }}>
-            остаток {formatQty(r.leftover.qty)} {r.leftover.name} — что сделать:
+          <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>
+            Останется {formatQty(r.leftover.qty)} · {r.leftover.name.toLowerCase()} — куда деть:
           </p>
           <div style={{ display: "grid", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
             {(Object.keys(SAVE_SHARE) as LeftoverAction[]).map((a, i) => {
