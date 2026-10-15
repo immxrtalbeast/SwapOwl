@@ -22,6 +22,8 @@ export interface TgWebApp {
   offEvent?(name: string, cb: () => void): void;
   BackButton?: TgButton;
   MainButton?: TgMainButton;
+  /** Подписанная строка запуска; пустая вне Telegram. */
+  initData?: string;
   HapticFeedback?: {
     notificationOccurred(type: "success" | "error" | "warning"): void;
     impactOccurred?(style: "light" | "medium" | "heavy"): void;

@@ -22,7 +22,7 @@ async function requestRaw<T>(path: string, init?: RequestInit): Promise<{ body: 
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     // Любой 401 ведёт на экран входа; ошибку неверного пароля при входе обрабатывает сама форма.
-    if (res.status === 401 && path !== "/api/auth/login") onUnauthorized?.();
+    if (res.status === 401 && path !== "/api/auth/login" && path !== "/api/auth/telegram") onUnauthorized?.();
     const e = body?.error;
     throw new ApiError(res.status, e?.code ?? "internal", e?.message ?? `Ошибка ${res.status}`, e?.details ?? {});
   }
@@ -47,6 +47,8 @@ export const api = {
   login: (login: string, password: string) =>
     request<{ login: string; role: Role }>("/api/auth/login", { method: "POST", body: JSON.stringify({ login, password }) }),
   logout: () => request<null>("/api/auth/logout", { method: "POST" }),
+  telegramLogin: (initData: string) =>
+    request<{ login: string | null; role: Role }>("/api/auth/telegram", { method: "POST", body: JSON.stringify({ init_data: initData }) }),
   changePassword: (old: string, next: string) =>
     request<null>("/api/auth/password", { method: "POST", body: JSON.stringify({ old, new: next }) }),
   alerts: () => request<Alert[]>("/api/alerts"),
