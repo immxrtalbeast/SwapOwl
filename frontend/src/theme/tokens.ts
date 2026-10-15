@@ -31,7 +31,7 @@ export const TOKENS: Record<string, string> = {
   "--glass-highlight": "rgba(255,255,255,0.85)",
   "--glass-blur": "blur(22px) saturate(175%)",
   "--glass-shadow": "0 10px 30px rgba(16,48,32,0.10),0 1px 2px rgba(16,48,32,0.06)",
-  "--glass-nav": "linear-gradient(165deg,rgba(24,160,98,0.86) 0%,rgba(12,120,72,0.88) 55%,rgba(9,96,58,0.92) 100%)",
+  "--glass-nav": "linear-gradient(165deg,#1fa866 0%,#0f7a49 55%,#0a603a 100%)",
   "--page-glow": "radial-gradient(55% 45% at 0% 0%,rgba(31,180,110,0.22) 0%,transparent 70%),radial-gradient(45% 40% at 100% 0%,rgba(120,200,255,0.16) 0%,transparent 70%),radial-gradient(60% 50% at 80% 100%,rgba(255,206,120,0.18) 0%,transparent 70%)",
   "--on-urgency-warn-solid": "#2b1900",
   "--on-urgency-solid": "#ffffff",
