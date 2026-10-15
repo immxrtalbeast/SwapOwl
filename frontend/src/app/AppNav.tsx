@@ -67,10 +67,10 @@ export function AppNav({ screens, current }: Props) {
   return (
     <nav
       aria-label="Экраны"
-      className="so-nav"
+      className="so-nav so-nav-glass"
       style={{
         position: "sticky", top: 0, alignSelf: "flex-start", height: "100vh", boxSizing: "border-box", flexShrink: 0,
-        display: "flex", flexDirection: "column", gap: 16, padding: 12, background: "var(--primary)", overflowY: "auto",
+        display: "flex", flexDirection: "column", gap: 16, padding: 12, overflowY: "auto",
       }}
     >
       <a href="#/stock" style={{ padding: "4px 8px", textDecoration: "none" }} aria-label="SwapOwl — на склад">

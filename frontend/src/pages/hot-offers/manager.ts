@@ -21,7 +21,8 @@ export interface HallCard {
 export function hallCards(data: HotOffersResponse): HallCard[] {
   const out: HallCard[] = data.offers.map((o) => {
     const r = o.reasons[0];
-    const why = o.manager_note || (r ? `${r.product_name.toLowerCase()} нужно продать ${untilWord(r.expires_at)}` : "");
+    // «Булочка — продать до завтра»: название в именительном падеже без склонения (FS-161).
+    const why = o.manager_note || (r ? `${r.product_name} — продать ${untilWord(r.expires_at)}` : "");
     return { dishId: o.dish_id, dish: o.dish_name, why, byManager: !!o.pinned };
   });
   for (const p of data.manager_picks ?? []) out.push({ dishId: p.dish_id, dish: p.dish_name, why: p.note || "советует менеджер", byManager: true });

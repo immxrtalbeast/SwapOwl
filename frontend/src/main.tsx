@@ -1,18 +1,19 @@
 /// <reference types="vite/client" />
-import "@fontsource/roboto/cyrillic-300.css";
-import "@fontsource/roboto/latin-300.css";
+// Onest — текст и цифры (табличные), Roboto Mono — только номера партий, Roboto — печатная этикетка (FS-161).
+import "@fontsource/onest/cyrillic-400.css";
+import "@fontsource/onest/latin-400.css";
+import "@fontsource/onest/cyrillic-500.css";
+import "@fontsource/onest/latin-500.css";
+import "@fontsource/onest/cyrillic-600.css";
+import "@fontsource/onest/latin-600.css";
+import "@fontsource/onest/cyrillic-700.css";
+import "@fontsource/onest/latin-700.css";
 import "@fontsource/roboto/cyrillic-400.css";
 import "@fontsource/roboto/latin-400.css";
-import "@fontsource/roboto/cyrillic-500.css";
-import "@fontsource/roboto/latin-500.css";
 import "@fontsource/roboto/cyrillic-700.css";
 import "@fontsource/roboto/latin-700.css";
 import "@fontsource/roboto-mono/cyrillic-500.css";
 import "@fontsource/roboto-mono/latin-500.css";
-import "@fontsource/roboto-mono/cyrillic-700.css";
-import "@fontsource/roboto-mono/latin-700.css";
-import "@fontsource/neucha/cyrillic-400.css";
-import "@fontsource/neucha/latin-400.css";
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 import "./theme/global.css";

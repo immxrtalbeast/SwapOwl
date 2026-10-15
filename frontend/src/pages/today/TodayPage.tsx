@@ -39,10 +39,10 @@ function useStopped(): DishServings[] | "loading" | { error: string } {
   return s;
 }
 
-function Block({ title, children, testid }: { title: string; children: ReactNode; testid: string }) {
+function Block({ title, children, testid, glass, area }: { title: string; children: ReactNode; testid: string; glass?: boolean; area: string }) {
   return (
-    <div data-testid={testid} style={{ minWidth: 0 }}>
-      <Card title={title} style={{ height: "100%", boxSizing: "border-box" }}>{children}</Card>
+    <div data-testid={testid} data-kpi={glass ? "" : undefined} style={{ minWidth: 0, gridArea: area }}>
+      <Card title={title} glass={glass}>{children}</Card>
     </div>
   );
 }
@@ -117,15 +117,16 @@ export function TodayPage() {
   return (
     <section>
       <ScreenTitle>Сегодня</ScreenTitle>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
-        <Block title="Под риском сегодня, ₽" testid="today-risk">
+      {/* Высоту карточки задаёт содержимое (FS-161): соседи не растягивают друг друга. */}
+      <div className="so-today-grid">
+        <Block title="Под риском сегодня, ₽" testid="today-risk" glass area="risk">
           <Pending what="суммы под риском" state={risk} reload={() => void reloadRisk()}>
             {risk.kind === "ready" && (
               <div className={cls("risk")} style={{ display: "grid", gap: 8 }}>
                 <p data-testid="today-risk-total" style={{ ...bigNum, color: risk.atRisk.totalMinor > 0 ? "var(--urgency-risk-fg)" : "var(--text)" }}>
                   {formatRub(risk.atRisk.totalMinor)}
                 </p>
-                <HandNote arrow="down">это уйдёт в мусор, если не продать</HandNote>
+                <HandNote>это уйдёт в мусор, если не продать</HandNote>
                 <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>
                   Оценка по цене из прогноза списаний.
                   {risk.atRisk.unpriced > 0 && ` Партий без цены (не вошли в сумму): ${risk.atRisk.unpriced}.`}
@@ -135,7 +136,7 @@ export function TodayPage() {
           </Pending>
         </Block>
 
-        <Block title="Списано" testid="today-writeoffs">
+        <Block title="Списано" testid="today-writeoffs" glass area="writeoffs">
           <Pending what="списания" state={risk} reload={() => void reloadRisk()}>
             {risk.kind === "ready" && (
               <div style={{ display: "grid", gap: 12 }}>
@@ -152,7 +153,7 @@ export function TodayPage() {
           </Pending>
         </Block>
 
-        <Block title="Продать" testid="today-sell">
+        <Block title="Продать" testid="today-sell" area="sell">
           <Pending what="горячие предложения" state={hot} reload={() => void reloadHot()}>
             {offers.length === 0 ? (
               <EmptyState title="Продвигать нечего" text="Партий под риском нет." />
@@ -169,7 +170,7 @@ export function TodayPage() {
                       <span style={{ font: "var(--type-body)" }}>
                         {real ? "реально " : ""}{portions} {portionsWord(portions)}{o.target_today > 0 ? " сегодня" : ""}
                       </span>
-                      {real && <RealisticBlock offer={o} prices={prices} />}
+                      {real && <RealisticBlock offer={o} prices={prices} compact />}
                       {saved > 0 && <span style={{ font: "var(--type-body-strong)", color: "var(--urgency-ok-fg)" }}>спасёт {formatRub(saved)}</span>}
                     </li>
                   );
@@ -179,7 +180,7 @@ export function TodayPage() {
           </Pending>
         </Block>
 
-        <Block title="Заказать" testid="today-order">
+        <Block title="Заказать" testid="today-order" area="order">
           <Pending what="предложение поставок" state={supply} reload={() => void reloadSupply()}>
             {urgent.length === 0 ? (
               <EmptyState title="Срочного нет" text="Заказывать «сейчас» нечего." />
@@ -198,7 +199,7 @@ export function TodayPage() {
           </Pending>
         </Block>
 
-        <Block title="Проверить" testid="today-check">
+        <Block title="Проверить" testid="today-check" area="check">
           <Pending what="партии на проверку" state={receiving} reload={() => void reloadReceiving()}>
             {/* Срок теперь обязателен в поставке (FS-160); здесь — только партии со сроком из справочника, принятые раньше. */}
             {unconfirmed.length > 0 && <h3 style={{ margin: "0 0 8px", font: "var(--type-label)" }}>Срок не подтверждён · {unconfirmed.length}</h3>}

@@ -24,17 +24,18 @@ interface Props<T> {
 }
 
 /**
- * Таблица: шапка --type-caption на --surface-sunken, числа --type-num, строка 44 px.
+ * Таблица: шапка --type-caption на --surface-sunken, линии между строками и колонками (--border-cell),
+ * числа --type-num без переноса, строка 44 px.
  * На узком экране прокручивается горизонтально внутри карточки, страница не двигается.
  */
 export function DataTable<T>({ columns, rows, rowKey, rowTone, changed, caption, onRowClick }: Props<T>) {
   return (
     <div style={{ overflowX: "auto", maxWidth: "100%" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", font: "var(--type-body)", fontVariantNumeric: "tabular-nums" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", font: "var(--type-body)" }}>
         <caption style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>{caption}</caption>
         <thead>
           <tr style={{ background: "var(--surface-sunken)" }}>
-            {columns.map((c) => (
+            {columns.map((c, i) => (
               <th
                 key={c.key}
                 scope="col"
@@ -46,6 +47,7 @@ export function DataTable<T>({ columns, rows, rowKey, rowTone, changed, caption,
                   letterSpacing: ".04em",
                   color: "var(--text-muted)",
                   borderBottom: "1px solid var(--border)",
+                  borderLeft: i > 0 ? "1px solid var(--border-cell)" : undefined,
                   width: c.width,
                   whiteSpace: "nowrap",
                 }}
@@ -65,13 +67,18 @@ export function DataTable<T>({ columns, rows, rowKey, rowTone, changed, caption,
                 key={key}
                 className={changed?.has(key) ? "so-row-changed" : undefined}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                style={{ height: "var(--row-h)", background: bg, borderBottom: "1px solid var(--border)", cursor: onRowClick ? "pointer" : undefined }}
+                style={{ height: "var(--row-h)", background: bg, borderBottom: "1px solid var(--border-cell)", cursor: onRowClick ? "pointer" : undefined }}
               >
-                {columns.map((c) => (
+                {columns.map((c, i) => (
                   <td
                     key={c.key}
                     className={c.numeric ? "so-num" : undefined}
-                    style={{ padding: "var(--cell-py) var(--cell-px)", textAlign: c.numeric ? "right" : "left", verticalAlign: "middle" }}
+                    style={{
+                      padding: "var(--cell-py) var(--cell-px)", textAlign: c.numeric ? "right" : "left", verticalAlign: "middle",
+                      // Чёткая сетка (FS-161): линия между колонками; числа не переносятся.
+                      borderLeft: i > 0 ? "1px solid var(--border-cell)" : undefined,
+                      whiteSpace: c.numeric ? "nowrap" : undefined,
+                    }}
                   >
                     {c.cell(row)}
                   </td>

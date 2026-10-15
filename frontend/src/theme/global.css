@@ -1,10 +1,37 @@
 html, body, #root { min-height: 100%; }
 body {
   margin: 0;
-  background: var(--paper);
+  /* Мягкое свечение под стеклом оболочки (FS-161): без него стекло не читается. */
+  background: var(--page-glow), var(--paper);
+  background-attachment: fixed;
   color: var(--text);
   font: var(--type-body);
-  font-variant-numeric: tabular-nums;
+}
+/* Стекло — только оболочка и KPI (FS-161): таблицы и формы остаются непрозрачными и с линиями. */
+.so-glass {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--glass-shadow);
+}
+.so-header {
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-edge);
+  box-shadow: inset 0 -1px 0 var(--glass-highlight), 0 6px 20px rgba(16, 48, 32, .06);
+}
+.so-nav-glass {
+  background: var(--glass-nav);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 255, 255, .22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 16px 40px rgba(9, 72, 44, .28);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .so-glass, .so-header { background: var(--surface); }
+  .so-nav-glass { background: var(--primary); }
 }
 :focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 /* Поля ввода: явный контур при Tab (не зависит от сброса outline в браузере и обрезки в контейнерах) */
@@ -15,7 +42,8 @@ a { color: var(--brand-ink); }
 main:focus { outline: none; }
 .so-skip { position: absolute; left: 8px; top: -64px; z-index: 1000; padding: 8px 16px; border-radius: 8px; background: var(--primary); color: var(--on-primary); font: var(--type-button); }
 .so-skip:focus { top: 8px; }
-.so-num { font: var(--type-num); }
+/* Табличные цифры — только в числах и колонках: у Onest табличная «1» широкая, в датах текста это «1 1:00». */
+.so-num { font: var(--type-num); font-variant-numeric: tabular-nums; }
 .so-caption { font: var(--type-caption); text-transform: uppercase; letter-spacing: .04em; }
 @keyframes so-row-changed { from { background: var(--row-changed); } to { background: transparent; } }
 .so-row-changed { animation: so-row-changed 1.5s ease-out; }
@@ -24,12 +52,28 @@ main:focus { outline: none; }
 @media (prefers-reduced-motion: reduce) {
   .so-arrow path, .so-row-changed { animation: none; }
 }
-/* Меню: на ширине < 992 px — только иконки */
-.so-nav { width: var(--nav-w); }
+/* «Сегодня»: две колонки сводки и действий, справа «Продать» на всю высоту; на узком — одна колонка. */
+.so-today-grid { display: grid; gap: 16px; align-items: start; grid-template-columns: 1fr; grid-template-areas: "risk" "writeoffs" "sell" "order" "check"; }
+@media (min-width: 768px) { .so-today-grid { grid-template-columns: 1fr 1fr; grid-template-areas: "risk writeoffs" "sell sell" "order check"; } }
+@media (min-width: 1200px) {
+  /* Вторая строка забирает лишнюю высоту «Продать», первая (сводка) — по содержимому. */
+  .so-today-grid { grid-template-columns: 1fr 1fr 1.25fr; grid-template-rows: auto 1fr; grid-template-areas: "risk writeoffs sell" "order check sell"; }
+  .so-today-grid > [data-kpi] { align-self: stretch; display: grid; }
+}
+/* Меню: плавающая стеклянная панель; на ширине < 992 px — только иконки */
+.so-nav { width: var(--nav-w); margin: 12px 0 12px 12px; height: calc(100vh - 24px) !important; top: 12px !important; border-radius: 20px; }
 .so-nav-label { display: inline; }
 @media (max-width: 991.98px) {
   .so-nav { width: var(--nav-w-collapsed); }
   .so-nav-label, .so-nav-brand-word { display: none; }
+}
+@media (max-width: 767.98px) {
+  .so-nav { margin: 8px 0 8px 8px; height: calc(100vh - 16px) !important; top: 8px !important; border-radius: 16px; width: 56px; padding: 8px !important; }
+  /* Шапка на телефоне — одна строка: время, счётчики, связь; режим и «под риском» — на «Сегодня». */
+  .so-header { flex-wrap: nowrap !important; overflow-x: auto; gap: 8px !important; scrollbar-width: none; }
+  .so-header::-webkit-scrollbar { display: none; }
+  .so-header-optional { display: none !important; }
+  .so-header-day { display: none; }
 }
 .so-main { padding: var(--gutter); max-width: var(--content-max); }
 @media (max-width: 767.98px) { .so-main { padding: var(--gutter-tablet); } }

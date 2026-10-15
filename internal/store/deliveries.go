@@ -62,7 +62,7 @@ func checkOccurredAt(occurred, now time.Time, late time.Duration) error {
 const WarnExpiredOnArrival = "expired_on_arrival"
 
 // DeliveryItem — нормализованная позиция: количество уже в базовых единицах.
-// Ровно одно из ShelfLifeHours (>0) и ExpiresOn (YYYY-MM-DD); оба пусты — срок продукта по умолчанию.
+// Ровно одно из ShelfLifeHours (>0) и ExpiresOn (YYYY-MM-DD); оба пусты — NoShelfLifeError (FS-160).
 type DeliveryItem struct {
 	ProductID      string
 	Name           string
@@ -138,7 +138,7 @@ func (in DeliveryInput) BodyHash() []byte {
 		case it.ShelfLifeHours > 0:
 			s = "h:" + strconv.Itoa(it.ShelfLifeHours)
 		default:
-			s = "p:" // срок продукта по умолчанию — в исходном виде, как пришло
+			s = "p:" // позиция без срока: так хэшировались поставки до FS-160 — хэш не меняем, повтор сверяется по-старому
 		}
 		lines[i] = line{it.ProductID, it.Qty, s}
 	}

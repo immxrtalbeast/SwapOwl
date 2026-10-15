@@ -4,6 +4,7 @@ import { formatQty } from "../../lib/format";
 import { BATCH_STATES, toneVars } from "../../lib/urgency";
 import type { ReactNode } from "react";
 import { openedMark } from "./opened";
+import { productStateLabel } from "./view";
 import type { StockRow } from "./view";
 
 interface Props {
@@ -49,16 +50,17 @@ export function StockCards({ rows, changed, expiresText, exactText, onToggle, ti
                   {r.batch.opened_at && <span style={{ color: "var(--text-muted)" }}>{openedMark(r.batch.opened_at, timeZone)}</span>}
                 </span>
               )}
-              <UrgencyBadge def={BATCH_STATES[r.state]} />
+              <UrgencyBadge def={BATCH_STATES[r.state]} label={r.kind === "product" ? productStateLabel(r.state) : undefined} />
             </div>
+            {/* Подпись над значением, значение без переноса (FS-161): «80 / шт» больше не разваливается. */}
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, font: "var(--type-body)" }}>
-              <span>
-                <span style={{ color: "var(--text-muted)" }}>Остаток: </span>
-                <strong className="so-num">{formatQty(r.kind === "product" ? r.product.available : r.batch.remaining)}</strong>
+              <span style={{ display: "grid" }}>
+                <span style={{ color: "var(--text-muted)", font: "var(--type-small)" }}>Остаток: </span>
+                <strong className="so-num" style={{ whiteSpace: "nowrap" }}>{formatQty(r.kind === "product" ? r.product.available : r.batch.remaining)}</strong>
               </span>
-              <span>
-                <span style={{ color: "var(--text-muted)" }}>Годна до: </span>
-                {at ? <span title={exactText(at)}>{expiresText(at)}</span> : "—"}
+              <span style={{ display: "grid", textAlign: "right" }}>
+                <span style={{ color: "var(--text-muted)", font: "var(--type-small)" }}>Годна до: </span>
+                {at ? <span title={exactText(at)} style={{ whiteSpace: "nowrap" }}>{expiresText(at)}</span> : "—"}
               </span>
             </div>
             {r.kind === "batch" && batchAction?.(r)}

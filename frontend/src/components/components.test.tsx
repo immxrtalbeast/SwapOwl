@@ -49,8 +49,9 @@ describe("общие компоненты", () => {
     expect(html(<Pill>Теневой режим</Pill>)).toContain("Теневой режим");
     expect(html(<Card title="Склад">x</Card>)).toContain("Склад");
     const hand = html(<HandNote>лосось спасаем до 16:00</HandNote>);
-    expect(hand).toContain('stroke-width="4"');
-    expect(hand).toContain('stroke-linecap="round"');
+    expect(hand).toContain("лосось спасаем до 16:00");
+    expect(hand).not.toContain("<svg"); // без стрелки по умолчанию (FS-161)
+    expect(html(<HandNote arrow="down">x</HandNote>)).toContain('stroke-linecap="round"');
   });
   it("состояния экрана", () => {
     expect(html(<EmptyState title="Поставок пока нет" text="Примите первую поставку" />)).toContain("Поставок пока нет");
