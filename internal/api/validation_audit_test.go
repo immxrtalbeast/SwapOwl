@@ -92,6 +92,8 @@ func newValidationEnv(t *testing.T) *validationEnv {
 		DB: db, Now: clk.Now, Auth: svc, Audit: db, Stock: db, Receiving: db, Catalog: db, Orders: db,
 		Corrections: db, Menu: db, Outbox: db, Analytics: db, Location: loc, Events: events.New(clk.Now),
 		Demo: st, DemoToken: vDemoToken, NotSimulated: stand.ErrNotSimulated, Gate: gate,
+		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{WindowDays: 14, PriorDays: 28,
+			Schedule: domain.Schedule{Location: time.UTC, OpenAt: 10 * time.Hour, CloseAt: 23 * time.Hour}}},
 	})
 	env := &validationEnv{h: rt.Handler(), rt: rt, db: db}
 
