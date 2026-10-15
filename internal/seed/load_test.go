@@ -73,6 +73,16 @@ func TestIsEmptyAndLoad(t *testing.T) {
 	}
 }
 
+// FS-160: у продуктов сида есть обычный срок поставщика — «Принять предложенное» передаёт его в поставку явно.
+func TestLoadSetsSupplierShelfLife(t *testing.T) {
+	db := freshDB(t)
+	loadSeed(t, db)
+	var missing int
+	if err := db.Pool.QueryRow(context.Background(), `SELECT count(*) FROM products WHERE shelf_life_hours IS NULL`).Scan(&missing); err != nil || missing != 0 {
+		t.Fatalf("продуктов без срока поставщика: %d (%v)", missing, err)
+	}
+}
+
 // Инвариант 1: остаток партии = поступило − списано по журналу, остаток не отрицателен.
 func TestLoadConservation(t *testing.T) {
 	db := freshDB(t)

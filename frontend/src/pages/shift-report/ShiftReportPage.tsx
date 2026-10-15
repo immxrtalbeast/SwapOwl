@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Card, DataTable, EmptyState, ErrorState, LoadingState, Logo, PrimaryButton, ScreenTitle } from "../../components";
+import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
+import { Card, DataTable, EmptyState, ErrorState, LoadingState, Logo, PrimaryButton, ScreenTitle, SecondaryButton } from "../../components";
 import type { Column } from "../../components";
 import { formatQty } from "../stock/format";
 import { formatRub, reasonLabel } from "../money/format";
-import { dishLines, sumMinor, sumPortions } from "./report";
+import { dishLines, shiftDay, sumMinor, sumPortions } from "./report";
 import type { DishLine } from "./report";
 import { useShiftReport } from "./useShiftReport";
 
@@ -45,16 +46,26 @@ const lineColumns = (): Column<DishLine>[] => [
 export function ShiftReportPage() {
   const [picked, setPicked] = useState<string | null>(null);
   const [state, today, reload] = useShiftReport(picked);
+  const day = picked ?? today ?? "";
   return (
     <section className="shift-report">
       <style>{PRINT_CSS}</style>
       <div className="print-only" style={{ marginBottom: 8 }}><Logo withWord size={36} /></div>
       <ScreenTitle>Отчёт смены</ScreenTitle>
-      <div className="no-print" style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16 }}>
-        <label>
-          Дата{" "}
-          <input type="date" value={picked ?? today ?? ""} onChange={(e) => setPicked(e.target.value || null)} />
-        </label>
+      {/* Выбор суток — крупная строка: ‹ дата › и «Сегодня», печать справа (FS-161). */}
+      <div className="no-print so-glass" style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 20, padding: "12px 16px", borderRadius: "var(--radius-card)" }}>
+        <span style={{ font: "var(--type-label)", color: "var(--text-muted)" }}>Сутки отчёта</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <button type="button" aria-label="Предыдущие сутки" disabled={!day} onClick={() => day && setPicked(shiftDay(day, -1))} style={dayBtn}><IconChevronLeft size={20} aria-hidden="true" /></button>
+          <input
+            type="date" aria-label="Дата отчёта" value={day} max={today ?? undefined}
+            onChange={(e) => setPicked(e.target.value || null)}
+            style={{ height: "var(--control-h-lg)", padding: "0 14px", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-control)", background: "var(--surface)", color: "var(--text)", font: "600 17px/24px var(--font-body)", cursor: "pointer" }}
+          />
+          <button type="button" aria-label="Следующие сутки" disabled={!day || (today !== null && day >= today)} onClick={() => day && setPicked(shiftDay(day, 1))} style={dayBtn}><IconChevronRight size={20} aria-hidden="true" /></button>
+        </span>
+        {today && day !== today && <SecondaryButton size="compact-md" onClick={() => setPicked(null)}>Сегодня</SecondaryButton>}
+        <span style={{ flex: 1 }} />
         <PrimaryButton onClick={() => window.print()}>Печать</PrimaryButton>
       </div>
       {state.kind === "loading" && <LoadingState label="Загрузка отчёта смены" />}
@@ -75,8 +86,11 @@ export function ShiftReportPage() {
               <Kpi label="Списано" value={formatRub(d.writeoffs.total_minor)} />
               <Kpi label="Стоп стоил" value={lostMinor === null ? `${sumPortions(lost)} порц.` : `≈ ${formatRub(lostMinor)}`} hint={`${d.shortages.rejected_orders} отказов`} />
             </div>
-            <Card title="Продано">
-              {sold.length === 0 ? <EmptyState title="Ничего нет" text="За сутки заказов не было." /> : <DataTable caption="Продано по блюдам" columns={lineColumns()} rows={sold} rowKey={(l) => l.dish_id} />}
+            {/* Пусто — без заголовка, одна строка по центру; заголовок «Продано» — только когда есть продажи. */}
+            <Card title={sold.length > 0 ? "Продано" : undefined}>
+              {sold.length === 0 ? (
+                <p style={{ margin: 0, padding: "24px 0", textAlign: "center", font: "var(--type-body)", color: "var(--text-muted)" }}>Ничего нет — за сутки заказов не было.</p>
+              ) : <DataTable caption="Продано по блюдам" columns={lineColumns()} rows={sold} rowKey={(l) => l.dish_id} />}
               {soldMinor === null && sold.length > 0 && <p style={{ fontSize: 12 }}>Рубли не посчитаны: {money(null)}.</p>}
             </Card>
             <Card title="Списано по причинам">
@@ -90,8 +104,9 @@ export function ShiftReportPage() {
               )}
             </Card>
             <Card title="Цена стопа">
-              <p data-testid="stop-cost" className="big" style={big}>
-                {lostMinor === null ? "недополучено: цены блюд нет в API" : `недополучено ≈ ${formatRub(lostMinor)}`}
+              {/* Без цен блюд — обычный текст, а не крупная цифра (FS-161). */}
+              <p data-testid="stop-cost" className={lostMinor === null ? undefined : "big"} style={lostMinor === null ? { font: "var(--type-body)", color: "var(--text-muted)" } : big}>
+                {lostMinor === null ? "Недополучено: сумму не посчитать — у блюд не заданы цены." : `недополучено ≈ ${formatRub(lostMinor)}`}
               </p>
               <p style={{ fontSize: 12 }}>
                 Истории стоп-листа API не хранит, поэтому считаем по отказам: порции отклонённых заказов × цена блюда.
@@ -130,3 +145,8 @@ export function ShiftReportPage() {
     </section>
   );
 }
+
+const dayBtn = {
+  width: 40, height: "var(--control-h-lg)", display: "grid", placeItems: "center", border: "1px solid var(--border)",
+  borderRadius: "var(--radius-control)", background: "var(--surface)", color: "var(--brand-ink)", cursor: "pointer",
+} as const;

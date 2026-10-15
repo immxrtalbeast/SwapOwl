@@ -117,17 +117,17 @@ func TestPostDeliveryStatusMapping(t *testing.T) {
 	}
 }
 
-func TestPostDeliveryNoExpiryUsesProductDefault(t *testing.T) {
-	// Срок не задан: API пропускает позицию, срок продукта подставляет хранилище.
+func TestPostDeliveryWithoutExpiryRejected(t *testing.T) {
+	// FS-160: срок годности обязателен в каждой позиции; до хранилища позиция без срока не доходит.
 	fs := &fakeStock{}
 	rec := post(t, fs, item(`{"product_id":"salmon","quantity":"1"}`))
-	if rec.Code != 201 || fs.in.Items[0].ShelfLifeHours != 0 || fs.in.Items[0].ExpiresOn != "" {
-		t.Fatalf("code %d body %s items %+v", rec.Code, rec.Body, fs.in.Items)
+	if rec.Code != 400 || decodeErr(t, rec).Error.Code != CodeValidation || !strings.Contains(rec.Body.String(), "items[0].expires_on") || fs.in.ID != "" {
+		t.Fatalf("code %d body %s in %+v", rec.Code, rec.Body, fs.in)
 	}
-	// У продукта срока нет — 400, как раньше.
-	rec = post(t, &fakeStock{err: &store.NoShelfLifeError{Index: 0, ProductID: "salmon"}}, item(`{"product_id":"salmon","quantity":"1"}`))
-	if rec.Code != 400 || decodeErr(t, rec).Error.Code != CodeValidation || !strings.Contains(rec.Body.String(), "items[0].shelf_life_hours") {
-		t.Fatalf("no default: %d %s", rec.Code, rec.Body)
+	// Ошибка хранилища (страховка) — та же 400 с полем позиции.
+	rec = post(t, &fakeStock{err: &store.NoShelfLifeError{Index: 0, ProductID: "salmon"}}, item(`{"product_id":"salmon","quantity":"1","shelf_life_hours":5}`))
+	if rec.Code != 400 || decodeErr(t, rec).Error.Code != CodeValidation || !strings.Contains(rec.Body.String(), "items[0].expires_on") {
+		t.Fatalf("store guard: %d %s", rec.Code, rec.Body)
 	}
 }
 

@@ -31,7 +31,7 @@ export function AlertsPage() {
               <thead>
                 <tr style={{ background: "var(--surface-sunken)", font: "var(--type-caption)", textTransform: "uppercase", letterSpacing: ".04em" }}>
                   <th scope="col" align="left" style={cell}>Продукт</th>
-                  <th scope="col" align="right" style={cell}>Количество</th>
+                  <th scope="col" align="center" style={{ ...cell, textAlign: "center" }}>Количество</th>
                   <th scope="col" align="left" style={cell}>Срок</th>
                   <th scope="col" align="left" style={cell}>Состояние</th>
                   <th scope="col" align="left" style={cell}>Что делать</th>
@@ -46,7 +46,7 @@ export function AlertsPage() {
                       <td style={cell}>
                         {a.product_name} <span style={{ font: "var(--type-num)", color: "var(--text-subtle)" }}>{batchLabel(a.batch_id)}</span>
                       </td>
-                      <td align="right" style={{ ...cell, font: "var(--type-num)", fontWeight: u === "doomed" ? 700 : 400, textDecoration: u === "expired" ? "line-through" : "none" }}>
+                      <td align="center" style={{ ...cell, textAlign: "center", whiteSpace: "nowrap", font: "var(--type-num)", fontWeight: u === "doomed" ? 700 : 400, textDecoration: u === "expired" ? "line-through" : "none" }}>
                         {formatQty(a.remaining)}
                       </td>
                       <td style={cell} title={new Date(a.expires_at).toLocaleString("ru-RU")}>{formatTimeLeft(a.time_left_seconds)}</td>
@@ -54,6 +54,9 @@ export function AlertsPage() {
                       <td style={cell}>
                         {a.status === "expiring" && (
                           <a href={hotOffersUrl(a.product_id)} style={{ font: "var(--type-button)", color: "var(--brand-ink)", textDecoration: "none" }}>Блюда, которые спасают</a>
+                        )}
+                        {a.status === "expired" && (
+                          <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>Не продавать — спишется автоматически</span>
                         )}
                       </td>
                     </tr>

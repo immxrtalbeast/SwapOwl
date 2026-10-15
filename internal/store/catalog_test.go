@@ -138,27 +138,28 @@ func TestImportCatalogAdoptsAutoCreatedProduct(t *testing.T) {
 	}
 }
 
-func TestDeliveryUsesProductShelfLife(t *testing.T) {
+// FS-160: срок годности приходит в поставке; срок из карточки продукта поставку без срока не спасает.
+func TestDeliveryIgnoresProductShelfLife(t *testing.T) {
 	db, clk := stockDB(t)
 	ctx := context.Background()
 	if _, err := db.Pool.Exec(ctx, `UPDATE products SET shelf_life_hours = 48 WHERE id = 'salmon'`); err != nil {
 		t.Fatal(err)
 	}
 	in := DeliveryInput{ID: "D9", Number: "9", CreatedAt: t0, Items: []DeliveryItem{
-		{ProductID: "salmon", Unit: domain.UnitG, Qty: 1000},                    // срок продукта
-		{ProductID: "salmon", Unit: domain.UnitG, Qty: 1000, ShelfLifeHours: 5}, // явный срок главнее
+		{ProductID: "salmon", Unit: domain.UnitG, Qty: 1000, ShelfLifeHours: 5},
+		{ProductID: "salmon", Unit: domain.UnitG, Qty: 1000}, // срока нет, хотя у продукта он есть
 	}}
+	var ns *NoShelfLifeError
+	if _, err := db.ReceiveDelivery(ctx, in, clk.Now, time.UTC); !errors.As(err, &ns) || ns.Index != 1 {
+		t.Fatalf("no expiry: %v", err)
+	}
+	if count(t, db, "deliveries") != 0 || count(t, db, "batches") != 0 {
+		t.Fatal("rejected delivery left rows")
+	}
+	in.Items = in.Items[:1]
 	resp, err := db.ReceiveDelivery(ctx, in, clk.Now, time.UTC)
-	if err != nil || !resp.Batches[0].ExpiresAt.Equal(t0.Add(48*time.Hour)) || !resp.Batches[1].ExpiresAt.Equal(t0.Add(5*time.Hour)) {
+	if err != nil || !resp.Batches[0].ExpiresAt.Equal(t0.Add(5*time.Hour)) {
 		t.Fatalf("receive: %v %+v", err, resp.Batches)
-	}
-	// Повтор с тем же телом — replay; позиция «по умолчанию» и «явные 48 ч» — разные тела.
-	if again, err := db.ReceiveDelivery(ctx, in, clk.Now, time.UTC); err != nil || !again.Replayed {
-		t.Fatalf("replay: %v %+v", err, again)
-	}
-	in.Items[0].ShelfLifeHours = 48
-	if _, err := db.ReceiveDelivery(ctx, in, clk.Now, time.UTC); !errors.Is(err, ErrDeliveryConflict) {
-		t.Fatalf("conflict: %v", err)
 	}
 }
 

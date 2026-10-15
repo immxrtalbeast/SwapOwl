@@ -1,14 +1,16 @@
 /* SwapOwl — токены дизайн-системы (палитра «Свежесть», язык линейки Swap «Флагмана»).
    Источник: .ai/frontend-prompt.md, раздел «Дизайн-система»; макет docs/design/swapowl/mockup.html.
-   Шрифты: Roboto 300/400/500/700, Roboto Mono 500/700, Neucha (@fontsource, cyrillic + latin). Иконки: Tabler Icons.
+   Шрифты: Onest 400/500/600/700 (текст и цифры), Roboto Mono 500 (номера партий) — @fontsource, cyrillic + latin.
+   Оболочка (фон, шапка, боковая панель, KPI) — стекло (--glass-*), таблицы и формы — чёткие, с линиями (FS-161). Иконки: Tabler Icons.
    Тема одна, светлая. Имена токенов = имена CSS-переменных (src/theme/tokens.ts, cssVariablesResolver). */
 :root{
 --brand:#1fb46e;--brand-strong:#13915a;--brand-tint:#d9f4e6;--brand-ink:#0f6b41;--brand-grid:#cfeedd;
---paper:#f1f2f1;--surface-page:#f1f2f1;--surface:#ffffff;--surface-sunken:#f4f7f5;--surface-hover:#eef3f0;--skeleton:#e5e8e6;--overlay:rgba(16,24,20,0.45);
---border:#e2e5e8;--border-strong:#8a929c;
+--paper:#eaf1ec;--surface-page:#eaf1ec;--surface:#ffffff;--surface-sunken:#f4f7f5;--surface-hover:#eef3f0;--skeleton:#e5e8e6;--overlay:rgba(16,24,20,0.45);
+--border:#d9e0dc;--border-strong:#8a929c;
 --text:#16191d;--text-muted:#4b525c;--text-subtle:#6b7280;
 --primary:#0e8450;--primary-hover:#0b6e43;--primary-subtle:#d9f4e6;--on-primary:#ffffff;--focus-ring:#0e8450;
 --row-changed:#e3f6ec;
+--border-cell:#e7ece9;--glass-bg:rgba(255,255,255,0.58);--glass-bg-strong:rgba(255,255,255,0.74);--glass-edge:rgba(16,48,32,0.12);--glass-highlight:rgba(255,255,255,0.85);--glass-blur:blur(22px) saturate(175%);--glass-shadow:0 10px 30px rgba(16,48,32,0.10),0 1px 2px rgba(16,48,32,0.06);--glass-nav:linear-gradient(165deg,rgba(24,160,98,0.86) 0%,rgba(12,120,72,0.88) 55%,rgba(9,96,58,0.92) 100%);--page-glow:radial-gradient(55% 45% at 0% 0%,rgba(31,180,110,0.22) 0%,transparent 70%),radial-gradient(45% 40% at 100% 0%,rgba(120,200,255,0.16) 0%,transparent 70%),radial-gradient(60% 50% at 80% 100%,rgba(255,206,120,0.18) 0%,transparent 70%);
 --on-urgency-warn-solid:#2b1900;--on-urgency-solid:#ffffff;
 --urgency-ok-fg:#166534;--urgency-ok-bg:#eef0f2;--urgency-ok-solid:#4b525c;
 --urgency-warn-fg:#7f4600;--urgency-warn-bg:#fff1d6;--urgency-warn-row:#fff8e8;--urgency-warn-solid:#f2a516;
@@ -16,7 +18,7 @@
 --urgency-critical-fg:#b0152c;--urgency-critical-bg:#fde8eb;--urgency-critical-solid:#b8172f;
 --urgency-neutral-fg:#4b525c;--urgency-neutral-bg:#eef0f2;
 --urgency-info-fg:#1d4ed8;--urgency-info-bg:#e6eefc;
---font-display:"Roboto Mono",ui-monospace,Menlo,monospace;--font-body:"Roboto",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;--font-hand:"Neucha","Comic Sans MS",cursive;
+--font-display:"Onest",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;--font-body:"Onest",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;--font-hand:"Neucha","Comic Sans MS",cursive;
 --grid-step:140px;--hand-stroke:4px;
 --shadow-sm:0 1px 2px rgba(16,24,20,0.06),0 1px 1px rgba(16,24,20,0.04);
 --shadow-md:0 4px 12px rgba(16,24,20,0.10),0 1px 3px rgba(16,24,20,0.06);
@@ -25,8 +27,8 @@
 color-scheme:light;
 }
 :root{
---font-sans:var(--font-body);--font-mono:var(--font-display);
---type-display:700 clamp(30px,4.2vw,54px)/1.08 var(--font-display);
+--font-sans:var(--font-body);--font-mono:"Roboto Mono",ui-monospace,Menlo,monospace;
+--type-display:700 clamp(28px,3.6vw,46px)/1.08 var(--font-display);
 --type-section:700 18px/24px var(--font-display);
 --type-h1:700 24px/30px var(--font-body);
 --type-h2:600 18px/24px var(--font-body);
@@ -36,20 +38,20 @@ color-scheme:light;
 --type-body-strong:500 14px/20px var(--font-body);
 --type-label:500 13px/18px var(--font-body);
 --type-small:400 13px/18px var(--font-body);
---type-caption:500 11px/14px var(--font-display);
---type-button:700 14px/20px var(--font-display);
---type-num:500 13px/18px var(--font-display);
---type-id:500 13px/18px var(--font-display);
---type-clock:500 20px/24px var(--font-display);
---type-clock-lg:500 40px/44px var(--font-display);
---type-kpi:700 48px/52px var(--font-display);
---type-hand:400 24px/26px var(--font-hand);
+--type-caption:600 11px/14px var(--font-body);
+--type-button:600 14px/20px var(--font-body);
+--type-num:500 14px/20px var(--font-body);
+--type-id:500 12.5px/18px var(--font-mono);
+--type-clock:600 20px/24px var(--font-display);
+--type-clock-lg:600 40px/44px var(--font-display);
+--type-kpi:700 44px/48px var(--font-display);
+--type-hand:500 15px/20px var(--font-body);
 }
 :root{
 --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-12:48px;
 --spacing-xs:4px;--spacing-sm:8px;--spacing-md:16px;--spacing-lg:24px;--spacing-xl:32px;
---radius-badge:6px;--radius-control:8px;--radius-card:12px;--radius-pill:999px;--radius-logo:12px;
+--radius-badge:6px;--radius-control:8px;--radius-card:14px;--radius-pill:999px;--radius-logo:12px;
 --control-h:36px;--control-h-lg:44px;--control-h-row:30px;
 --row-h:44px;--row-h-batch:40px;--cell-py:8px;--cell-px:12px;--card-pad:16px;--section-gap:24px;
---header-h:56px;--nav-w:224px;--nav-w-collapsed:64px;--content-max:1440px;--gutter:24px;--gutter-tablet:16px;
+--header-h:56px;--nav-w:240px;--nav-w-collapsed:64px;--content-max:1440px;--gutter:24px;--gutter-tablet:16px;
 --bp-xs:576px;--bp-sm:768px;--bp-md:992px;--bp-lg:1200px;--bp-xl:1408px;

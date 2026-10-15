@@ -74,7 +74,13 @@ export function DemoPage() {
         <Card title="Время стенда">
           {info ? (
             <>
-              <p style={{ margin: 0, font: "var(--type-clock-lg)", whiteSpace: "nowrap" }}>{new Date(info.now).toLocaleString("ru-RU", { timeZone: info.timezone }).replace(", ", " ")}</p>
+              {/* Время крупно, дата строкой ниже: одной строкой 40 px «15.10.2026 11:00:00» не влезала в карточку. */}
+              <p className="so-num" style={{ margin: 0, font: "var(--type-clock-lg)", fontSize: "clamp(28px, 3vw, 40px)", whiteSpace: "nowrap" }}>
+                {new Date(info.now).toLocaleTimeString("ru-RU", { timeZone: info.timezone })}
+              </p>
+              <p style={{ margin: "4px 0 0", font: "var(--type-body)", color: "var(--text-muted)" }}>
+                {new Date(info.now).toLocaleDateString("ru-RU", { timeZone: info.timezone, day: "numeric", month: "long", year: "numeric", weekday: "long" })}
+              </p>
               <p style={{ margin: "8px 0 0" }}><Pill>Скорость ×{info.speed}</Pill></p>
             </>
           ) : (

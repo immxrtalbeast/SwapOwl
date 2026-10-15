@@ -3,7 +3,7 @@ import { api } from "../../api/client";
 import type { ProductStock } from "../../api/types";
 import { Card, PrimaryButton, SecondaryButton } from "../../components";
 import { SAMPLE_MILK, parseGs1 } from "../../lib/gs1";
-import { isLineReady, loadGtinMap, lineFromScan, rememberGtin, toDeliveryItem, type ScanLine } from "./scan";
+import { hasQuantity, isLineReady, loadGtinMap, lineFromScan, rememberGtin, toDeliveryItem, type ScanLine } from "./scan";
 
 /** Камера: BarcodeDetector, где он есть, иначе лениво подгружаемый @zxing/browser. */
 async function startCamera(video: HTMLVideoElement, onCode: (s: string) => void): Promise<() => void> {
@@ -195,8 +195,19 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
                     onChange={(e) => setLines((ls) => ls.map((x) => (x.key === l.key ? { ...x, quantity: e.target.value } : x)))}
                     style={{ width: 120, height: 36, padding: "0 8px" }}
                   />{" "}
-                  {l.unit} · {l.expires_on ? `годен до ${l.expires_on}` : "срок не указан"}
-                  {!isLineReady(l) && <span role="note"> — укажите количество</span>}
+                  {l.unit} ·{" "}
+                  {l.expiryFromCode ? `годен до ${l.expires_on}` : (
+                    <input
+                      type="date"
+                      aria-label={`Годен до: ${l.gtin || l.product_id}`}
+                      title="В коде нет срока — перепишите «годен до» с упаковки"
+                      value={l.expires_on ?? ""}
+                      onChange={(e) => setLines((ls) => ls.map((x) => (x.key === l.key ? { ...x, expires_on: e.target.value || undefined } : x)))}
+                      style={{ height: 36, padding: "0 8px" }}
+                    />
+                  )}
+                  {!hasQuantity(l) && <span role="note"> — укажите количество</span>}
+                  {!l.expires_on && <span role="note"> — укажите «годен до»: без срока не принять</span>}
                 </li>
               ))}
             </ul>

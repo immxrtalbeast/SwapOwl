@@ -39,25 +39,35 @@ export function StopListPage() {
       {state.kind === "error" && <ErrorState what="меню" reason={state.message} onRetry={retry} />}
       {state.kind === "ready" && state.dishes.length === 0 && <EmptyState title="Блюд нет" text="Блюд в меню нет." />}
       {state.kind === "ready" && state.dishes.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-          {state.dishes.map((d) => {
-            const st = dishState({ available: d.available, portions: d.servings });
-            return (
-              <li key={d.id} data-testid={`dish-${d.id}`} data-state={st}>
-                <Card style={{ padding: "12px 16px", borderColor: d.available ? undefined : "var(--urgency-critical-fg)" }}>
+        // Одна карточка, строки через линию (FS-161): блюдо из стоп-листа — красная полоса слева и причина.
+        <Card flush>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+            {state.dishes.map((d, i) => {
+              const st = dishState({ available: d.available, portions: d.servings });
+              return (
+                <li
+                  key={d.id}
+                  data-testid={`dish-${d.id}`}
+                  data-state={st}
+                  style={{
+                    padding: "12px 16px", borderTop: i > 0 ? "1px solid var(--border-cell)" : undefined,
+                    boxShadow: d.available ? undefined : "inset 3px 0 0 var(--urgency-critical-solid)",
+                    background: d.available ? undefined : "var(--urgency-critical-bg)",
+                  }}
+                >
                   <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                     <strong style={{ font: "var(--type-body-strong)", flex: "1 1 160px" }}>{d.name}</strong>
-                    <span style={{ font: "var(--type-num)", color: "var(--text-muted)" }}>{servingsLabel(d)}</span>
-                    <UrgencyBadge def={DISH_STATES[st]} />
+                    <span style={{ font: "var(--type-num)", color: "var(--text-muted)", whiteSpace: "nowrap" }}>{servingsLabel(d)}</span>
+                    <span style={{ minWidth: 112, display: "inline-flex", justifyContent: "flex-end" }}><UrgencyBadge def={DISH_STATES[st]} /></span>
                   </div>
                   {!d.available && (
-                    <p style={{ margin: "8px 0 0", font: "var(--type-small)", color: "var(--urgency-critical-fg)" }}>{reasonText(d)}</p>
+                    <p style={{ margin: "6px 0 0", font: "var(--type-small)", color: "var(--urgency-critical-fg)" }}>{reasonText(d)}</p>
                   )}
-                </Card>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
       )}
     </section>
   );

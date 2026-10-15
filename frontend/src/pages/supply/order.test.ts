@@ -12,6 +12,7 @@ const row = (id: string, qty: number): SupplySuggestion => ({
   blocks_dishes: 0,
   urgency: "now",
   explanation: "",
+  shelf_life_hours: null,
 });
 
 describe("supply order", () => {

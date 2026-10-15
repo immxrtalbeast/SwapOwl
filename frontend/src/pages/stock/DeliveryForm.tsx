@@ -74,7 +74,8 @@ export function DeliveryForm({ products, onReceived }: { products: readonly Prod
             ) : (
               <TextInput label="Код продукта" required value={l.product_id} onChange={(e) => update(i, { product_id: e.currentTarget.value })} />
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {/* Единице — больше места: «как у продукта» должна читаться целиком. */}
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.25fr)", gap: 8 }}>
               <TextInput label="Количество" required inputMode="decimal" pattern="[0-9]+(\.[0-9]+)?" value={l.quantity} onChange={(e) => update(i, { quantity: e.currentTarget.value })} />
               <NativeSelect label="Единица" data={[{ value: "", label: "как у продукта" }, ...UNITS.map((u) => ({ value: u, label: u }))]} value={l.unit} onChange={(e) => update(i, { unit: e.currentTarget.value })} />
             </div>

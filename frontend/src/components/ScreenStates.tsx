@@ -30,7 +30,7 @@ export function EmptyState({ title, text, action }: EmptyProps) {
   return (
     <div style={centered}>
       <IconInbox size={40} color="var(--text-subtle)" aria-hidden="true" />
-      <h2 style={{ margin: 0, font: "var(--type-section)", textTransform: "uppercase" }}>{title}</h2>
+      <h2 style={{ margin: 0, font: "var(--type-h2)" }}>{title}</h2>
       {text && <p style={{ margin: 0, color: "var(--text-muted)" }}>{text}</p>}
       {action && <PrimaryButton onClick={action.onClick}>{action.label}</PrimaryButton>}
     </div>
@@ -108,7 +108,7 @@ export function ForbiddenState({ roleLabel, needLabel, onHome }: ForbiddenProps)
   return (
     <div role="alert" style={centered}>
       <IconLock size={40} color="var(--text-subtle)" aria-hidden="true" />
-      <h2 style={{ margin: 0, font: "var(--type-section)", textTransform: "uppercase" }}>Недостаточно прав</h2>
+      <h2 style={{ margin: 0, font: "var(--type-h2)" }}>Недостаточно прав</h2>
       <p style={{ margin: 0, color: "var(--text-muted)" }}>
         Ваша роль — {roleLabel}. Этот раздел доступен роли «{needLabel}» и выше.
       </p>

@@ -113,4 +113,10 @@ export const api = {
       throw e;
     }
   },
+  // Отмена принятого заказа (POST /api/orders/{id}/cancel): проданное возвращается на склад; id — ключ идемпотентности.
+  cancelOrder: (orderId: string, id: string) =>
+    request<{ id: string; order_id: string; at: string; replayed: boolean }>(`/api/orders/${encodeURIComponent(orderId)}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
 };

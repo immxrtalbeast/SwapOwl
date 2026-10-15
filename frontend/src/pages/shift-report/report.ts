@@ -39,3 +39,10 @@ export function sumMinor(lines: DishLine[]): number | null {
 export function sumPortions(lines: DishLine[]): number {
   return lines.reduce((s, l) => s + l.portions, 0);
 }
+
+/** Соседние сутки для «‹ / ›» у выбора даты: YYYY-MM-DD ± n дней (календарно, без часовых поясов). */
+export function shiftDay(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
