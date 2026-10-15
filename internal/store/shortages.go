@@ -29,7 +29,7 @@ type ShortagesReport struct {
 func (d *DB) ShortagesReport(ctx context.Context, from, to time.Time) (ShortagesReport, error) {
 	rep := ShortagesReport{From: from.UTC(), To: to.UTC(), ByProduct: []ShortageRow{}}
 	if err := d.Pool.QueryRow(ctx,
-		`SELECT count(*) FROM orders WHERE status = 'rejected' AND at >= $1 AND at < $2`,
+		`SELECT count(*) FROM orders WHERE status = 'rejected' AND at >= $1 AND at < $2 AND NOT (response ? 'held')`,
 		from.UTC(), to.UTC()).Scan(&rep.RejectedOrders); err != nil {
 		return rep, fmt.Errorf("store: shortages report: %w", err)
 	}

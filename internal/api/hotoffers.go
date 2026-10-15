@@ -171,6 +171,10 @@ func (rt *Router) getHotOffers(w http.ResponseWriter, r *http.Request) {
 		rt.internalError(w, r, err)
 		return
 	}
+	if err := rt.withHolds(r.Context(), &snap); err != nil {
+		rt.internalError(w, r, err)
+		return
+	}
 	resp := buildHotOffers(snap, algo, cfg.Rank)
 	resp.ManagerPicks, resp.Hidden = []ManagerPickJSON{}, []HiddenJSON{}
 	if rt.deps.HotOverrides != nil {

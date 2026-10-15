@@ -132,7 +132,7 @@ export function OrdersPage() {
     timeCol,
     dishesCol,
     statusCol,
-    { key: "reason", header: "Причина", cell: (o) => rejectionReason(o.missing) },
+    { key: "reason", header: "Причина", cell: (o) => rejectionReason(o.missing, o.held) },
   ];
 
   const pane = (status: Tab, page: Page, columns: Column<Order>[], emptyTitle: string, emptyText: string) => (

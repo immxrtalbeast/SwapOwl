@@ -86,6 +86,8 @@ type OrderResponse struct {
 	Writeoffs  []WriteoffJSON  `json:"writeoffs"`
 	Missing    []MissingJSON   `json:"missing"`
 	Shortfalls []ShortfallJSON `json:"shortfalls"`
+	// Held — блюда заказа, поставленные менеджером на паузу: заказ отклонён целиком, склад не тронут.
+	Held []HeldJSON `json:"held,omitempty"`
 	// CancelledAt — время отмены принятого заказа (POST /api/orders/{id}/cancel); только в списке заказов.
 	CancelledAt *time.Time `json:"cancelled_at,omitempty"`
 }
@@ -218,6 +220,33 @@ func (d *DB) PlaceOrder(ctx context.Context, in OrderInput, now func() time.Time
 				in.ID, it.DishID, it.Portions); err != nil {
 				return fmt.Errorf("store: insert order item: %w", err)
 			}
+		}
+
+		// Пауза блюда читается в той же транзакции, что и приём заказа: отклонённый заказ сохраняется, партии не тронуты.
+		// Продажа из кассы (source pos) — свершившийся факт: паузой не отклоняется, иначе склад разойдётся с кассой.
+		var held []HeldJSON
+		if !in.isPOS() {
+			dishIDs := make([]string, len(in.Items))
+			for i, it := range in.Items {
+				dishIDs[i] = it.DishID
+			}
+			var err error
+			if held, err = heldDishes(ctx, tx, dishIDs); err != nil {
+				return err
+			}
+		}
+		if len(held) > 0 {
+			resp = OrderResponse{ID: in.ID, Source: source, At: now().UTC(), Status: OrderRejected, Items: in.Items,
+				Writeoffs: []WriteoffJSON{}, Missing: []MissingJSON{}, Shortfalls: []ShortfallJSON{}, Held: held}
+			raw, err := json.Marshal(resp)
+			if err != nil {
+				return fmt.Errorf("store: marshal order: %w", err)
+			}
+			if _, err := tx.Exec(ctx, `UPDATE orders SET status = $2, at = $3, response = $4 WHERE id = $1`,
+				in.ID, resp.Status, resp.At, raw); err != nil {
+				return fmt.Errorf("store: save order: %w", err)
+			}
+			return nil
 		}
 
 		ids := make([]string, len(in.Needs))

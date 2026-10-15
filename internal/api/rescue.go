@@ -93,6 +93,10 @@ func (rt *Router) getRescue(w http.ResponseWriter, r *http.Request) {
 		rt.internalError(w, r, err)
 		return
 	}
+	if err := rt.withHolds(r.Context(), &snap); err != nil {
+		rt.internalError(w, r, err)
+		return
+	}
 	resp := buildHotOffers(snap, algo, cfg.Rank)
 	hidden := map[string]bool{}
 	if rt.deps.HotOverrides != nil {

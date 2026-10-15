@@ -32,6 +32,7 @@ type (
 	allAudit        struct{ AuditLog }
 	allTelegram     struct{ TelegramLinks }
 	allHotOverrides struct{ HotOverrides }
+	allDishHolds    struct{ DishHolds }
 )
 
 // routerPairs — множество «МЕТОД шаблон» всех маршрутов полностью собранного роутера.
@@ -41,7 +42,7 @@ func routerPairs() map[string]bool {
 		Auth: &auth.Service{}, Telegram: allTelegram{}, TelegramBotToken: "t", Audit: allAudit{}, Stock: allStock{}, Catalog: allCatalog{},
 		Orders: allOrders{}, Corrections: allCorrections{}, Menu: allMenu{}, HotOffers: allHot{},
 		Supply: allSupply{}, SupplyOrders: allSupplyOrd{}, Outbox: allOutbox{}, Analytics: allAnalytics{}, Monitor: allMonitor{},
-		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(), Invoices: &Invoices{}, HotOverrides: allHotOverrides{}, PublicRescue: true,
+		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(), Invoices: &Invoices{}, HotOverrides: allHotOverrides{}, DishHolds: allDishHolds{}, PublicRescue: true,
 	})
 	out := map[string]bool{}
 	for pattern, byMethod := range rt.routes {

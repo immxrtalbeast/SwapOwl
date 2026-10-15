@@ -148,6 +148,11 @@ func (rt *Router) postOrder(w http.ResponseWriter, r *http.Request) {
 		rt.internalError(w, r, err)
 		return
 	}
+	if resp.Status == store.OrderRejected && len(resp.Held) > 0 {
+		WriteError(w, http.StatusConflict, CodeDishOnHold, "dish is on hold", map[string]any{
+			"order_id": resp.ID, "status": resp.Status, "at": resp.At, "replayed": resp.Replayed, "dishes": resp.Held})
+		return
+	}
 	if resp.Status == store.OrderRejected {
 		WriteError(w, http.StatusConflict, CodeInsufficient, "not enough stock for the order", map[string]any{
 			"order_id": resp.ID, "status": resp.Status, "at": resp.At, "replayed": resp.Replayed, "missing": resp.Missing})
