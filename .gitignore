@@ -1,2 +1,16 @@
 /iiko-adapter
 /pitchcalc
+
+# Секреты и локальное окружение: в репозиторий не попадают
+.env
+.env.*
+!.env.example
+!deploy/.env.prod.example
+.claude/
+
+# Зависимости, сборки и мусор
+node_modules/
+dist/
+*.log
+*.webm
+.DS_Store
