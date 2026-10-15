@@ -2,6 +2,7 @@ package api
 
 import (
 	"testing"
+	"time"
 
 	"umirhack/internal/domain"
 	"umirhack/internal/store"
@@ -76,6 +77,23 @@ func TestTieBreakByMargin(t *testing.T) {
 	// Блюдо с большей маржой, но меньшим приоритетом («d») выше не поднимается.
 	if got[3] != "d" {
 		t.Fatalf("приоритет перебит маржой: %v", got)
+	}
+}
+
+// Равный приоритет, но срок разный: порядок по сроку опорной партии (.ai/solution.md 2.7) маржой не перебивается.
+func TestTieBreakKeepsExpiryOrder(t *testing.T) {
+	soon := time.Date(2026, 10, 16, 13, 0, 0, 0, time.UTC)
+	later := soon.Add(2 * time.Hour)
+	in := []OfferJSON{
+		{DishID: "x", Priority: 50, SellUntil: soon, MarginMinor: ptr(100)},
+		{DishID: "y", Priority: 50, SellUntil: later, MarginMinor: ptr(9000)},
+		{DishID: "z", Priority: 50, SellUntil: later, MarginMinor: ptr(9500)},
+	}
+	out := tieBreakByMargin(in)
+	got := []string{out[0].DishID, out[1].DishID, out[2].DishID}
+	// x раньше по сроку и остаётся первым; y и z — один срок, выше маржа у z.
+	if got[0] != "x" || got[1] != "z" || got[2] != "y" {
+		t.Fatalf("%v", got)
 	}
 }
 
