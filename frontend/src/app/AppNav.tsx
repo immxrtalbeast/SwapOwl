@@ -47,13 +47,13 @@ export function AppNav({ screens, current }: Props) {
           aria-current={active ? "page" : undefined}
           aria-label={n ? `${s.title}: ${n}` : s.title}
           style={{
-            display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, textDecoration: "none",
+            display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, textDecoration: "none", minWidth: 0,
             color: "var(--on-primary)", font: "var(--type-body-strong)",
             background: active ? "rgba(255,255,255,.18)" : "transparent",
           }}
         >
           <Icon size={20} aria-hidden="true" style={{ flexShrink: 0 }} />
-          <span className="so-nav-label" style={{ flex: 1 }}>{s.title}</span>
+          <span className="so-nav-label" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
           {n ? (
             <span className="so-num so-nav-label" style={{ background: "var(--on-primary)", color: "var(--primary)", borderRadius: 999, padding: "0 8px" }}>
               {n}
@@ -70,7 +70,8 @@ export function AppNav({ screens, current }: Props) {
       className="so-nav so-nav-glass"
       style={{
         position: "sticky", top: 0, alignSelf: "flex-start", height: "100vh", boxSizing: "border-box", flexShrink: 0,
-        display: "flex", flexDirection: "column", gap: 16, padding: 12, overflowY: "auto",
+        // Без горизонтальной прокрутки: длинные названия обрезаются многоточием, а не раздвигают панель.
+        display: "flex", flexDirection: "column", gap: 16, padding: 12, overflowY: "auto", overflowX: "hidden",
       }}
     >
       <a href="#/stock" style={{ padding: "4px 8px", textDecoration: "none" }} aria-label="SwapOwl — на склад">

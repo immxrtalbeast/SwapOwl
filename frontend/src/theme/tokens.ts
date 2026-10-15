@@ -110,7 +110,7 @@ export const TOKENS: Record<string, string> = {
   "--card-pad": "16px",
   "--section-gap": "24px",
   "--header-h": "56px",
-  "--nav-w": "224px",
+  "--nav-w": "240px",
   "--nav-w-collapsed": "64px",
   "--content-max": "1440px",
   "--gutter": "24px",
