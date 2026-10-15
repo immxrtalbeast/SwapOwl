@@ -52,9 +52,15 @@ func (rt *Router) publicMenuRoutes() {
 			rt.internalError(w, r, err)
 			return
 		}
+		held, err := rt.heldSet(r.Context())
+		if err != nil {
+			rt.internalError(w, r, err)
+			return
+		}
 		out := []PublicMenuJSON{}
 		for _, d := range menuAvailability(snap) {
-			out = append(out, PublicMenuJSON{DishID: d.ID, DishName: d.Name, Status: publicMenuStatus(d.Available, d.Servings)})
+			// Блюдо на паузе гость заказать не может — для него это «нет в наличии».
+			out = append(out, PublicMenuJSON{DishID: d.ID, DishName: d.Name, Status: publicMenuStatus(d.Available && !held[d.ID], d.Servings)})
 		}
 		w.Header().Set("Cache-Control", "public, max-age="+strconv.Itoa(rescueMaxAge))
 		WriteJSON(w, http.StatusOK, out)

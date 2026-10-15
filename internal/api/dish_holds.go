@@ -70,7 +70,7 @@ func (rt *Router) putDishHold(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rt.audit(r, "hold_set", slog.String("dish_id", dish))
-	rt.publishHoldChanged(dish)
+	rt.publishHoldChanged(dish, true, h.Note)
 	WriteJSON(w, http.StatusOK, h)
 }
 
@@ -82,13 +82,51 @@ func (rt *Router) deleteDishHold(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rt.audit(r, "hold_delete", slog.String("dish_id", dish))
-	rt.publishHoldChanged(dish)
+	rt.publishHoldChanged(dish, false, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// heldSet — множество блюд на паузе; без DishHolds — пустое. Горячие предложения, витрина и меню гостя
+// не предлагают блюдо, которое нельзя заказать.
+func (rt *Router) heldSet(ctx context.Context) (map[string]bool, error) {
+	if rt.deps.DishHolds == nil {
+		return nil, nil
+	}
+	list, err := rt.deps.DishHolds.ListDishHolds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool, len(list))
+	for _, h := range list {
+		set[h.DishID] = true
+	}
+	return set, nil
+}
+
+// withHolds добавляет блюда на паузе к стоп-листу снимка: расчёт предложений обходит их, как блюда без остатков.
+func (rt *Router) withHolds(ctx context.Context, snap *store.Snapshot) error {
+	held, err := rt.heldSet(ctx)
+	if err != nil {
+		return err
+	}
+	if len(held) == 0 {
+		return nil
+	}
+	stopped := make(map[string]bool, len(snap.Stopped)+len(held))
+	for id := range snap.Stopped {
+		stopped[id] = true
+	}
+	for id := range held {
+		stopped[id] = true
+	}
+	snap.Stopped = stopped
+	return nil
+}
+
 // publishHoldChanged — открытые экраны меню и заказов перечитывают список.
-func (rt *Router) publishHoldChanged(dish string) {
+func (rt *Router) publishHoldChanged(dish string, held bool, note string) {
 	if rt.deps.Events != nil {
-		rt.deps.Events.Publish(events.StoplistChanged, map[string]any{"added": []string{}, "removed": []string{}, "reason": "manual_hold", "dish_id": dish})
+		rt.deps.Events.Publish(events.StoplistChanged, map[string]any{"added": []string{}, "removed": []string{},
+			"reason": "manual_hold", "dish_id": dish, "held": held, "note": note})
 	}
 }

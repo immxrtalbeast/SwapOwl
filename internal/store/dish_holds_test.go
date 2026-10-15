@@ -70,6 +70,11 @@ func TestPlaceOrderOnHeldDish(t *testing.T) {
 	if sum, sold := remainingSum(t, db); sum != before || sold != soldBefore {
 		t.Fatalf("склад изменился: %d/%d → %d/%d", before, soldBefore, sum, sold)
 	}
+	// Отказ по паузе — не дефицит продуктов: в отчёт «Отказов» он не попадает.
+	rep, err := db.ShortagesReport(ctx, clk.Now().Add(-48*time.Hour), clk.Now().Add(48*time.Hour))
+	if err != nil || rep.RejectedOrders != 0 || len(rep.ByProduct) != 0 {
+		t.Fatalf("отчёт о дефиците: %v %+v", err, rep)
+	}
 	// Повтор с тем же id — тот же сохранённый отказ.
 	again, err := db.PlaceOrder(ctx, order(o1, 2, 200), clk.Now)
 	if err != nil || !again.Replayed || again.Status != OrderRejected || len(again.Held) != 1 {

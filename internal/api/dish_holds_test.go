@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"umirhack/internal/events"
+	"umirhack/internal/hotoffers"
 	"umirhack/internal/store"
 )
 
@@ -143,4 +144,49 @@ func TestDishHoldRoutesAbsentWithoutDeps(t *testing.T) {
 	if rec := holdDo(rt, "GET", "/api/dish-holds", ""); rec.Code != 404 {
 		t.Fatalf("%d", rec.Code)
 	}
+}
+
+// Блюдо на паузе нельзя заказать, поэтому ему нечего делать в горячих предложениях, на витрине «Спаси продукты»,
+// в меню гостя («нет в наличии») и в ответах помощника — иначе гость увидит скидку на блюдо, которое отклонят.
+func TestHeldDishDisappearsFromOffersAndMenus(t *testing.T) {
+	holds := &fakeHolds{list: []store.DishHold{{DishID: "steak", Note: "нет плиты", SetAt: standTime}}}
+
+	// Горячие: без паузы стейк из лосося — первое предложение; с паузой его в offers нет.
+	snap := hotSnap()
+	cfg := HotOffersConfig{DefaultAlgo: "b", Rank: hotoffers.Config{TopN: 3, WMin: 0.5, CoverHours: 12, MaxIter: 200}}
+	_, base, _ := getHot(t, NewRouter(Deps{HotOffers: fakeSnap{snap}, Now: func() time.Time { return hotNow }, HotConfig: cfg}), "/api/hot-offers")
+	if len(base.Offers) == 0 || base.Offers[0].DishID != "steak" {
+		t.Fatalf("тест не проверяет паузу: без неё стейка нет в горячих: %+v", base.Offers)
+	}
+	_, held, body := getHot(t, NewRouter(Deps{HotOffers: fakeSnap{snap}, DishHolds: holds, Now: func() time.Time { return hotNow }, HotConfig: cfg}), "/api/hot-offers")
+	for _, o := range held.Offers {
+		if o.DishID == "steak" {
+			t.Fatalf("блюдо на паузе в горячих: %s", body)
+		}
+	}
+
+	// Меню гостя: паузное блюдо — stopped, даже когда продукты есть.
+	menu := NewRouter(Deps{Menu: fakeMenu{testSnap()}, PublicRescue: true, DishHolds: &fakeHolds{list: []store.DishHold{{DishID: "soup", SetAt: standTime}}},
+		Now: func() time.Time { return time.Unix(0, 0) }})
+	var rows []PublicMenuJSON
+	if rec := getMenu(menu, "1.2.3.4:1"); rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &rows) != nil {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	for _, r := range rows {
+		if r.DishID == "soup" && r.Status != menuStopped {
+			t.Fatalf("суп на паузе в меню гостя: %q", r.Status)
+		}
+	}
+
+	// Помощник: «что в стопе» называет паузу.
+	ask := askRouter()
+	ask.deps.DishHolds = &fakeHolds{list: []store.DishHold{{DishID: "soup", SetAt: standTime}}}
+	rec := holdAsk(ask, `{"question":"что в стопе"}`)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "на паузе у менеджера") {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+}
+
+func holdAsk(rt *Router, body string) *httptest.ResponseRecorder {
+	return holdDo(rt, "POST", "/api/assistant/ask", body)
 }
