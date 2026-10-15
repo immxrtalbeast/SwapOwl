@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"umirhack/internal/domain"
+	"umirhack/internal/store"
 )
 
 const (
@@ -114,6 +115,13 @@ func (rt *Router) getRescue(w http.ResponseWriter, r *http.Request) {
 			hidden[h.DishID] = true
 		}
 	}
+	w.Header().Set("Cache-Control", "public, max-age="+strconv.Itoa(rescueMaxAge))
+	WriteJSON(w, http.StatusOK, rescueRows(snap, resp, hidden))
+}
+
+// rescueRows — витрина «Спаси продукты» по снимку и горячим предложениям: блюда со скидкой без стоп-листа и скрытых.
+// Чистая функция: её же использует «лестница спасения», чтобы ступень «скидка» совпадала с витриной.
+func rescueRows(snap store.Snapshot, resp HotOffersResponse, hidden map[string]bool) []RescueJSON {
 	avail := snap.Available()
 	recipes := make(map[string][]domain.RecipeItem, len(snap.Dishes))
 	for _, d := range snap.Dishes {
@@ -148,8 +156,7 @@ func (rt *Router) getRescue(w http.ResponseWriter, r *http.Request) {
 			DiscountPercent: min(max(rescueDiscountPercent, rescueMinDiscount), rescueMaxDiscount),
 			ValidUntil:      o.SellUntil, Note: rescueNote})
 	}
-	w.Header().Set("Cache-Control", "public, max-age="+strconv.Itoa(rescueMaxAge))
-	WriteJSON(w, http.StatusOK, out)
+	return out
 }
 
 // rescueClientIP — адрес гостя для лимита. За Caddy RemoteAddr — адрес прокси, поэтому для loopback и частных

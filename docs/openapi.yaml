@@ -682,6 +682,25 @@ paths:
                 - {dish_id: soup, dish_name: Крем-суп, status: stopped}
         '404': {$ref: '#/components/responses/NotFound'}
         '429': {description: Слишком много запросов}
+  /api/rescue-ladder:
+    get:
+      tags: [menu]
+      summary: Лестница спасения партии — что сделать с каждой партией под риском и сколько это не даст списать (viewer)
+      description: |
+        Для каждой истекающей партии с остатком: ступень `sell` (продать горячим: порции предложения, которые движок
+        просит продать до срока, покрывают часть партии), `discount` (остаток покрывают порции витрины
+        «Спаси продукты»; цена ступени — скидка на эти порции), `prep` (заготовка — пока без расчёта, `status=roadmap`) и
+        `transfer` (передача в соседнюю точку — считает хаб, `status=network`). `net_minor` = сохранённая
+        себестоимость минус цена ступени; `best` — расчётная ступень с наибольшим `net_minor` > 0, `combined_minor` —
+        итог «сначала продать, остаток со скидкой». Партии по убыванию денег под риском. Только чтение; блюда на паузе,
+        скрытые менеджером и в стоп-листе не участвуют. Без цены продукта деньги не считаются (`status=no_price`).
+      responses:
+        '200':
+          description: Партии со ступенями; пустой массив, если спасать нечего
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/LadderBatch'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /api/analytics/forecast-accuracy:
     get:
       tags: [analytics]
@@ -1958,6 +1977,29 @@ components:
           type: string
           format: date-time
           description: Время отмены принятого заказа (`POST /api/orders/{id}/cancel`); только в `GET /api/orders`, у неотменённых поля нет.
+    LadderBatch:
+      type: object
+      properties:
+        batch_id: {type: integer}
+        product_id: {type: string}
+        product_name: {type: string}
+        at_risk: {$ref: '#/components/schemas/Qty'}
+        at_risk_minor: {type: integer, description: Себестоимость остатка партии, копейки (0 без цены продукта)}
+        expires_at: {type: string, format: date-time}
+        best: {type: string, enum: ['', sell, discount]}
+        combined_minor: {type: integer}
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: {type: string, enum: [sell, discount, prep, transfer]}
+              title: {type: string}
+              saved_minor: {type: integer}
+              cost_minor: {type: integer}
+              net_minor: {type: integer}
+              status: {type: string, enum: [roadmap, network, unavailable, no_price], description: Нет поля — ступень посчитана}
+              detail: {type: string}
     ForecastAccuracy:
       type: object
       properties:

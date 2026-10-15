@@ -176,6 +176,30 @@ export interface StopReason {
   missing: Qty;
 }
 
+// Лестница спасения партии (GET /api/rescue-ladder).
+export interface LadderStep {
+  kind: string;
+  title: string;
+  saved_minor: number;
+  cost_minor: number;
+  net_minor: number;
+  /** Пусто — ступень посчитана; иначе roadmap | network | unavailable | no_price. */
+  status?: string;
+  detail: string;
+}
+
+export interface LadderBatch {
+  batch_id: number;
+  product_id: string;
+  product_name: string;
+  at_risk: Qty;
+  at_risk_minor: number;
+  expires_at: string;
+  best: string;
+  combined_minor: number;
+  steps: LadderStep[];
+}
+
 // Точность прогноза спроса (GET /api/analytics/forecast-accuracy).
 export interface ForecastAccuracy {
   days: number;
