@@ -23,6 +23,7 @@ var resetOrder = []string{
 	// переписать блюда, рецепты и продукты: чистим всё и даём сиду загрузить эталон заново.
 	`DELETE FROM hot_overrides`,
 	`DELETE FROM dish_holds`,
+	`DELETE FROM supplier_codes`,
 	`DELETE FROM recipe_items`,
 	`DELETE FROM dishes`,
 	`DELETE FROM products`,

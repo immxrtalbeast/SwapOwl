@@ -3,7 +3,7 @@ import { api } from "../../api/client";
 import type { ProductStock } from "../../api/types";
 import { Card, PrimaryButton, SecondaryButton } from "../../components";
 import { SAMPLE_MILK, parseGs1 } from "../../lib/gs1";
-import { hasQuantity, isLineReady, loadGtinMap, lineFromScan, manualLine, rememberGtin, toDeliveryItem, type ScanLine } from "./scan";
+import { hasQuantity, isLineReady, loadGtinMap, lineFromScan, manualLine, rememberGtin, resolveProductId, toDeliveryItem, type ScanLine } from "./scan";
 
 /** Камера: BarcodeDetector, где он есть, иначе лениво подгружаемый @zxing/browser. */
 async function startCamera(video: HTMLVideoElement, onCode: (s: string) => void): Promise<() => void> {
@@ -49,6 +49,8 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
   const [manual, setManual] = useState("");
   const [pick, setPick] = useState("");
   const [manualPick, setManualPick] = useState("");
+  // Сопоставление кодов поставщика с сервера: общее для всех устройств приёмки (локальное — запасное).
+  const [serverCodes, setServerCodes] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [streaming, setStreaming] = useState(false);
@@ -59,7 +61,9 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
   const last = useRef("");
 
   useEffect(() => {
-    if (open) api.products().then(setProducts).catch(() => setMsg("Не удалось загрузить справочник продуктов"));
+    if (!open) return;
+    api.products().then(setProducts).catch(() => setMsg("Не удалось загрузить справочник продуктов"));
+    api.supplierCodes().then((l) => setServerCodes(Object.fromEntries(l.map((c) => [c.code, c.product_id])))).catch(() => { /* локального сопоставления достаточно */ });
   }, [open]);
 
   function accept(raw: string) {
@@ -71,7 +75,7 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
       return;
     }
     setMsg(null);
-    const pid = loadGtinMap()[g.gtin];
+    const pid = resolveProductId(g.gtin, serverCodes, loadGtinMap());
     const p = products.find((x) => x.id === pid);
     if (p) setLines((ls) => [...ls, lineFromScan(g, p, ++seq.current)]);
     else setPending(g);
@@ -107,6 +111,9 @@ export function ScanPanel({ onSent }: { onSent: () => Promise<void> }) {
     const p = products.find((x) => x.id === pick);
     if (!pending?.gtin || !p) return;
     rememberGtin(pending.gtin, p.id);
+    setServerCodes((m) => ({ ...m, [pending.gtin as string]: p.id }));
+    // На сервер — чтобы другое устройство не спрашивало снова; недоступен — осталось локальное сопоставление.
+    void api.setSupplierCode(pending.gtin, p.id).catch(() => undefined);
     setLines((ls) => [...ls, lineFromScan(pending, p, ++seq.current)]);
     setPending(null);
     setPick("");

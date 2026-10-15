@@ -92,6 +92,8 @@ type Deps struct {
 	HotOverrides HotOverrides
 	// DishHolds — ручная пауза блюда. nil — маршруты паузы не регистрируются, заказ проходит как раньше.
 	DishHolds DishHolds
+	// SupplierCodes — сопоставление кодов поставщика с продуктами (приёмка сканом). nil — маршруты не регистрируются.
+	SupplierCodes SupplierCodes
 	// PublicRescue — PUBLIC_RESCUE: публичная витрина GET /api/public/rescue (FS-168). false — маршрута нет (404).
 	PublicRescue bool
 	// Invoices — распознавание фото накладной (FS-158). nil — маршрут не регистрируется.
@@ -142,6 +144,7 @@ func (rt *Router) Routes() {
 	rt.openedRoutes()
 	rt.stopListRoutes()
 	rt.dishHoldRoutes()
+	rt.supplierCodeRoutes()
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()
 	rt.ladderRoutes()
