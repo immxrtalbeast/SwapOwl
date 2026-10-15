@@ -9,16 +9,17 @@ import (
 	"umirhack/internal/domain"
 )
 
-// defaultDelivery — поставка без срока: берётся срок продукта (salmon — 48 ч).
+// defaultDelivery — партия со сроком из карточки (48 ч), принятая до FS-160: сейчас поставка без срока не
+// принимается, но такие партии остаются в базе и подтверждаются в «Приёмке».
 func defaultDelivery(t *testing.T, db *DB, id string, at time.Time) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := db.Pool.Exec(ctx, `UPDATE products SET shelf_life_hours = 48 WHERE id = 'salmon'`); err != nil {
+	in := DeliveryInput{ID: id, Number: "1", CreatedAt: t0, OccurredAt: &at, Items: []DeliveryItem{
+		{ProductID: "salmon", Unit: domain.UnitG, Qty: 500, ShelfLifeHours: 48}}}
+	if _, err := db.ReceiveDelivery(ctx, in, func() time.Time { return at }, time.UTC); err != nil {
 		t.Fatal(err)
 	}
-	in := DeliveryInput{ID: id, Number: "1", CreatedAt: t0, OccurredAt: &at, Items: []DeliveryItem{
-		{ProductID: "salmon", Unit: domain.UnitG, Qty: 500}}}
-	if _, err := db.ReceiveDelivery(ctx, in, func() time.Time { return at }, time.UTC); err != nil {
+	if _, err := db.Pool.Exec(ctx, `UPDATE batches SET expiry_source = 'product_default' WHERE delivery_id = $1`, id); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -35,9 +36,8 @@ func expirySource(t *testing.T, db *DB, id int64) string {
 func TestDeliverySetsExpirySource(t *testing.T) {
 	db, clk := stockDB(t)
 	receive(t, db, clk, "D1", 100, 24) // срок в поставке
-	defaultDelivery(t, db, "D2", t0)
-	if a, b := expirySource(t, db, 1), expirySource(t, db, 2); a != ExpirySourceDelivery || b != ExpirySourceProductDefault {
-		t.Fatalf("sources: %s %s", a, b)
+	if s := expirySource(t, db, 1); s != ExpirySourceDelivery {
+		t.Fatalf("source: %s", s)
 	}
 }
 

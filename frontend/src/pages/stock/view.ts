@@ -61,3 +61,13 @@ export function changedKeys(prev: ReadonlyMap<string, string> | null, next: Read
   for (const [k, v] of next) if (prev.get(k) !== v) out.add(k);
   return out;
 }
+
+/**
+ * Подпись состояния у строки продукта: состояние — худшая партия, а «Годна до» в той же строке — ближайшая живая,
+ * поэтому «Просрочена» рядом со свежей датой читается как противоречие. Свежие и истекающие — как у партии.
+ */
+export function productStateLabel(state: BatchState): string | undefined {
+  if (state === "expired") return "Есть просрочка";
+  if (state === "doomed") return "Часть спишется";
+  return undefined;
+}

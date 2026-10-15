@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Alert, Batch, ProductStock } from "../../api/types";
-import { buildRows, changedKeys, signature } from "./view";
+import { buildRows, changedKeys, productStateLabel, signature } from "./view";
 
 const product = (id: string): ProductStock => ({ id, name: id, unit: "g", available: { qty: 1000, unit: "g" }, batches_count: 2, nearest_expires_at: null });
 const batch = (id: number, product_id: string, hours: number, over: Partial<Batch> = {}): Batch => ({
@@ -52,5 +52,14 @@ describe("changedKeys", () => {
     const prev = signature(buildRows(products, [batch(1, "salmon", 5)], [], open));
     const next = signature(buildRows(products, [batch(1, "salmon", 5, { remaining: { qty: 100, unit: "g" } }), batch(2, "salmon", 9)], [], open));
     expect([...changedKeys(prev, next)].sort()).toEqual(["b:1", "b:2"]);
+  });
+});
+
+describe("productStateLabel", () => {
+  it("у продукта с просроченной партией — «Есть просрочка», а не «Просрочена» рядом со свежей датой", () => {
+    expect(productStateLabel("expired")).toBe("Есть просрочка");
+    expect(productStateLabel("doomed")).toBe("Часть спишется");
+    expect(productStateLabel("ok")).toBeUndefined();
+    expect(productStateLabel("expiring")).toBeUndefined();
   });
 });

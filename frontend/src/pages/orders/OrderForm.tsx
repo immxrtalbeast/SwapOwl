@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { IconMinus, IconPlus, IconX } from "@tabler/icons-react";
 import { api } from "../../api/client";
 import { ApiError } from "../../api/types";
 import type { DishServings, Order } from "../../api/types";
@@ -55,30 +56,49 @@ export function OrderForm({ dishes, onPlaced }: { dishes: DishServings[]; onPlac
   return (
     <Card title="Новый заказ">
       <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-        {lines.map((l, i) => (
-          <div key={i} style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
-            <label style={labelStyle}>
-              Блюдо
-              <select required value={l.dish_id} onChange={(e) => update(i, { dish_id: e.target.value })} style={{ ...controlStyle, minWidth: 220 }}>
-                <option value="">— выберите —</option>
-                {dishes.map((d) => (
-                  <option key={d.id} value={d.id} disabled={(taken.has(d.id) && l.dish_id !== d.id) || (!d.available && l.dish_id !== d.id)}>
-                    {dishOptionLabel(d)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={labelStyle}>
-              Порций
-              <input required type="number" min={1} max={10000} step={1} value={l.portions} onChange={(e) => update(i, { portions: e.target.value })} style={{ ...controlStyle, width: 96 }} />
-            </label>
-            {lines.length > 1 && (
-              <TextButton type="button" onClick={() => edit((ls) => ls.filter((_, j) => j !== i))}>
-                Убрать
-              </TextButton>
-            )}
-          </div>
-        ))}
+        {/* Строки — карточками в сетке (FS-161): новое блюдо встаёт рядом, а не под предыдущим. */}
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))" }}>
+          {lines.map((l, i) => {
+            const n = Number(l.portions);
+            const setPortions = (v: number) => update(i, { portions: String(Math.min(10000, Math.max(1, v))) });
+            return (
+              <div key={i} style={{ display: "grid", gap: 10, padding: 12, border: "1px solid var(--border)", borderRadius: 10, background: "var(--surface-sunken)", position: "relative" }}>
+                <label style={labelStyle}>
+                  <span>Блюдо{lines.length > 1 && <span style={{ color: "var(--text-subtle)" }}> · {i + 1}</span>}</span>
+                  <select required value={l.dish_id} onChange={(e) => update(i, { dish_id: e.target.value })} className="so-select" style={{ ...controlStyle, width: "100%" }}>
+                    <option value="">Выберите блюдо</option>
+                    {dishes.map((d) => (
+                      <option key={d.id} value={d.id} disabled={(taken.has(d.id) && l.dish_id !== d.id) || (!d.available && l.dish_id !== d.id)}>
+                        {dishOptionLabel(d)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
+                  <label style={labelStyle}>
+                    Порций
+                    {/* Без стрелок браузера: − и + рядом, число можно ввести и с клавиатуры. */}
+                    <span style={{ display: "inline-flex", alignItems: "stretch", border: "1px solid var(--border-strong)", borderRadius: "var(--radius-control)", overflow: "hidden", background: "var(--surface)" }}>
+                      <button type="button" aria-label="Меньше на одну порцию" disabled={!(n > 1)} onClick={() => setPortions(n - 1)} style={stepStyle}><IconMinus size={16} aria-hidden="true" /></button>
+                      <input
+                        required inputMode="numeric" pattern="[0-9]*" aria-label="Порций"
+                        value={l.portions}
+                        onChange={(e) => update(i, { portions: e.target.value.replace(/\D/g, "") })}
+                        style={{ width: 56, height: "var(--control-h)", border: 0, borderInline: "1px solid var(--border)", textAlign: "center", font: "var(--type-body-strong)", color: "var(--text)", background: "transparent" }}
+                      />
+                      <button type="button" aria-label="Больше на одну порцию" onClick={() => setPortions((n || 0) + 1)} style={stepStyle}><IconPlus size={16} aria-hidden="true" /></button>
+                    </span>
+                  </label>
+                  {lines.length > 1 && (
+                    <TextButton type="button" leftSection={<IconX size={16} aria-hidden="true" />} onClick={() => edit((ls) => ls.filter((_, j) => j !== i))}>
+                      Убрать
+                    </TextButton>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <SecondaryButton type="button" onClick={() => edit((ls) => [...ls, { dish_id: "", portions: "1" }])}>
             Добавить блюдо
@@ -98,12 +118,15 @@ export function OrderForm({ dishes, onPlaced }: { dishes: DishServings[]; onPlac
           </p>
         )}
       </form>
-      {result && <OrderResult order={result} />}
+      {result && <OrderResult order={result} onCancelled={onPlaced} />}
     </Card>
   );
 }
 
 const labelStyle = { display: "grid", gap: 4, font: "var(--type-label)", color: "var(--text-muted)" } as const;
+const stepStyle = {
+  width: 36, display: "grid", placeItems: "center", border: 0, background: "transparent", color: "var(--brand-ink)", cursor: "pointer",
+} as const;
 const controlStyle = {
   height: "var(--control-h)",
   padding: "0 12px",

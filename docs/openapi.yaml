@@ -117,8 +117,9 @@ paths:
       tags: [stock]
       summary: Принять поставку (operator)
       description: |
-        Идемпотентна по `id`. В позиции не больше одного из `shelf_life_hours` (1…87600) и `expires_on`;
-        без обоих берётся срок по умолчанию у продукта, иначе `400`. `occurred_at` — фактическое время прихода
+        Идемпотентна по `id`. Срок годности обязателен в каждой позиции — ровно одно из `expires_on` («годен до»,
+        годен весь этот день по времени ресторана) и `shelf_life_hours` (1…87600): срок даёт поставщик, срока из
+        карточки продукта для поставки нет; позиция без срока — `400` с полем `items[i].expires_on`. `occurred_at` — фактическое время прихода
         (окно `LATE_EVENTS_HOURS`).
       requestBody:
         required: true
@@ -1408,6 +1409,10 @@ components:
           items:
             type: object
             required: [product_id, quantity]
+            description: Ровно одно из `expires_on` и `shelf_life_hours` обязательно.
+            oneOf:
+              - required: [expires_on]
+              - required: [shelf_life_hours]
             properties:
               product_id: {type: string}
               name: {type: string}
@@ -1502,6 +1507,9 @@ components:
         blocks_dishes: {type: integer}
         urgency: {type: string, enum: [now, soon, planned]}
         explanation: {type: string}
+        shelf_life_hours:
+          type: [integer, 'null']
+          description: Обычный срок поставщика из карточки продукта; «Принять предложенное» передаёт его в поставку явно. null — срок нужно ввести.
     SupplyOrder:
       type: object
       properties:

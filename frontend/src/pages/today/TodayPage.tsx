@@ -39,10 +39,10 @@ function useStopped(): DishServings[] | "loading" | { error: string } {
   return s;
 }
 
-function Block({ title, children, testid }: { title: string; children: ReactNode; testid: string }) {
+function Block({ title, children, testid, glass, area }: { title: string; children: ReactNode; testid: string; glass?: boolean; area: string }) {
   return (
-    <div data-testid={testid} style={{ minWidth: 0 }}>
-      <Card title={title} style={{ height: "100%", boxSizing: "border-box" }}>{children}</Card>
+    <div data-testid={testid} data-kpi={glass ? "" : undefined} style={{ minWidth: 0, gridArea: area }}>
+      <Card title={title} glass={glass}>{children}</Card>
     </div>
   );
 }
@@ -117,15 +117,16 @@ export function TodayPage() {
   return (
     <section>
       <ScreenTitle>Сегодня</ScreenTitle>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16 }}>
-        <Block title="Под риском сегодня, ₽" testid="today-risk">
+      {/* Высоту карточки задаёт содержимое (FS-161): соседи не растягивают друг друга. */}
+      <div className="so-today-grid">
+        <Block title="Под риском сегодня, ₽" testid="today-risk" glass area="risk">
           <Pending what="суммы под риском" state={risk} reload={() => void reloadRisk()}>
             {risk.kind === "ready" && (
               <div className={cls("risk")} style={{ display: "grid", gap: 8 }}>
                 <p data-testid="today-risk-total" style={{ ...bigNum, color: risk.atRisk.totalMinor > 0 ? "var(--urgency-risk-fg)" : "var(--text)" }}>
                   {formatRub(risk.atRisk.totalMinor)}
                 </p>
-                <HandNote arrow="down">это уйдёт в мусор, если не продать</HandNote>
+                <HandNote>это уйдёт в мусор, если не продать</HandNote>
                 <p style={{ margin: 0, font: "var(--type-small)", color: "var(--text-muted)" }}>
                   Оценка по цене из прогноза списаний.
                   {risk.atRisk.unpriced > 0 && ` Партий без цены (не вошли в сумму): ${risk.atRisk.unpriced}.`}
@@ -135,7 +136,7 @@ export function TodayPage() {
           </Pending>
         </Block>
 
-        <Block title="Списано" testid="today-writeoffs">
+        <Block title="Списано" testid="today-writeoffs" glass area="writeoffs">
           <Pending what="списания" state={risk} reload={() => void reloadRisk()}>
             {risk.kind === "ready" && (
               <div style={{ display: "grid", gap: 12 }}>
@@ -152,25 +153,40 @@ export function TodayPage() {
           </Pending>
         </Block>
 
-        <Block title="Продать" testid="today-sell">
+        <Block title="Продать" testid="today-sell" area="sell">
           <Pending what="горячие предложения" state={hot} reload={() => void reloadHot()}>
             {offers.length === 0 ? (
               <EmptyState title="Продвигать нечего" text="Партий под риском нет." />
             ) : (
-              <ul style={list}>
-                {offers.map((o) => {
+              // Каждое блюдо — отдельный блок через линию (FS-161): название и «спасёт ₽» в одной строке,
+              // цель — плашкой с числом, остаток и что с ним делать — таблицей ниже.
+              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {offers.map((o, i) => {
                   const real = realisticTarget(o);
                   const portions = real ? real.real : o.target_today > 0 ? o.target_today : o.target_portions;
                   // Урезанная цель спасает только проданную часть: остаток считает RealisticBlock рядом.
                   const saved = real ? Math.round((offerSaved(o, prices) * real.real) / real.target) : offerSaved(o, prices);
                   return (
-                    <li key={o.dish_id} className={cls(`h${o.dish_id}`)} style={row}>
-                      <a href={hotOffersUrl(o.reasons[0]?.product_id ?? "")} style={{ font: "var(--type-body-strong)", color: "var(--brand-ink)" }}>{o.dish_name}</a>
-                      <span style={{ font: "var(--type-body)" }}>
-                        {real ? "реально " : ""}{portions} {portionsWord(portions)}{o.target_today > 0 ? " сегодня" : ""}
-                      </span>
-                      {real && <RealisticBlock offer={o} prices={prices} />}
-                      {saved > 0 && <span style={{ font: "var(--type-body-strong)", color: "var(--urgency-ok-fg)" }}>спасёт {formatRub(saved)}</span>}
+                    <li
+                      key={o.dish_id}
+                      className={cls(`h${o.dish_id}`)}
+                      style={{ display: "grid", gap: 8, padding: "12px 0", borderTop: i > 0 ? "1px solid var(--border-cell)" : undefined }}
+                    >
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                        <a href={hotOffersUrl(o.reasons[0]?.product_id ?? "")} style={{ font: "var(--type-h3)", fontSize: 16, color: "var(--brand-ink)", textDecoration: "none" }}>{o.dish_name}</a>
+                        {saved > 0 && (
+                          <span className="so-num" style={{ padding: "2px 10px", borderRadius: "var(--radius-pill)", background: "var(--brand-tint)", color: "var(--brand-ink)", font: "600 13px/20px var(--font-body)", whiteSpace: "nowrap" }}>
+                            спасёт {formatRub(saved)}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>продать{o.target_today > 0 || real ? " сегодня" : ""}</span>
+                        <span className="so-num" style={{ font: "700 22px/26px var(--font-display)", color: "var(--primary)" }}>{portions}</span>
+                        <span style={{ font: "var(--type-label)" }}>{portionsWord(portions)}</span>
+                        {real && <span style={{ font: "var(--type-small)", color: "var(--text-subtle)" }}>· обычно {o.usual_portions} в день</span>}
+                      </div>
+                      {real && <RealisticBlock offer={o} prices={prices} compact />}
                     </li>
                   );
                 })}
@@ -179,7 +195,7 @@ export function TodayPage() {
           </Pending>
         </Block>
 
-        <Block title="Заказать" testid="today-order">
+        <Block title="Заказать" testid="today-order" area="order">
           <Pending what="предложение поставок" state={supply} reload={() => void reloadSupply()}>
             {urgent.length === 0 ? (
               <EmptyState title="Срочного нет" text="Заказывать «сейчас» нечего." />
@@ -198,12 +214,11 @@ export function TodayPage() {
           </Pending>
         </Block>
 
-        <Block title="Проверить" testid="today-check">
+        <Block title="Проверить" testid="today-check" area="check">
           <Pending what="партии на проверку" state={receiving} reload={() => void reloadReceiving()}>
-            <h3 style={{ margin: "0 0 8px", font: "var(--type-label)" }}>Срок не подтверждён · {unconfirmed.length}</h3>
-            {unconfirmed.length === 0 ? (
-              <p style={{ margin: "0 0 12px", color: "var(--text-muted)" }}>Все сроки подтверждены.</p>
-            ) : (
+            {/* Срок теперь обязателен в поставке (FS-160); здесь — только партии со сроком из справочника, принятые раньше. */}
+            {unconfirmed.length > 0 && <h3 style={{ margin: "0 0 8px", font: "var(--type-label)" }}>Срок не подтверждён · {unconfirmed.length}</h3>}
+            {unconfirmed.length > 0 && (
               <ul style={{ ...list, marginBottom: 12 }}>
                 {unconfirmed.slice(0, 5).map((b: ReceivingBatch) => (
                   <li key={b.id} className={cls(`r${b.id}`)} style={row}>

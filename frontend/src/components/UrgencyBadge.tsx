@@ -2,7 +2,7 @@ import type { UrgencyDef } from "../lib/urgency";
 import { toneVars } from "../lib/urgency";
 import { URGENCY_ICONS } from "./urgencyIcons";
 
-/** Бейдж срочности: высота 22, радиус 4, --type-caption, иконка 14. Иконка и метка — всегда. */
+/** Бейдж срочности: высота 24, капсула, 12 px полужирный без капса, иконка 14. Иконка и метка — всегда. */
 export function UrgencyBadge({ def, label }: { def: UrgencyDef; label?: string }) {
   const v = toneVars(def.tone);
   const Icon = URGENCY_ICONS[def.icon];
@@ -13,14 +13,12 @@ export function UrgencyBadge({ def, label }: { def: UrgencyDef; label?: string }
         display: "inline-flex",
         alignItems: "center",
         gap: 4,
-        height: 22,
-        padding: "0 8px",
-        borderRadius: 4,
+        height: 24,
+        padding: "0 10px 0 8px",
+        borderRadius: "var(--radius-pill)",
         background: v.bg,
         color: v.fg,
-        font: "var(--type-caption)",
-        textTransform: "uppercase",
-        letterSpacing: ".04em",
+        font: "600 12px/16px var(--font-body)",
         whiteSpace: "nowrap",
       }}
     >

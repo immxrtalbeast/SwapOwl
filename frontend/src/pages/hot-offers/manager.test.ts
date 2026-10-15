@@ -31,7 +31,7 @@ describe("ручная правка горячих предложений", () =
 
   it("для зала: расчёт с короткой причиной, закреплённые и добавленные — от менеджера", () => {
     expect(hallCards(data)).toEqual([
-      { dishId: "steak", dish: "Стейк", why: "лосось нужно продать сегодня", byManager: false },
+      { dishId: "steak", dish: "Стейк", why: "Лосось — продать сегодня", byManager: false },
       { dishId: "pasta", dish: "Паста", why: "шеф советует", byManager: true },
       { dishId: "soup", dish: "Суп", why: "к обеду", byManager: true },
     ]);

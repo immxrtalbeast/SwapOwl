@@ -13,12 +13,16 @@ import (
 type SupplyMeta struct {
 	LeadDays int
 	PackSize domain.Qty
+	// ShelfLifeHours — обычный срок поставщика из карточки (сопоставление с данными поставщика); nil — неизвестен.
+	// В расчёт не входит: строка предложения передаёт его в поставку явно (FS-160).
+	ShelfLifeHours *int
 }
 
 // SupplyData — всё, что нужно ручке предложения поставок: вход чистой функции и справочник.
 type SupplyData struct {
 	Input    domain.SupplyInput
 	Products map[string]ProductRef
+	Meta     map[string]SupplyMeta
 }
 
 // SupplyReader собирает вход domain.SupplySuggestions из снимка и справочника продуктов.
@@ -40,11 +44,11 @@ func (r SupplyReader) SupplyData(ctx context.Context, now time.Time) (SupplyData
 		return SupplyData{}, err
 	}
 	in := BuildSupplyInput(snap, meta, r.CoverDays, r.MinPortions)
-	return SupplyData{Input: in, Products: snap.Products}, nil
+	return SupplyData{Input: in, Products: snap.Products, Meta: meta}, nil
 }
 
 func (d *DB) supplyMeta(ctx context.Context) (map[string]SupplyMeta, error) {
-	rows, err := d.Pool.Query(ctx, `SELECT id, lead_days, pack_size FROM products`)
+	rows, err := d.Pool.Query(ctx, `SELECT id, lead_days, pack_size, shelf_life_hours FROM products`)
 	if err != nil {
 		return nil, fmt.Errorf("store: supply meta: %w", err)
 	}
@@ -54,7 +58,7 @@ func (d *DB) supplyMeta(ctx context.Context) (map[string]SupplyMeta, error) {
 		var id string
 		var m SupplyMeta
 		var pack int64
-		if err := rows.Scan(&id, &m.LeadDays, &pack); err != nil {
+		if err := rows.Scan(&id, &m.LeadDays, &pack, &m.ShelfLifeHours); err != nil {
 			return nil, fmt.Errorf("store: supply meta: %w", err)
 		}
 		m.PackSize = domain.Qty(pack)

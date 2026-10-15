@@ -4,6 +4,7 @@ export interface Qty { qty: number; unit: string }
 export interface Batch {
   id: number; product_id: string; quantity: Qty; remaining: Qty;
   received_at: string; expires_at: string; time_left_seconds: number; status: "ok" | "expiring" | "expired";
+  parent_batch_id?: number | null; opened_at?: string | null;
 }
 export interface Dish {
   id: string; name: string; available: boolean; servings: number;
