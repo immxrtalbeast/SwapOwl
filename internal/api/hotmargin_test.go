@@ -80,7 +80,7 @@ func TestTieBreakByMargin(t *testing.T) {
 	}
 }
 
-// Равный приоритет, но срок разный: порядок по сроку опорной партии (.ai/solution.md 2.7) маржой не перебивается.
+// Равный приоритет, но срок разный: порядок по сроку опорной партии (спецификация 2.7) маржой не перебивается.
 func TestTieBreakKeepsExpiryOrder(t *testing.T) {
 	soon := time.Date(2026, 10, 16, 13, 0, 0, 0, time.UTC)
 	later := soon.Add(2 * time.Hour)

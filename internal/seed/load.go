@@ -27,7 +27,7 @@ func IsEmpty(ctx context.Context, q Querier) (bool, error) {
 
 // Load пишет сид в переданную транзакцию: продукты, блюда, рецепты, стартовые поставки и
 // HistoryDays суток истории до t0. Времена пишутся в таблицы напрямую (единственное
-// исключение из received_at = clock.Now(), .ai/solution.md, 2.8). Справочники идемпотентны (после сброса по 7.1 сидовые products, dishes и
+// исключение из received_at = clock.Now(), спецификация, 2.8). Справочники идемпотентны (после сброса по 7.1 сидовые products, dishes и
 // recipe_items остаются), поставки, партии, заказы и движения ожидаются пустыми.
 func Load(ctx context.Context, tx pgx.Tx, t0 time.Time) error {
 	h, err := buildHistory(t0)

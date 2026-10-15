@@ -32,7 +32,7 @@ type SweepResult struct {
 }
 
 // SweepExpired списывает остаток просроченных партий (expires_at <= now) движением
-// writeoff/expired со временем = expires_at. Протокол блокировок (.ai/solution.md, 2.3):
+// writeoff/expired со временем = expires_at. Протокол блокировок (спецификация, 2.3):
 // сначала блокируются затронутые продукты по отсортированным id, и только потом читаются
 // часы (now) и партии. Повторный проход ничего не меняет.
 func (d *DB) SweepExpired(ctx context.Context, now func() time.Time) ([]ExpiredBatch, error) {
@@ -50,7 +50,7 @@ const expiringCandidateSQL = `remaining > 0 AND expires_at > $4 AND expiring_not
 // Sweep — проход «дворника»: списывает просроченные партии (см. SweepExpired) и, если задан cfg,
 // в той же транзакции под тем же протоколом блокировок ставит expiring_notified_at партиям,
 // перешедшим в «истекает», и возвращает их: сигнал batch.expiring уходит один раз на партию
-// (.ai/solution.md, 2.4). Партия, ставшая просроченной минуя «истекает» (прыжок времени), в
+// (спецификация, 2.4). Партия, ставшая просроченной минуя «истекает» (прыжок времени), в
 // Expiring не попадает — только в Expired. Метка хранится в БД, поэтому рестарт сигнал не повторяет.
 func (d *DB) Sweep(ctx context.Context, now func() time.Time, cfg *domain.ExpiryConfig) (SweepResult, error) {
 	var res SweepResult

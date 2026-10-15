@@ -3,7 +3,7 @@ package domain
 import "time"
 
 // ExpiringThreshold — порог «истекает» для партии: min(max(Share·срок, MinHours), MaxShare·срок),
-// срок = expires_at − received_at (.ai/solution.md, 2.4).
+// срок = expires_at − received_at (спецификация, 2.4).
 func ExpiringThreshold(b Batch, cfg ExpiryConfig) time.Duration {
 	total := float64(b.ExpiresAt.Sub(b.ReceivedAt))
 	hours := cfg.MinHours * float64(time.Hour)
@@ -36,7 +36,7 @@ func ExpiringAt(b Batch, cfg ExpiryConfig) time.Time {
 
 // ExpiresAtEndOfDay — expires_at для «годен до даты D»: начало дня D+1 по времени ресторана.
 // Дата берётся по календарю loc, поэтому длина суток при переходе на летнее время не важна.
-// Зоны с переводом часов в полночь не поддерживаются (.ai/solution.md, 2.4).
+// Зоны с переводом часов в полночь не поддерживаются (спецификация, 2.4).
 func ExpiresAtEndOfDay(year int, month time.Month, day int, loc *time.Location) time.Time {
 	return time.Date(year, month, day+1, 0, 0, 0, 0, loc).UTC()
 }

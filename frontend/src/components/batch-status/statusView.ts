@@ -1,5 +1,5 @@
 // Статус приходит с бэкенда; здесь только отображение. Шкала срочности из дизайн-системы
-// ещё не заполнена (.ai/frontend-prompt.md), поэтому цвета — CSS-переменные с запасными значениями.
+// ещё не заполнена (docs/design/design-system.md), поэтому цвета — CSS-переменные с запасными значениями.
 export type BatchStatusValue = "ok" | "expiring" | "expired";
 
 export interface StatusView {

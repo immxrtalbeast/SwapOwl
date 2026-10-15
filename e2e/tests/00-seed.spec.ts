@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { Stand, hoursBetween, localHM } from "./stand";
 
-// Условия сида из .ai/demo.md («Условия сида»): состояние сразу после сброса.
+// Условия сида из docs/demo-script.md («Условия сида»): состояние сразу после сброса.
 // Все проверки мягкие (expect.soft): один прогон показывает все расхождения сида со сценарием.
 
 let stand: Stand;

@@ -13,7 +13,7 @@ export interface Screen {
   needsHub?: boolean;
 }
 
-// Порядок — по .ai/frontend-prompt.md, «Боковая панель».
+// Порядок — по docs/design/design-system.md, «Боковая панель».
 export const SCREENS: Screen[] = [
   { id: "today", title: "Сегодня" },
   { id: "stock", title: "Склад" },

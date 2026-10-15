@@ -17,7 +17,7 @@ import (
 	"umirhack/internal/config"
 )
 
-// Чистый экземпляр для ресторана (.ai/solution.md, 8.1): конфиг принимается,
+// Чистый экземпляр для ресторана (спецификация, 8.1): конфиг принимается,
 // вход обязателен, поставка с явным unit от operator проходит, /api/demo/* — 404.
 func TestCleanInstance(t *testing.T) {
 	env := map[string]string{

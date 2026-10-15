@@ -8,7 +8,7 @@ import (
 	"umirhack/internal/domain"
 )
 
-// ProductStock — строка GET /api/products (.ai/solution.md, 7.4). Доступно = remaining > 0 AND
+// ProductStock — строка GET /api/products (спецификация, 7.4). Доступно = remaining > 0 AND
 // now < expires_at; Expiring — сумма остатков доступных партий в статусе «истекает».
 type ProductStock struct {
 	ID               string      `json:"id"`

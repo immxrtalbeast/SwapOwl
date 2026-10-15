@@ -12,7 +12,7 @@ import (
 	"umirhack/internal/domain"
 )
 
-// ErrUnitChange — у существующего продукта пришла другая единица (.ai/solution.md, 7.1: unit не меняется).
+// ErrUnitChange — у существующего продукта пришла другая единица (спецификация, 7.1: unit не меняется).
 var ErrUnitChange = errors.New("store: product unit cannot change")
 
 // UnitChangeError несёт продукт и обе единицы; errors.Is(err, ErrUnitChange) истинно.

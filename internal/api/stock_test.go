@@ -20,7 +20,7 @@ func (p productsStock) ListProductStock(context.Context, time.Time) ([]store.Pro
 	return p.items, nil
 }
 
-// GET /api/products отдаёт все поля контракта (.ai/solution.md, 7.4), nearest_expires_at — null без партий.
+// GET /api/products отдаёт все поля контракта (спецификация, 7.4), nearest_expires_at — null без партий.
 func TestListProductsContractFields(t *testing.T) {
 	near := standTime.Add(5 * time.Hour)
 	st := productsStock{&fakeStock{}, []store.ProductStock{

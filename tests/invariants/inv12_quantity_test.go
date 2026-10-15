@@ -13,7 +13,7 @@ import (
 
 var qtyFormat = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
 
-// Инвариант 12. Арифметика количеств: таблица из .ai/solution.md, раздел 7.3.
+// Инвариант 12. Арифметика количеств: таблица из спецификация, раздел 7.3.
 func TestInv12ParseTable(t *testing.T) {
 	const bad = -1
 	for _, tc := range []struct {

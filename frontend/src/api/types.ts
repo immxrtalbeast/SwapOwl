@@ -1,5 +1,5 @@
 import type { Role } from "../auth/roles";
-// Типы ответов совпадают с контрактом бэкенда (.ai/solution.md, 7.4).
+// Типы ответов совпадают с контрактом бэкенда (спецификация, 7.4).
 export type Unit = "g" | "ml" | "pcs";
 
 export interface Qty {

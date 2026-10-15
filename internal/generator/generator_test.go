@@ -96,7 +96,7 @@ func TestOrdersOnlyInWorkingHours(t *testing.T) {
 	}
 }
 
-// parseQty — разбор по таблице 7.3 .ai/solution.md; пакет units вне границ этой таски.
+// parseQty — разбор по таблице 7.3 спецификация; пакет units вне границ этой таски.
 var qtyRe = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?$`)
 
 func parseQty(q, unit string, base seed.Product) (int64, bool) {

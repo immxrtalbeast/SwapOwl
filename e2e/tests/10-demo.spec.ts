@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Stand, uuid, localHM, hoursBetween, type Batch } from "./stand";
 
-// Демо-сценарий .ai/demo.md, шаги 0–9: действие → что на экране → проверка.
+// Демо-сценарий docs/demo-script.md, шаги 0–9: действие → что на экране → проверка.
 // Шаги зависят друг от друга, поэтому идут последовательно на одной странице; страница не
 // перезагружается — изменения должны приходить по SSE (счётчик loads это проверяет).
 
@@ -13,8 +13,8 @@ let loads = 0;
 const ids = { salmon: "", cream: "", pasta: "", steak: "", soup: "" };
 let l1: Batch, l2: Batch, c1: Batch;
 
-// Прыжок шага 6 — +8 ч (.ai/demo.md): «дворник» списывает Л-1 только после expires_at + окно
-// опоздания (LATE_EVENTS_HOURS, .ai/solution.md 2.4а). Если окно стенда шире 2 ч, прыжок
+// Прыжок шага 6 — +8 ч (docs/demo-script.md): «дворник» списывает Л-1 только после expires_at + окно
+// опоздания (LATE_EVENTS_HOURS, спецификация 2.4а). Если окно стенда шире 2 ч, прыжок
 // удлиняется, иначе списания не будет.
 const lateHours = Number(process.env.E2E_LATE_EVENTS_HOURS ?? "2");
 

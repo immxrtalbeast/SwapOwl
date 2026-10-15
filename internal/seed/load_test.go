@@ -145,7 +145,7 @@ func TestLoadStopListNotEverything(t *testing.T) {
 	}
 }
 
-// Сброс по .ai/solution.md, 7.1 оставляет сидовые справочники; повторная загрузка должна пройти.
+// Сброс по спецификация, 7.1 оставляет сидовые справочники; повторная загрузка должна пройти.
 func TestLoadAfterReset(t *testing.T) {
 	db := freshDB(t)
 	loadSeed(t, db)
