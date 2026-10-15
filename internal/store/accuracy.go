@@ -40,7 +40,9 @@ func (s Snapshotter) ForecastAccuracy(ctx context.Context, now time.Time, days i
 // спроса (domain.DishDemand на начало каждых прошедших суток) с фактом. Ничего не хранится и не пишется.
 func (d *DB) ForecastAccuracy(ctx context.Context, now time.Time, days int, p SnapshotParams) (AccuracyReport, error) {
 	now = now.UTC()
-	fail := func(err error) (AccuracyReport, error) { return AccuracyReport{}, fmt.Errorf("store: forecast accuracy: %w", err) }
+	fail := func(err error) (AccuracyReport, error) {
+		return AccuracyReport{}, fmt.Errorf("store: forecast accuracy: %w", err)
+	}
 	tx, err := d.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return fail(err)

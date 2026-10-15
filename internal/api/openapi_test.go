@@ -16,12 +16,12 @@ import (
 // Пустые реализации: хендлеры не вызываются, нужна лишь непустая зависимость,
 // чтобы роутер зарегистрировал все маршруты.
 type (
-	allStock        struct{ Stock }
-	allCatalog      struct{ Catalog }
-	allOrders       struct{ Orders }
-	allCorrections  struct{ Corrections }
-	allMenu         struct{ MenuSource }
-	allHot          struct {
+	allStock       struct{ Stock }
+	allCatalog     struct{ Catalog }
+	allOrders      struct{ Orders }
+	allCorrections struct{ Corrections }
+	allMenu        struct{ MenuSource }
+	allHot         struct {
 		HotOffersSource
 		AccuracySource
 	}
