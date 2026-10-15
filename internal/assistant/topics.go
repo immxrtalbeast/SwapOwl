@@ -64,27 +64,33 @@ type topic struct {
 	hint     []string
 	topic    string
 	question string
-	extra    func(q []string) bool // дополнительное условие вместо/сверх корней
-	answer   func(q []string, f Facts) string
+	extra    func(q []string) bool // дополнительное условие помимо корней
+	// extraYields — extra не срабатывает, если в вопросе названы продукт или блюдо («сколько дней до списания
+	// лосося» — про остаток лосося, а не про деньги).
+	extraYields bool
+	answer      func(q []string, f Facts) string
 }
 
-func (t topic) matches(q []string, _ Facts) bool {
-	if t.extra != nil && t.extra(q) {
+// matches — тема узнана по корням; опечатки прощаются только старым темам: у новых ложное срабатывание
+// отнимало бы вопросы у продуктов и старых тем. named — в вопросе названы продукт или блюдо.
+func (t topic) matches(q []string, named bool) bool {
+	if hasStem(q, !t.early, t.stems...) {
 		return true
 	}
-	return hasPrefix(q, t.stems...)
+	return t.extra != nil && !(t.extraYields && named) && t.extra(q)
 }
 
 var topics = []topic{
 	{intent: IntentMoney, early: true, topic: "деньги", question: "Сколько денег под риском?",
-		stems: []string{"денег", "деньг", "рубл", "потер", "убыт", "риск", "выброс", "потрат"},
+		stems: []string{"денег", "деньг", "рубл", "потерял", "потеря", "потери", "убыт", "риск", "выброс", "потрат"},
 		hint:  []string{"ден", "руб", "пот", "рис", "убы"},
 		extra: func(q []string) bool {
 			return hasPrefix(q, "списа") && (hasPrefix(q, "сколько") || periodWord(q))
 		},
-		answer: moneyText},
+		extraYields: true,
+		answer:      moneyText},
 	{intent: IntentLadder, early: true, topic: "лестницу спасения", question: "Что делать с лососем?",
-		stems: []string{"лестниц", "спаст", "спаса", "спасе", "истекающ"},
+		stems: []string{"лестниц", "спасти", "спасен", "спасаем", "истекающ"},
 		hint:  []string{"лес", "спа", "дел"},
 		// «что делать с лососем» — про лестницу, а «что делать завтра» — про план.
 		extra: func(q []string) bool {
@@ -92,11 +98,11 @@ var topics = []topic{
 		},
 		answer: ladderText},
 	{intent: IntentMargin, early: true, topic: "маржу", question: "На чём заработаем?",
-		stems:  []string{"марж", "выгодн", "заработ", "прибыл", "доход", "наварим"},
+		stems:  []string{"марж", "выгодн", "заработ", "прибыль", "доход", "наварим"},
 		hint:   []string{"мар", "выг", "зар"},
 		answer: marginText},
 	{intent: IntentAccuracy, early: true, topic: "точность прогноза", question: "Насколько точен прогноз?",
-		stems:  []string{"точен", "точн", "верит", "доверя", "ошибк", "wape", "угадыв", "надежн", "прогноз"},
+		stems:  []string{"точен", "точност", "точны", "точная", "точное", "верит", "доверя", "ошибк", "wape", "угадыв", "надежн"},
 		hint:   []string{"точ", "вер", "прог"},
 		answer: accuracyText},
 	{intent: IntentStop, stems: []string{"стоп", "недоступ"}, hint: []string{"сто", "недос"}, topic: "стоп-лист", question: "Что в стопе?",
@@ -270,7 +276,7 @@ func top3(items []MoneyItem) []string {
 
 func moneyText(q []string, f Facts) string {
 	wantRisk := hasPrefix(q, "риск")
-	wantLoss := hasPrefix(q, "списа", "потер", "убыт", "выброс", "потрат")
+	wantLoss := hasPrefix(q, "списа", "потерял", "потеря", "потери", "убыт", "выброс", "потрат")
 	if !wantRisk && !wantLoss {
 		wantRisk, wantLoss = true, true
 	}

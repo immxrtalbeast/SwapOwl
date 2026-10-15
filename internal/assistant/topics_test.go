@@ -62,12 +62,19 @@ func TestTopicTable(t *testing.T) {
 		{"насколько точен прогноз", IntentAccuracy, []string{"18,2 %", "31,0 %", "обучение помогает", "за 7 дней"}},
 		{"можно ли верить прогнозу", IntentAccuracy, []string{"WAPE"}},
 		{"насколько точный прогноз за 3 дня", IntentAccuracy, []string{"Пока мало истории"}},
-		{"можно ли вериить прогнозу", IntentAccuracy, []string{"WAPE"}},
 		{"что истекает", IntentExpiring, []string{"Лосось"}},
 		{"что истикает", IntentExpiring, []string{"Лосось"}},
 		{"что нужно закзать", IntentOrder, []string{"Сливки"}},
 		{"что запланированно на неделю", IntentPlan, []string{"Что заказать:"}},
 		{"что предложть гостям", IntentHot, nil},
+		// Не должны уходить в новые темы.
+		{"спасибо", IntentUnknown, nil},
+		{"лосось точно есть?", IntentProduct, []string{"Лосось: на складе"}},
+		{"сколько лосося потребуется", IntentProduct, nil},
+		{"поставка прибыла?", IntentOrder, nil},
+		{"сколько дней до списания лосося", IntentProduct, nil},
+		{"сделать заказ", IntentOrder, nil},
+		{"что по прогнозу на завтра", IntentPlan, nil},
 	}
 	for _, c := range cases {
 		r := Answer(c.q, topicFacts())

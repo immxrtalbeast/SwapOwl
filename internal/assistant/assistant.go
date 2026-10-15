@@ -124,10 +124,16 @@ func words(s string) []string {
 	return strings.FieldsFunc(s, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 }
 
+// hasPrefix — какое-то слово вопроса начинается с одного из корней (точно, без опечаток).
 func hasPrefix(ws []string, prefixes ...string) bool {
+	return hasStem(ws, false, prefixes...)
+}
+
+// hasStem — то же, но при fuzzy допускает одну опечатку (stemMatch).
+func hasStem(ws []string, fuzzy bool, prefixes ...string) bool {
 	for _, w := range ws {
 		for _, p := range prefixes {
-			if stemMatch(w, p) {
+			if strings.HasPrefix(w, p) || (fuzzy && stemMatch(w, p)) {
 				return true
 			}
 		}
@@ -174,16 +180,17 @@ func Answer(question string, f Facts) Reply {
 	if len(q) == 0 || hasPrefix(q, "умеешь", "помощь", "помоги", "команды", "примеры", "привет", "help") {
 		return Reply{IntentHelp, helpText()}
 	}
+	r, named := entity(q, f)
 	for _, t := range topics {
-		if t.early && t.matches(q, f) {
+		if t.early && t.matches(q, named) {
 			return Reply{t.intent, t.answer(q, f)}
 		}
 	}
-	if r, ok := entity(q, f); ok {
+	if named {
 		return r
 	}
 	for _, t := range topics {
-		if !t.early && t.matches(q, f) {
+		if !t.early && t.matches(q, named) {
 			return Reply{t.intent, t.answer(q, f)}
 		}
 	}
