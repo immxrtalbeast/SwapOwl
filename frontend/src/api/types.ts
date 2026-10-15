@@ -389,3 +389,6 @@ export interface WhatIfResponse {
   scenarios: WhatIfResult[];
   generated_at: string;
 }
+
+/** Нет связи с сервером (fetch не дошёл): заказ можно поставить в очередь и повторить с тем же id. */
+export class NetworkError extends Error {}
