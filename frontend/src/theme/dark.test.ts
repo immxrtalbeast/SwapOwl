@@ -49,3 +49,13 @@ describe("тёмная тема", () => {
     expect(contrast(d("--focus-ring"), d("--paper"))).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe("печать в тёмной теме", () => {
+  it("внутри @media print возвращает светлые токены текста и фона", async () => {
+    const { PRINT_LIGHT_CSS } = await import("./dark");
+    expect(PRINT_LIGHT_CSS.startsWith("@media print")).toBe(true);
+    expect(PRINT_LIGHT_CSS).toContain(`--text: ${TOKENS["--text"]};`);
+    expect(PRINT_LIGHT_CSS).toContain(`--surface: ${TOKENS["--surface"]};`);
+    expect(PRINT_LIGHT_CSS).not.toContain(DARK_TOKENS["--text"]!);
+  });
+});

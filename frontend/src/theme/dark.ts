@@ -76,3 +76,11 @@ export const cssVariablesResolver = () => ({
   light: TOKENS,
   dark: { ...TOKENS, ...DARK_TOKENS, ...MANTINE_DARK },
 });
+
+/**
+ * Печать всегда светлая: отчёт смены и этикетки уходят на белую бумагу, а светлый текст тёмной темы на ней не читается
+ * (браузеры не печатают фон). Те же токены, что у светлой темы, но только внутри @media print.
+ */
+export const PRINT_LIGHT_CSS = `@media print { html:root[data-mantine-color-scheme="dark"] { color-scheme: light; ${Object.keys(DARK_TOKENS)
+  .map((k) => `${k}: ${TOKENS[k]};`)
+  .join(" ")} } }`;
