@@ -34,7 +34,7 @@ export function RealisticBlock({ offer, prices, compact }: { offer: HotOffer; pr
                   style={{ display: "flex", justifyContent: "space-between", gap: 12, font: "var(--type-small)", padding: "6px 10px", borderTop: i > 0 ? "1px solid var(--border-cell)" : undefined }}
                 >
                   <span>{ACTION_LABELS[a]}</span>
-                  {saved !== null && <span className="so-num" style={{ whiteSpace: "nowrap", fontWeight: 600 }}>спасёт ≈ {formatRub(saved)}</span>}
+                  {saved !== null && <span className="so-num" style={{ whiteSpace: "nowrap", fontWeight: 600 }}>не спишем ≈ {formatRub(saved)}</span>}
                 </span>
               );
             })}

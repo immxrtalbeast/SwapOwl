@@ -37,7 +37,7 @@ export function realisticTarget(o: HotOffer): Realistic | null {
   return { target, real, leftoverPortions, leftover };
 }
 
-/** «спасёт ≈ X ₽» копейками по действию; null — нет цены продукта. */
+/** «не спишем ≈ X ₽» копейками по действию; null — нет цены продукта. */
 export function actionSavedMinor(r: Realistic, action: LeftoverAction, prices: UnitPrices): number | null {
   if (!r.leftover) return null;
   const c = qtyCostMinor(r.leftover.productId, r.leftover.qty, prices);

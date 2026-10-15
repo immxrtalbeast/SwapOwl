@@ -72,7 +72,7 @@ func TestTransferSuggested(t *testing.T) {
 	if tr.SavesMinor == nil || *tr.SavesMinor != 220000 {
 		t.Errorf("saves: %v", tr.SavesMinor)
 	}
-	if want := "Лосось 1,1 кг: Арбат → Тверская, спасёт ≈ 2 200 ₽"; tr.Text != want {
+	if want := "Лосось 1,1 кг: Арбат → Тверская, не спишем ≈ 2 200 ₽"; tr.Text != want {
 		t.Errorf("text %q, want %q", tr.Text, want)
 	}
 	if !strings.Contains(tr.Invoice, "Откуда: Арбат") || !strings.Contains(tr.Invoice, "Куда: Тверская") {
@@ -110,7 +110,7 @@ func TestTransferNotSuggested(t *testing.T) {
 func TestTransferWithoutPriceAndAPI(t *testing.T) {
 	col := twoPoints(t, suggB)
 	got := col.Transfers()
-	if len(got) != 1 || got[0].SavesMinor != nil || strings.Contains(got[0].Text, "спасёт") {
+	if len(got) != 1 || got[0].SavesMinor != nil || strings.Contains(got[0].Text, "не спишем") {
 		t.Fatalf("no price: %+v", got)
 	}
 	h := NewServer(col, "hub-token")

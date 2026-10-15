@@ -3,10 +3,10 @@ import type { HubTransfer } from "../../api/network";
 import { Card, EmptyState, SecondaryButton } from "../../components";
 import { formatQty, formatRub } from "../../lib/format";
 
-/** Текст подсказки: «Лосось 1,2 кг: точка A → точка B, спасёт ≈ N ₽». */
+/** Текст подсказки: «Лосось 1,2 кг: точка A → точка B, не спишем ≈ N ₽». */
 export function transferText(t: HubTransfer): string {
   const base = `${t.product_name} ${formatQty(t.qty)}: ${t.from_name} → ${t.to_name}`;
-  return t.saves_minor == null ? base : `${base}, спасёт ≈ ${formatRub(t.saves_minor)}`;
+  return t.saves_minor == null ? base : `${base}, не спишем ≈ ${formatRub(t.saves_minor)}`;
 }
 
 function CopyInvoice({ invoice }: { invoice: string }) {

@@ -4,7 +4,7 @@ import { unitPricesFromForecast } from "../../api/today";
 import type { UnitPrices } from "../../api/today";
 import { useLive } from "../../app/useLive";
 
-/** Цены из прогноза списаний; пока не пришли или маршрута нет — пусто (суммы «спасёт» не показываются). */
+/** Цены из прогноза списаний; пока не пришли или маршрута нет — пусто (суммы «не спишем» не показываются). */
 export function useUnitPrices(): UnitPrices {
   const [prices, setPrices] = useState<UnitPrices>({});
   const load = useCallback(async () => {

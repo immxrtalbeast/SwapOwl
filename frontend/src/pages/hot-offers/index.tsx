@@ -65,7 +65,7 @@ function OfferCard({ offer, note, prices, onChanged }: { offer: HotOffer; note?:
       <ul style={{ margin: 0, padding: 0, listStyle: "none", font: "var(--type-small)", display: "grid", gap: 4 }}>
         {offer.reasons.map((r) => (
           <li key={`${r.product_id}-${r.batch_id}`}>
-            <strong>{r.product_name}</strong>: спасёт {formatQty(r.at_risk)} — <span style={{ font: "var(--type-id)" }}>партия №{r.batch_id}</span>, {formatUntil(r.expires_at)}
+            <strong>{r.product_name}</strong>: не спишем {formatQty(r.at_risk)} — <span style={{ font: "var(--type-id)" }}>партия №{r.batch_id}</span>, {formatUntil(r.expires_at)}
           </li>
         ))}
       </ul>
