@@ -618,6 +618,34 @@ paths:
                    valid_until: '2026-10-09T16:00:00+03:00', note: Скидка на блюдо дня}
         '404': {$ref: '#/components/responses/NotFound'}
         '429': {description: Слишком много запросов}
+  /api/public/menu:
+    get:
+      tags: [menu]
+      summary: Меню гостя со стоп-листом (без входа, `PUBLIC_RESCUE=true`)
+      description: >
+        Для гостя: название блюда и статус — `available` (можно заказать), `few` (осталось до трёх порций),
+        `stopped` (нет в наличии). Рецептов, причин стопа, остатков и партий в ответе нет. Включается тем же
+        `PUBLIC_RESCUE`, что и витрина «Спаси продукты»; при выключенной настройке — 404. Лимит 60 запросов в минуту
+        с адреса, `Cache-Control: public, max-age=15`.
+      responses:
+        '200':
+          description: Все блюда меню со статусом
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [dish_id, dish_name, status]
+                  properties:
+                    dish_id: {type: string}
+                    dish_name: {type: string}
+                    status: {type: string, enum: [available, few, stopped]}
+              example:
+                - {dish_id: steak, dish_name: Стейк из лосося, status: available}
+                - {dish_id: soup, dish_name: Крем-суп, status: stopped}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '429': {description: Слишком много запросов}
   /api/hot-offers/overrides:
     get:
       tags: [menu]

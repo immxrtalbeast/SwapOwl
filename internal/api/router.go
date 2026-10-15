@@ -141,6 +141,7 @@ func (rt *Router) Routes() {
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()
 	rt.rescueRoutes()
+	rt.publicMenuRoutes()
 	rt.forecastRoutes()
 	rt.whatIfRoutes()
 	rt.supplyRoutes()

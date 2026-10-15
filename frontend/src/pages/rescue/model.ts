@@ -49,3 +49,57 @@ export async function loadRescue(fetcher: typeof fetch = fetch): Promise<RescueS
   if (!Array.isArray(body)) return { kind: "error" };
   return { kind: "ready", items: (body as RescueItem[]).filter((i) => i && typeof i.dish_name === "string") };
 }
+
+// --- Публичное меню гостя (#/guest-menu): GET /api/public/menu ---
+
+export const GUEST_MENU_HASH = "#/guest-menu";
+
+export function isGuestMenuHash(hash: string): boolean {
+  return hash.split("?")[0] === GUEST_MENU_HASH;
+}
+
+export type MenuStatus = "available" | "few" | "stopped";
+
+export interface GuestDish {
+  dish_id: string;
+  dish_name: string;
+  status: MenuStatus;
+}
+
+export const MENU_STATUS_LABEL: Record<MenuStatus, string> = {
+  available: "Можно заказать",
+  few: "Осталось мало",
+  stopped: "Нет в наличии",
+};
+
+/** Доступные сверху, «нет в наличии» — внизу; внутри группы порядок меню сохраняется. */
+export function sortGuestMenu(items: readonly GuestDish[]): GuestDish[] {
+  const rank: Record<MenuStatus, number> = { available: 0, few: 0, stopped: 1 };
+  return items.map((d, i) => ({ d, i })).sort((a, b) => rank[a.d.status] - rank[b.d.status] || a.i - b.i).map((x) => x.d);
+}
+
+export type GuestMenuState =
+  | { kind: "loading" }
+  | { kind: "ready"; items: GuestDish[] }
+  | { kind: "off" }
+  | { kind: "busy" }
+  | { kind: "error" };
+
+export async function loadGuestMenu(fetcher: typeof fetch = fetch): Promise<GuestMenuState> {
+  let res: Response;
+  try {
+    res = await fetcher("/api/public/menu", { headers: { Accept: "application/json" } });
+  } catch {
+    return { kind: "error" };
+  }
+  if (res.status === 404) return { kind: "off" };
+  if (res.status === 429) return { kind: "busy" };
+  if (!res.ok) return { kind: "error" };
+  const body: unknown = await res.json().catch(() => null);
+  if (!Array.isArray(body)) return { kind: "error" };
+  const known = new Set<string>(["available", "few", "stopped"]);
+  return {
+    kind: "ready",
+    items: (body as GuestDish[]).filter((d) => d && typeof d.dish_name === "string" && known.has(d.status)),
+  };
+}
