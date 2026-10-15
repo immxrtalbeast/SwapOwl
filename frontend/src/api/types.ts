@@ -355,3 +355,37 @@ export interface SupplyOrderInput {
   id: string;
   items: { product_id: string; qty: number }[];
 }
+
+// POST /api/what-if (FS-167): пересчёт прогноза списаний по сценариям на копии снимка склада, ничего не пишет.
+export type WhatIfType = "discount" | "order_less" | "demand";
+export interface WhatIfScenarioInput {
+  type: WhatIfType;
+  dish_id?: string;
+  product_id?: string;
+  percent?: number;
+  factor?: number;
+}
+export interface WhatIfRequest {
+  horizon_days: number;
+  scenarios: WhatIfScenarioInput[];
+}
+export interface WhatIfProduct {
+  product_id: string;
+  product_name: string;
+  base_minor: number;
+  scenario_minor: number;
+  delta_minor: number;
+}
+export interface WhatIfResult extends WhatIfScenarioInput {
+  total_minor: number;
+  delta_minor: number;
+  delta_pct: number;
+  products: WhatIfProduct[];
+  assumptions: string[];
+}
+export interface WhatIfResponse {
+  horizon_days: number;
+  base: { total_minor: number; products: WhatIfProduct[] };
+  scenarios: WhatIfResult[];
+  generated_at: string;
+}

@@ -1,6 +1,6 @@
 import type { Role } from "../auth/roles";
 import { ApiError } from "./types";
-import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, InvoiceDraft, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, ForecastReport, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput } from "./types";
+import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, InvoiceDraft, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, ForecastReport, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput, WhatIfRequest, WhatIfResponse } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
@@ -90,6 +90,7 @@ export const api = {
   createApiKey: (k: { name: string; role: ApiKeyInfo["role"] }) =>
     request<CreatedApiKey>("/api/api-keys", { method: "POST", body: JSON.stringify(k) }),
   deleteApiKey: (id: number) => request<null>(`/api/api-keys/${id}`, { method: "DELETE" }),
+  whatIf: (body: WhatIfRequest) => request<WhatIfResponse>("/api/what-if", { method: "POST", body: JSON.stringify(body) }),
   dishes: () => request<Dish[]>("/api/dishes"),
   menu: () => request<DishServings[]>("/api/dishes"),
   // Страница истории: total — число заказов с этим статусом целиком (X-Total-Count), before — id последнего заказа страницы.

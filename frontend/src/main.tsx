@@ -25,6 +25,7 @@ import { AppShell } from "./app/AppShell";
 import { AuthGate } from "./auth/AuthGate";
 import { AuthProvider } from "./auth/AuthContext";
 import { LandingGate } from "./landing/LandingGate";
+import { RescueGate } from "./pages/rescue";
 import { theme } from "./theme/theme";
 import { cssVariablesResolver } from "./theme/tokens";
 
@@ -32,6 +33,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} forceColorScheme="light">
       <Notifications position="bottom-right" />
+      <RescueGate>
       <LandingGate>
         <AuthProvider>
           <AuthGate>
@@ -39,6 +41,7 @@ createRoot(document.getElementById("root")!).render(
           </AuthGate>
         </AuthProvider>
       </LandingGate>
+      </RescueGate>
     </MantineProvider>
   </StrictMode>,
 );
