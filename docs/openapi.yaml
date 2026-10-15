@@ -588,7 +588,7 @@ paths:
                 type: object
                 required: [intent, answer]
                 properties:
-                  intent: {type: string, enum: [help, stop, expiring, order, hot, product, dish, unknown]}
+                  intent: {type: string, enum: [help, stop, expiring, order, hot, plan, product, dish, unknown]}
                   answer: {type: string}
               example:
                 intent: stop

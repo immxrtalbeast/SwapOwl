@@ -87,13 +87,14 @@ const (
 	IntentExpiring = "expiring"
 	IntentOrder    = "order"
 	IntentHot      = "hot"
+	IntentPlan     = "plan"
 	IntentProduct  = "product"
 	IntentDish     = "dish"
 	IntentUnknown  = "unknown"
 )
 
 // Examples — подсказки для пустого ввода и непонятого вопроса.
-var Examples = []string{"Что в стопе?", "Что истекает?", "Сколько осталось лосося?", "Что заказать?", "Что предложить гостям?"}
+var Examples = []string{"Что в стопе?", "Что истекает?", "Сколько осталось лосося?", "Что заказать?", "Что предложить гостям?", "Что запланировано?"}
 
 const maxLines = 8
 
@@ -172,8 +173,33 @@ func Answer(question string, f Facts) Reply {
 		return Reply{IntentOrder, orderText(f)}
 	case hasPrefix(q, "горяч", "предлож", "продв", "продава", "рекоменд", "акци", "скидк", "продат"):
 		return Reply{IntentHot, hotText(f)}
+	// «запл» ловит и «запланировано», и «заплонировано» с опечаткой.
+	case hasPrefix(q, "будущ", "запл", "планир", "план", "завтр", "недел", "ближайш", "грядущ"):
+		return Reply{IntentPlan, planText(f)}
 	}
-	return Reply{IntentUnknown, "Не поняла вопрос. Спросите, например:\n" + bullets(Examples)}
+	return Reply{IntentUnknown, unknownText(q)}
+}
+
+// nearest — подсказка для непонятого вопроса: тема, к которой вопрос ближе всего (по первым буквам слов).
+var nearest = []struct {
+	stems    []string
+	topic    string
+	question string
+}{
+	{[]string{"сто", "недос"}, "стоп-лист", "Что в стопе?"},
+	{[]string{"ист", "сро", "спи", "пор", "прос", "гни"}, "сроки годности", "Что истекает?"},
+	{[]string{"зак", "пос", "куп", "нехв", "довез"}, "заказ", "Что заказать?"},
+	{[]string{"гор", "пред", "акц", "ски", "реко"}, "предложения гостям", "Что предложить гостям?"},
+	{[]string{"пла", "буд", "зав", "неде", "бли"}, "план на ближайшие дни", "Что запланировано?"},
+}
+
+func unknownText(q []string) string {
+	for _, n := range nearest {
+		if hasPrefix(q, n.stems...) {
+			return fmt.Sprintf("Не поняла вопрос. Похоже, вы про %s — спросите «%s».\nИли выберите:\n%s", n.topic, n.question, bullets(Examples))
+		}
+	}
+	return "Не поняла вопрос. Спросите, например:\n" + bullets(Examples)
 }
 
 func helpText() string {
@@ -280,8 +306,8 @@ func missingOrStop(d Dish) string {
 	return missingText(d.Missing)
 }
 
-func expiringText(f Facts) string {
-	var soon, lost []string
+// expiringLines — истекающие партии по возрастанию срока и уже списанные за сутки.
+func expiringLines(f Facts) (soon, lost []string) {
 	alerts := append([]Alert(nil), f.Alerts...)
 	sort.SliceStable(alerts, func(i, j int) bool { return alerts[i].ExpiresAt.Before(alerts[j].ExpiresAt) })
 	for _, a := range alerts {
@@ -295,6 +321,11 @@ func expiringText(f Facts) string {
 			soon = append(soon, line)
 		}
 	}
+	return soon, lost
+}
+
+func expiringText(f Facts) string {
+	soon, lost := expiringLines(f)
 	if len(soon) == 0 && len(lost) == 0 {
 		return "Истекающих партий нет."
 	}
@@ -308,7 +339,8 @@ func expiringText(f Facts) string {
 	return strings.Join(out, "\n")
 }
 
-func orderText(f Facts) string {
+// orderLines — что заказать: сначала срочное.
+func orderLines(f Facts) []string {
 	rank := map[string]int{"now": 0, "soon": 1, "planned": 2}
 	rows := append([]Supply(nil), f.Supply...)
 	sort.SliceStable(rows, func(i, j int) bool { return rank[rows[i].Urgency] < rank[rows[j].Urgency] })
@@ -326,10 +358,33 @@ func orderText(f Facts) string {
 		}
 		lines = append(lines, line)
 	}
+	return lines
+}
+
+func orderText(f Facts) string {
+	lines := orderLines(f)
 	if len(lines) == 0 {
 		return "Заказывать прямо сейчас нечего."
 	}
 	return "Что заказать:\n" + bullets(limit(lines))
+}
+
+// planText — ближайшие дни: что истекает (в том числе завтра) и что заказать. Данных о поставках «в пути» у склада
+// нет, поэтому о них помощник не говорит.
+func planText(f Facts) string {
+	soon, _ := expiringLines(f)
+	lines := orderLines(f)
+	var out []string
+	if len(soon) > 0 {
+		out = append(out, "Скоро истекает:\n"+bullets(limit(soon)))
+	}
+	if len(lines) > 0 {
+		out = append(out, "Что заказать:\n"+bullets(limit(lines)))
+	}
+	if len(out) == 0 {
+		return "На ближайшие дни всё спокойно: ничего не истекает, заказывать нечего."
+	}
+	return strings.Join(out, "\n")
 }
 
 func hotText(f Facts) string {
