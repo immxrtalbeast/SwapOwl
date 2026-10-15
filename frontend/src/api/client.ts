@@ -93,6 +93,7 @@ export const api = {
     request<CreatedApiKey>("/api/api-keys", { method: "POST", body: JSON.stringify(k) }),
   deleteApiKey: (id: number) => request<null>(`/api/api-keys/${id}`, { method: "DELETE" }),
   whatIf: (body: WhatIfRequest) => request<WhatIfResponse>("/api/what-if", { method: "POST", body: JSON.stringify(body) }),
+  ask: (question: string) => request<{ intent: string; answer: string }>("/api/assistant/ask", { method: "POST", body: JSON.stringify({ question }) }),
   dishes: () => request<Dish[]>("/api/dishes"),
   menu: () => request<DishServings[]>("/api/dishes"),
   // Страница истории: total — число заказов с этим статусом целиком (X-Total-Count), before — id последнего заказа страницы.

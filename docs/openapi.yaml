@@ -559,6 +559,42 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '503':
           description: Расчёт не уложился в 5 с (`overloaded`, в `message` — что уменьшить)
+  /api/assistant/ask:
+    post:
+      tags: [menu]
+      summary: Помощник — ответ на вопрос своими словами (viewer, ничего не пишет)
+      description: |
+        Разбор по правилам, без модели: тот же вопрос на тех же данных даёт тот же ответ. Понимает «что в стопе»,
+        «что истекает», «что заказать», «что предложить гостям», «сколько осталось лосося», «можно ли приготовить пасту».
+        Данные — те же, что на экранах склада, стоп-листа, поставок и горячих предложений. Непонятый вопрос —
+        `intent: unknown` и подсказки. Вопрос 1…300 символов, иначе `400 validation_error` с `details.field: question`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              additionalProperties: false
+              properties:
+                question: {type: string, minLength: 1, maxLength: 300}
+            example: {question: Что в стопе?}
+      responses:
+        '200':
+          description: Намерение и готовый текст ответа
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [intent, answer]
+                properties:
+                  intent: {type: string, enum: [help, stop, expiring, order, hot, product, dish, unknown]}
+                  answer: {type: string}
+              example:
+                intent: stop
+                answer: "В стоп-листе 1:\n• Крем-суп — не хватает «сливки» (нужно 50 мл, есть 0 мл)"
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /api/hot-offers:
     get:
       tags: [menu]

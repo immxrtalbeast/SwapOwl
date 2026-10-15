@@ -110,6 +110,8 @@ func (b *Bot) onText(ctx context.Context, text string) {
 			if msg, _ := b.N.SendSuggestions(ctx); msg != "" {
 				b.reply(ctx, msg)
 			}
+		case "/ask":
+			b.reply(ctx, b.N.AskText(ctx, strings.TrimSpace(strings.TrimPrefix(text, strings.Fields(text)[0]))))
 		case "/settings":
 			b.showSettings(ctx)
 		case "/quiet":
@@ -145,6 +147,7 @@ func (b *Bot) onText(ctx context.Context, text string) {
 		return
 	}
 	if id == 0 {
+		b.reply(ctx, b.N.AskText(ctx, text)) // свободный вопрос — «Помощник»
 		return
 	}
 	on, hours, ok := ParseExpiryInput(text, b.N.loc(ctx))
@@ -158,7 +161,7 @@ func (b *Bot) onText(ctx context.Context, text string) {
 	b.reply(ctx, b.N.ApplyExpiry(ctx, id, on, hours))
 }
 
-const commandList = "/hot, /stop, /expiring, /summary, /week, /order, /settings"
+const commandList = "/ask, /hot, /stop, /expiring, /summary, /week, /order, /settings"
 
 func (b *Bot) start(ctx context.Context, withApp bool) {
 	text := "Команды: " + commandList
