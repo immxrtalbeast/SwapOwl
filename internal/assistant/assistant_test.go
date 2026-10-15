@@ -56,6 +56,13 @@ func TestIntents(t *testing.T) {
 		{"что ты умеешь", IntentHelp, []string{"Что в стопе?"}},
 		{"", IntentHelp, nil},
 		{"расскажи анекдот", IntentUnknown, []string{"Не поняла вопрос", "Что в стопе?"}},
+		{"что на будущее запланировано", IntentPlan, []string{"Скоро истекает:", "Лосось — 600 г", "Что заказать:", "Сливки — 600 мл, срочно"}},
+		{"что на будеще заплонировано", IntentPlan, []string{"Скоро истекает:", "Что заказать:"}},
+		{"что нас ждёт в ближайшие дни", IntentPlan, []string{"Что заказать:"}},
+		{"что запланировано?", IntentPlan, []string{"Скоро истекает:"}},
+		{"что делать на завтра", IntentPlan, []string{"Что заказать:"}},
+		{"что истекает завтра", IntentExpiring, []string{"Лосось"}},
+		{"что заказать на неделю", IntentOrder, []string{"Сливки"}},
 	}
 	for _, c := range cases {
 		r := Answer(c.q, facts())
@@ -92,6 +99,39 @@ func TestEmptyStates(t *testing.T) {
 		if r := Answer(q, f); !strings.Contains(r.Answer, want) {
 			t.Errorf("%q: %s", q, r.Answer)
 		}
+	}
+}
+
+func TestPlanEmpty(t *testing.T) {
+	f := Facts{Now: time.Date(2026, 10, 15, 11, 0, 0, 0, msk), Loc: msk}
+	if r := Answer("что запланировано", f); r.Intent != IntentPlan || !strings.Contains(r.Answer, "всё спокойно") {
+		t.Fatalf("%v", r)
+	}
+}
+
+// Каждая подсказка из Examples — вопрос, который помощник понимает.
+func TestExamplesAreUnderstood(t *testing.T) {
+	for _, q := range Examples {
+		if r := Answer(q, facts()); r.Intent == IntentUnknown || r.Intent == IntentHelp {
+			t.Errorf("%q не распознан: %s", q, r.Intent)
+		}
+	}
+}
+
+func TestUnknownSuggestsNearestTopic(t *testing.T) {
+	for q, want := range map[string]string{
+		"куплю":   "про заказ",
+		"порча":   "про сроки годности",
+		"спишите": "про сроки годности",
+		"буду":    "про план на ближайшие дни",
+	} {
+		r := Answer(q, facts())
+		if r.Intent != IntentUnknown || !strings.Contains(r.Answer, want) || !strings.Contains(r.Answer, "Что в стопе?") {
+			t.Errorf("%q: %s\n%s", q, r.Intent, r.Answer)
+		}
+	}
+	if r := Answer("расскажи анекдот", facts()); r.Intent != IntentUnknown || !strings.Contains(r.Answer, "Что в стопе?") {
+		t.Fatalf("%v", r)
 	}
 }
 
