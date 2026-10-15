@@ -178,6 +178,10 @@ curl -X POST http://localhost:8080/api/orders \
 
 ## Горячие предложения
 
+### Ручная пауза блюда: `GET /api/dish-holds` (viewer), `PUT` и `DELETE /api/dish-holds/{dish_id}` (operator)
+
+Менеджер или повар снимает блюдо с продажи вне зависимости от остатков: `PUT` с `{"note":"сломана плита"}` (причина необязательна, до 200 символов), `DELETE` снимает паузу. Заказ с блюдом на паузе отклоняется целиком: `409 dish_on_hold`, в `details.dishes` — `dish_id` и `note`; склад не меняется, отказ сохраняется и виден в «Отклонённых». Автоматический стоп-лист (`GET /api/stop-list`, `available` в `GET /api/dishes`) по-прежнему считается только по остаткам и пауз не знает. Продажа из кассы (`source=pos`) паузой не отклоняется. `POST /api/demo/reset` снимает все паузы; установка и снятие пишутся в журнал (`hold_set`, `hold_delete`).
+
 ### `GET /api/hot-offers?algo=` (viewer)
 
 `algo` — `a` или `b`, по умолчанию из `HOTOFFERS_ALGO`.

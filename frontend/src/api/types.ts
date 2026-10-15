@@ -150,6 +150,8 @@ export interface Order {
   source?: "api" | "pos";
   writeoffs: OrderWriteoff[];
   missing: OrderMissing[];
+  /** Блюда заказа на паузе у менеджера (409 dish_on_hold): заказ отклонён целиком. */
+  held?: { dish_id: string; note: string }[];
   shortfalls?: OrderShortfall[];
   /** Время отмены принятого заказа; есть только в списке заказов. */
   cancelled_at?: string;
@@ -172,6 +174,14 @@ export interface StopReason {
   required: Qty;
   available: Qty;
   missing: Qty;
+}
+
+// Ручная пауза блюда (GET /api/dish-holds): менеджер снял блюдо с продажи, заказ на него отклоняется (409 dish_on_hold).
+export interface DishHold {
+  dish_id: string;
+  note: string;
+  set_at: string;
+  set_by: string;
 }
 
 // Строка GET /api/dishes: порции считает бэкенд.

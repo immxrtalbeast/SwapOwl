@@ -31,6 +31,9 @@ describe("история заказов", () => {
     expect(rejectionReason([m("Сливки", 200, "ml")])).toBe("Не хватает: сливки 200 мл на заказ");
     expect(rejectionReason([m("Сливки", 200, "ml"), m("Лосось", 1200, "g")])).toBe("Не хватает: сливки 200 мл, лосось 1,2 кг на заказ");
     expect(rejectionReason([])).toBe("Не хватает продуктов на заказ");
+    // Пауза блюда важнее нехватки: заказ отклонён целиком по решению менеджера.
+    expect(rejectionReason([], [{ note: "сломана плита" }])).toBe("Блюдо на паузе у менеджера: сломана плита");
+    expect(rejectionReason([], [{ note: "" }])).toBe("Блюдо на паузе у менеджера");
   });
   it("недостача кассы", () => {
     expect(shortfallText(undefined)).toBeNull();

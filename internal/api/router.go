@@ -90,6 +90,8 @@ type Deps struct {
 	MetricsToken string
 	// HotOverrides — ручная правка горячих предложений менеджером (FS-159). nil — маршруты правки не регистрируются.
 	HotOverrides HotOverrides
+	// DishHolds — ручная пауза блюда. nil — маршруты паузы не регистрируются, заказ проходит как раньше.
+	DishHolds DishHolds
 	// PublicRescue — PUBLIC_RESCUE: публичная витрина GET /api/public/rescue (FS-168). false — маршрута нет (404).
 	PublicRescue bool
 	// Invoices — распознавание фото накладной (FS-158). nil — маршрут не регистрируется.
@@ -138,6 +140,7 @@ func (rt *Router) Routes() {
 	rt.correctionRoutes()
 	rt.openedRoutes()
 	rt.stopListRoutes()
+	rt.dishHoldRoutes()
 	rt.monitorRoutes()
 	rt.hotOffersRoutes()
 	rt.rescueRoutes()

@@ -682,6 +682,55 @@ paths:
                 - {dish_id: soup, dish_name: Крем-суп, status: stopped}
         '404': {$ref: '#/components/responses/NotFound'}
         '429': {description: Слишком много запросов}
+  /api/dish-holds:
+    get:
+      tags: [menu]
+      summary: Блюда на ручной паузе (viewer)
+      responses:
+        '200':
+          description: Новые первыми
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/DishHold'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/dish-holds/{dish_id}:
+    parameters:
+      - {name: dish_id, in: path, required: true, schema: {type: string}}
+    put:
+      tags: [menu]
+      summary: Поставить блюдо на ручную паузу (operator)
+      description: |
+        Менеджер или повар снимает блюдо с продажи, пока не снимет паузу. Заказ с таким блюдом отклоняется целиком
+        (`409 dish_on_hold`, склад не меняется, отказ сохраняется). Автоматический стоп-лист по остаткам не меняется:
+        `GET /api/stop-list` и `available` в `GET /api/dishes` считаются только по остаткам. Продажа из кассы
+        (`source=pos`) паузой не отклоняется. Повтор идемпотентен, заметка заменяется. Открытые экраны получают
+        `stoplist.changed` (`added` и `removed` пусты, `reason=manual_hold`). `POST /api/demo/reset` снимает все паузы.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                note: {type: string, maxLength: 200, description: "Причина, например «сломана плита»"}
+      responses:
+        '200':
+          description: Пауза записана
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DishHold'}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: "`unknown_dish` — блюда нет в справочнике", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    delete:
+      tags: [menu]
+      summary: Снять паузу (operator)
+      responses:
+        '204': {description: Пауза снята; повтор тоже 204}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /api/hot-offers/overrides:
     get:
       tags: [menu]
@@ -769,8 +818,9 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '409':
           description: |
-            `insufficient_stock` (в `details` — `order_id`, `status=rejected`, `at`, `missing`) или `order_conflict`
-            (тот же id, другое тело).
+            `insufficient_stock` (в `details` — `order_id`, `status=rejected`, `at`, `missing`), `dish_on_hold`
+            (блюдо на ручной паузе: в `details` — `order_id`, `status=rejected`, `at`, `dishes` с `dish_id` и `note`;
+            остатки не меняются) или `order_conflict` (тот же id, другое тело).
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Error'}
@@ -1524,7 +1574,7 @@ components:
               description: |
                 400: validation_error, unknown_product, unknown_dish; 401: unauthorized; 403: forbidden;
                 404: not_found, unknown_batch, unknown_order; 405: method_not_allowed;
-                409: delivery_conflict, order_conflict, insufficient_stock, unit_conflict, correction_conflict,
+                409: delivery_conflict, order_conflict, insufficient_stock, dish_on_hold, unit_conflict, correction_conflict,
                 insufficient_batch, order_not_cancellable, already_cancelled; 429: too_many_attempts;
                 500: internal; 503: overloaded.
             message: {type: string}
@@ -1798,6 +1848,13 @@ components:
           type: string
           format: date-time
           description: Время отмены принятого заказа (`POST /api/orders/{id}/cancel`); только в `GET /api/orders`, у неотменённых поля нет.
+    DishHold:
+      type: object
+      properties:
+        dish_id: {type: string}
+        note: {type: string}
+        set_at: {type: string, format: date-time}
+        set_by: {type: string, description: "Логин, если вход включён"}
     HotOverride:
       type: object
       properties:
