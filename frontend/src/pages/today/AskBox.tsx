@@ -5,7 +5,7 @@ import { api } from "../../api/client";
 import { PrimaryButton } from "../../components";
 
 /** Подсказки-вопросы: те же, что понимает бот (/ask). */
-export const ASK_EXAMPLES = ["Что в стопе?", "Что истекает?", "Что заказать?", "Что предложить гостям?", "Сколько осталось лосося?", "Что запланировано?"] as const;
+export const ASK_EXAMPLES = ["Что в стопе?", "Что истекает?", "Что заказать?", "Что предложить гостям?", "Сколько осталось лосося?", "Что запланировано?", "Сколько денег под риском?", "Что делать с лососем?", "На чём заработаем?", "Насколько точен прогноз?"] as const;
 
 type State = { kind: "idle" } | { kind: "busy" } | { kind: "answer"; q: string; text: string } | { kind: "error"; message: string };
 

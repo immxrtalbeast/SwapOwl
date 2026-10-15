@@ -111,7 +111,41 @@ func (rt *Router) assistantFacts(ctx context.Context) (assistant.Facts, error) {
 			return f, err
 		}
 		f.Hot = hot
+		snap, err := rt.deps.HotOffers.Snapshot(ctx, now)
+		if err != nil {
+			return f, err
+		}
+		fc := store.ForecastWriteoffs(snap, 168) // как «Под угрозой» на экране «Сегодня»
+		f.Risk = &assistant.Risk{TotalMinor: fc.TotalMinor}
+		for _, p := range fc.Products {
+			f.Risk.Items = append(f.Risk.Items, assistant.MoneyItem{ProductName: p.Name, CostMinor: p.TotalMinor})
+		}
+		if src, ok := rt.deps.HotOffers.(AccuracySource); ok {
+			f.Accuracy = func(days int) (assistant.Accuracy, bool) {
+				rep, err := src.ForecastAccuracy(ctx, now, days)
+				if err != nil {
+					return assistant.Accuracy{}, false
+				}
+				return assistant.Accuracy{DaysUsed: rep.DaysUsed, EnoughData: rep.EnoughData,
+					WAPEPct: rep.WAPEPct, BaselinePct: rep.BaselineWAPEPct}, true
+			}
+		}
 	}
+	if rt.deps.Analytics != nil {
+		f.Writeoffs = func(from, to time.Time) (assistant.Money, bool) {
+			rep, err := rt.deps.Analytics.WriteoffsReport(ctx, from, to, loc)
+			if err != nil {
+				return assistant.Money{}, false
+			}
+			m := assistant.Money{TotalMinor: rep.TotalMinor}
+			for _, r := range rep.ByProduct {
+				m.Items = append(m.Items, assistant.MoneyItem{ProductName: r.ProductName, CostMinor: r.CostMinor})
+			}
+			return m, true
+		}
+	}
+	// Лестница спасения (GET /api/rescue-ladder) и маржа (margin_minor в /api/hot-offers) в этой ветке main ещё не
+	// выпущены (#187, #188): Ladder и Margin остаются nil, помощник отвечает «данные недоступны».
 	return f, nil
 }
 

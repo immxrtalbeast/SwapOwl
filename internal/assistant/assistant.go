@@ -73,6 +73,13 @@ type Facts struct {
 	Dishes   []Dish
 	Supply   []Supply
 	Hot      []Hot
+
+	// Источники новых тем. nil — источник не подключён (маршрут выключен): помощник честно говорит, что данных нет.
+	Risk      *Risk                                  // деньги под риском на ближайшие 7 дней
+	Writeoffs func(from, to time.Time) (Money, bool) // списано за [from, to)
+	Ladder    *Ladder                                // лестница спасения по партиям
+	Margin    *Margin                                // маржа блюд из горячих предложений
+	Accuracy  func(days int) (Accuracy, bool)        // точность прогноза спроса за days суток
 }
 
 // Reply — ответ: распознанное намерение и текст.
@@ -91,11 +98,16 @@ const (
 	IntentPlan     = "plan"
 	IntentProduct  = "product"
 	IntentDish     = "dish"
+	IntentMoney    = "money"
+	IntentLadder   = "ladder"
+	IntentMargin   = "margin"
+	IntentAccuracy = "accuracy"
 	IntentUnknown  = "unknown"
 )
 
 // Examples — подсказки для пустого ввода и непонятого вопроса.
-var Examples = []string{"Что в стопе?", "Что истекает?", "Сколько осталось лосося?", "Что заказать?", "Что предложить гостям?", "Что запланировано?"}
+var Examples = []string{"Что в стопе?", "Что истекает?", "Сколько осталось лосося?", "Что заказать?", "Что предложить гостям?", "Что запланировано?",
+	"Сколько денег под риском?", "Что делать с лососем?", "На чём заработаем?", "Насколько точен прогноз?"}
 
 const maxLines = 8
 
@@ -112,10 +124,16 @@ func words(s string) []string {
 	return strings.FieldsFunc(s, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 }
 
+// hasPrefix — какое-то слово вопроса начинается с одного из корней (точно, без опечаток).
 func hasPrefix(ws []string, prefixes ...string) bool {
+	return hasStem(ws, false, prefixes...)
+}
+
+// hasStem — то же, но при fuzzy допускает одну опечатку (stemMatch).
+func hasStem(ws []string, fuzzy bool, prefixes ...string) bool {
 	for _, w := range ws {
 		for _, p := range prefixes {
-			if strings.HasPrefix(w, p) {
+			if strings.HasPrefix(w, p) || (fuzzy && stemMatch(w, p)) {
 				return true
 			}
 		}
@@ -162,42 +180,27 @@ func Answer(question string, f Facts) Reply {
 	if len(q) == 0 || hasPrefix(q, "умеешь", "помощь", "помоги", "команды", "примеры", "привет", "help") {
 		return Reply{IntentHelp, helpText()}
 	}
-	if r, ok := entity(q, f); ok {
+	r, named := entity(q, f)
+	for _, t := range topics {
+		if t.early && t.matches(q, named) {
+			return Reply{t.intent, t.answer(q, f)}
+		}
+	}
+	if named {
 		return r
 	}
-	switch {
-	case hasPrefix(q, "стоп", "недоступ"):
-		return Reply{IntentStop, stopText(f)}
-	case hasPrefix(q, "истек", "истеч", "срок", "испорт", "портит", "портят", "просроч", "списа", "свеж"):
-		return Reply{IntentExpiring, expiringText(f)}
-	case hasPrefix(q, "заказ", "закуп", "докуп", "поставк", "привез", "купить"):
-		return Reply{IntentOrder, orderText(f)}
-	case hasPrefix(q, "горяч", "предлож", "продв", "продава", "рекоменд", "акци", "скидк", "продат"):
-		return Reply{IntentHot, hotText(f)}
-	// «запл» ловит и «запланировано», и «заплонировано» с опечаткой.
-	case hasPrefix(q, "будущ", "запл", "планир", "план", "завтр", "недел", "ближайш", "грядущ"):
-		return Reply{IntentPlan, planText(f)}
+	for _, t := range topics {
+		if !t.early && t.matches(q, named) {
+			return Reply{t.intent, t.answer(q, f)}
+		}
 	}
 	return Reply{IntentUnknown, unknownText(q)}
 }
 
-// nearest — подсказка для непонятого вопроса: тема, к которой вопрос ближе всего (по первым буквам слов).
-var nearest = []struct {
-	stems    []string
-	topic    string
-	question string
-}{
-	{[]string{"сто", "недос"}, "стоп-лист", "Что в стопе?"},
-	{[]string{"ист", "сро", "спи", "пор", "прос", "гни"}, "сроки годности", "Что истекает?"},
-	{[]string{"зак", "пос", "куп", "нехв", "довез"}, "заказ", "Что заказать?"},
-	{[]string{"гор", "пред", "акц", "ски", "реко"}, "предложения гостям", "Что предложить гостям?"},
-	{[]string{"пла", "буд", "зав", "неде", "бли"}, "план на ближайшие дни", "Что запланировано?"},
-}
-
 func unknownText(q []string) string {
-	for _, n := range nearest {
-		if hasPrefix(q, n.stems...) {
-			return fmt.Sprintf("Не поняла вопрос. Похоже, вы про %s — спросите «%s».\nИли выберите:\n%s", n.topic, n.question, bullets(Examples))
+	for _, t := range topics {
+		if hasPrefix(q, t.hint...) {
+			return fmt.Sprintf("Не поняла вопрос. Похоже, вы про %s — спросите «%s».\nИли выберите:\n%s", t.topic, t.question, bullets(Examples))
 		}
 	}
 	return "Не поняла вопрос. Спросите, например:\n" + bullets(Examples)
