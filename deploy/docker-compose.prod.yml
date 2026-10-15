@@ -142,7 +142,7 @@ services:
     environment:
       API_URL: http://api:8080
       API_KEY: ${NOTIFIER_API_KEY:-}
-      TELEGRAM_BOT_TOKEN: ${MINIAPP_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     mem_limit: ${SIDECAR_MEM:-64m}
     restart: unless-stopped
