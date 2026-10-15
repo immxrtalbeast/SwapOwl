@@ -10,6 +10,9 @@ import (
 func TestHotOverridesSetReplaceDelete(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Pool.Exec(ctx, `INSERT INTO dishes (id, name) VALUES ('soup','Суп'),('steak','Стейк')`); err != nil {
 		t.Fatal(err)
 	}
