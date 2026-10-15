@@ -21,7 +21,10 @@ type (
 	allOrders       struct{ Orders }
 	allCorrections  struct{ Corrections }
 	allMenu         struct{ MenuSource }
-	allHot          struct{ HotOffersSource }
+	allHot          struct {
+		HotOffersSource
+		AccuracySource
+	}
 	allSupply       struct{ SupplySource }
 	allSupplyOrd    struct{ SupplyOrders }
 	allOutbox       struct{ Outbox }
