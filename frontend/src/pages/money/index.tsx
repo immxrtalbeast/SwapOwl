@@ -31,7 +31,7 @@ function Section({ title, report, withReason, note }: { title: string; report: M
       <p data-testid={`total-${withReason ? "writeoffs" : "shortfalls"}`} style={{ margin: "0 0 8px", font: "var(--type-kpi)", color: "var(--text)" }}>
         {formatRub(report.total_minor)}
       </p>
-      {note && <div style={{ marginBottom: 16 }}><HandNote arrow="down">{note}</HandNote></div>}
+      {note && <div style={{ marginBottom: 16 }}><HandNote>{note}</HandNote></div>}
       {report.by_product.length === 0 ? (
         <p style={{ margin: 0, color: "var(--text-muted)" }}>За период ничего нет.</p>
       ) : (

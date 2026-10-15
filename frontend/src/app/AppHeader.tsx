@@ -48,20 +48,21 @@ export function AppHeader() {
   return (
     <header
       data-testid="app-header"
+      className="so-header"
       style={{
         position: "sticky", top: 0, zIndex: 10, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12, whiteSpace: "nowrap",
-        minHeight: "var(--header-h)", padding: "8px var(--gutter)", background: "var(--surface)", boxShadow: "var(--shadow-top)",
+        minHeight: "var(--header-h)", padding: "8px var(--gutter)",
       }}
     >
       <span aria-label="Время стенда" style={{ display: "inline-flex", gap: 8, alignItems: "baseline" }}>
         <span style={{ font: "var(--type-clock)" }}>{t ? t.time : "--:--:--"}</span>
-        <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>{t?.day}</span>
+        <span className="so-header-day" style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>{t?.day}</span>
       </span>
       {info && (
-        <Pill title={info.simulated ? "Время стенда симулированное, не реальное" : undefined}>{modeLabel(info)}</Pill>
+        <span className="so-header-optional"><Pill title={info.simulated ? "Время стенда симулированное, не реальное" : undefined}>{modeLabel(info)}</Pill></span>
       )}
       <span style={{ flex: 1 }} />
-      <RiskCounter />
+      <span className="so-header-optional"><RiskCounter /></span>
       {alerts && (
         // Контракт e2e (10-demo.spec.ts): одна ссылка data-testid="alerts-counter" с aria-label «Предупреждения: N».
         <a

@@ -26,7 +26,17 @@ export function formatStockout(iso: string | null, nowMs: number, usableQty?: nu
   if (!iso) return "расхода нет";
   const ms = new Date(iso).getTime() - nowMs;
   if (ms <= 0) return "уже закончился";
+  // Одна шкала без «сут.»: до суток — часы, дальше — целые дни словом («через 2 дня»), точное время — строкой ниже.
   const hours = ms / 3_600_000;
-  if (hours < 48) return `через ${Math.max(1, Math.round(hours))} ч`;
-  return `через ${Math.round(hours / 24)} сут.`;
+  if (hours < 24) return `через ${Math.max(1, Math.round(hours))} ч`;
+  const days = Math.round(hours / 24);
+  return `через ${days} ${daysWord(days)}`;
+}
+
+/** 1 день, 2 дня, 5 дней. */
+export function daysWord(n: number): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return "день";
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "дня";
+  return "дней";
 }

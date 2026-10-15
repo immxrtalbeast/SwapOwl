@@ -156,6 +156,9 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			di.ShelfLifeHours = *it.ShelfLifeHours
+		case !hasHours && !hasDate:
+			validationError(w, field("expires_on"), "срок годности обязателен в каждой позиции поставки: expires_on (годен до) или shelf_life_hours — позиция без срока не принимается")
+			return
 		case hasDate:
 			if _, err := time.Parse("2006-01-02", it.ExpiresOn); err != nil {
 				validationError(w, field("expires_on"), "expires_on — дата в формате YYYY-MM-DD")
@@ -221,8 +224,8 @@ func (rt *Router) postDelivery(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrNoShelfLife):
 		var nsl *store.NoShelfLifeError
 		errors.As(err, &nsl)
-		validationError(w, fmt.Sprintf("items[%d].shelf_life_hours", nsl.Index),
-			fmt.Sprintf("product %q has no default shelf life: pass shelf_life_hours or expires_on", nsl.ProductID))
+		validationError(w, fmt.Sprintf("items[%d].expires_on", nsl.Index),
+			fmt.Sprintf("срок годности обязателен: у позиции %q нет expires_on или shelf_life_hours", nsl.ProductID))
 		return
 	case errors.Is(err, store.ErrUnitMismatch):
 		validationError(w, "items", "unit does not match the product's base unit")

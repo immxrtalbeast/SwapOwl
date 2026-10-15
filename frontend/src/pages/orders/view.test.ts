@@ -54,8 +54,8 @@ describe("заказ и стоп-лист", () => {
     { id: "burger", name: "Бургер", available: false, servings: 0, missing: [{ product_id: "bun", product_name: "Булочка", missing: { qty: 1, unit: "pcs" } }] },
   ] as never[];
   it("подпись: доступное — порции, из стоп-листа — чего нет", () => {
-    expect(dishOptionLabel(dishes[0])).toBe("Стейк — можно 4");
-    expect(dishOptionLabel(dishes[1])).toBe("Бургер — стоп-лист (нет: булочка)");
+    expect(dishOptionLabel(dishes[0])).toBe("Стейк · хватит на 4 порц.");
+    expect(dishOptionLabel(dishes[1])).toBe("Бургер · стоп-лист (нет: булочка)");
   });
   it("блюдо, ушедшее в стоп после выбора, нужно убрать", () => {
     expect(stoppedLines([{ dish_id: "steak" }, { dish_id: "burger" }], dishes)).toEqual(["Бургер"]);

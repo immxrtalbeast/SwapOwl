@@ -29,7 +29,9 @@ function AcceptCell({ row, pending, onSent }: { row: SupplySuggestion; pending: 
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<AcceptOutcome | null>(null);
   const [hours, setHours] = useState("");
-  const needHours = outcome?.kind === "need-shelf-life";
+  // Без срока поставщика в строке срок вводит оператор сразу: поставка без срока не принимается (FS-160).
+  const needHours = outcome?.kind === "need-shelf-life" || row.shelf_life_hours === null;
+  const AcceptButton = row.urgency === "now" ? PrimaryButton : SecondaryButton;
 
   async function accept() {
     const h = needHours && hours.trim() !== "" ? Number(hours) : undefined;
@@ -55,9 +57,10 @@ function AcceptCell({ row, pending, onSent }: { row: SupplySuggestion; pending: 
           <input type="number" min={1} max={87600} step={1} required value={hours} onChange={(e) => setHours(e.target.value)} style={{ width: 80, height: 30, border: "1px solid var(--border-strong)", borderRadius: 6, padding: "0 8px" }} />
         </label>
       )}
-      <PrimaryButton size="compact-md" onClick={() => void accept()} disabled={busy || (needHours && hours.trim() === "")} loading={busy}>
+      {/* Залитая кнопка — только у «Заказать сейчас»: восемь одинаковых зелёных кнопок забивали таблицу (FS-161). */}
+      <AcceptButton size="compact-md" onClick={() => void accept()} disabled={busy || (needHours && hours.trim() === "")} loading={busy}>
         Принять предложенное
-      </PrimaryButton>
+      </AcceptButton>
       {outcome && <div role={outcome.kind === "error" || needHours ? "alert" : "status"} style={{ font: "var(--type-small)", marginTop: 4 }}>{outcome.message}</div>}
     </div>
   );
@@ -155,9 +158,11 @@ export function SupplyPage() {
     {
       key: "select",
       header: "Выбор",
+      align: "center",
       cell: (r) => (
         <input
           type="checkbox"
+          className="so-check"
           aria-label={`Выбрать ${r.product_name} для заказа`}
           checked={selected.has(offerKey(r))}
           onChange={(e) =>
@@ -176,7 +181,7 @@ export function SupplyPage() {
       header: "Продукт",
       cell: (r) => (
         <>
-          <span style={{ font: "var(--type-body-strong)" }}>{r.product_name}</span>
+          <span style={{ font: "var(--type-body-strong)", whiteSpace: "nowrap" }}>{r.product_name}</span>
           {r.blocks_dishes > 0 && <div style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>Блокирует блюд: {r.blocks_dishes}</div>}
         </>
       ),
@@ -186,7 +191,12 @@ export function SupplyPage() {
     {
       key: "stockout",
       header: "Закончится",
-      cell: (r) => <span style={r.usable_stock.qty <= 0 ? { color: "var(--urgency-risk-fg, #a3330a)" } : undefined} title={r.stockout_at ? fmt.exact(r.stockout_at) : undefined}>{formatStockout(r.stockout_at, nowMs, r.usable_stock.qty)}</span>,
+      cell: (r) => (
+        <span style={{ display: "grid", whiteSpace: "nowrap", ...(r.usable_stock.qty <= 0 ? { color: "var(--urgency-risk-fg, #a3330a)" } : {}) }} title={r.stockout_at ? fmt.exact(r.stockout_at) : undefined}>
+          {formatStockout(r.stockout_at, nowMs, r.usable_stock.qty)}
+          {r.stockout_at && r.usable_stock.qty > 0 && <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>{fmt.dateTime(r.stockout_at)}</span>}
+        </span>
+      ),
     },
     { key: "urgency", header: "Срочность", cell: (r) => <UrgencyBadge def={SUPPLY_STATES[r.urgency]} /> },
     { key: "explanation", header: "Объяснение", cell: (r) => <span style={{ font: "var(--type-small)" }}>{explainSupply(r.explanation, r.quantity.unit)}</span> },

@@ -173,7 +173,17 @@ export function PhotoInvoice({ products, onReceived }: { products: readonly Prod
                           {short && <Badge color="orange" variant="light" size="sm">недовоз</Badge>}
                         </td>
                         <td style={{ ...cell, whiteSpace: "nowrap" }}>
-                          {r.line.expires_on ? `до ${r.line.expires_on.split("-").reverse().join(".")}` : r.line.shelf_life_hours ? shelfLabel(r.line.shelf_life_hours) : <span title="Срок возьмётся из карточки продукта и попросит подтверждения в «Приёмке»">из карточки</span>}
+                          {r.line.expires_on ? `до ${r.line.expires_on.split("-").reverse().join(".")}` : r.line.shelf_life_hours ? shelfLabel(r.line.shelf_life_hours) : (
+                            <TextInput
+                              type="date"
+                              aria-label={`Годен до: ${r.line.raw_name}`}
+                              title="В накладной срока нет — перепишите «годен до» с упаковки"
+                              value={r.expires}
+                              disabled={r.decision === "reject"}
+                              onChange={(e) => update(r.key, { expires: e.currentTarget.value })}
+                              style={{ width: 150 }}
+                            />
+                          )}
                         </td>
                         <td style={cell}>
                           <SegmentedControl

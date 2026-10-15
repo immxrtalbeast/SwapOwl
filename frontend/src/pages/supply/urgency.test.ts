@@ -13,7 +13,10 @@ describe("supply urgency", () => {
   it("форматирует время до обнуления", () => {
     expect(formatStockout(null, now)).toBe("расхода нет");
     expect(formatStockout("2026-10-10T15:00:00Z", now)).toBe("через 5 ч");
-    expect(formatStockout("2026-10-13T10:00:00Z", now)).toBe("через 3 сут.");
+    expect(formatStockout("2026-10-13T10:00:00Z", now)).toBe("через 3 дня");
+    expect(formatStockout("2026-10-11T09:00:00Z", now)).toBe("через 23 ч");
+    expect(formatStockout("2026-10-11T12:00:00Z", now)).toBe("через 1 день");
+    expect(formatStockout("2026-10-15T10:00:00Z", now)).toBe("через 5 дней");
     expect(formatStockout("2026-10-10T09:00:00Z", now)).toBe("уже закончился");
   });
   it("нулевой пригодный запас — «закончилось», а не время", () => {

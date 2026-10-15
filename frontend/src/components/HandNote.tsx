@@ -10,17 +10,17 @@ const PATHS: Record<Direction, string> = {
 };
 
 /**
- * Рукописная пометка Neucha + SVG-стрелка (штрих 4 px, round, от руки).
- * Одна-две на экран, только там, где объясняет число или действие; в таблицах, формах и ошибках не ставим.
- * При prefers-reduced-motion штрих не анимируется (global.css).
+ * Пояснение к числу или действию: спокойная подпись --type-hand цвета --brand-ink.
+ * Рукописный шрифт и стрелка убраны в FS-161 (спорили с остальной типографикой); стрелку можно вернуть
+ * явным arrow — тогда она тонкая и короткая. Одна-две на экран; в таблицах, формах и ошибках не ставим.
  */
-export function HandNote({ children, arrow = "down" }: { children: ReactNode; arrow?: Direction | null }) {
+export function HandNote({ children, arrow = null }: { children: ReactNode; arrow?: Direction | null }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "flex-end", gap: 4, font: "var(--type-hand)", color: "var(--brand)" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, font: "var(--type-hand)", color: "var(--brand-ink)" }}>
       <span>{children}</span>
       {arrow && (
-        <svg className="so-arrow" width="48" height="40" viewBox="0 0 48 40" fill="none" aria-hidden="true">
-          <path d={PATHS[arrow]} pathLength={1} stroke="var(--brand)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        <svg className="so-arrow" width="28" height="24" viewBox="0 0 48 40" fill="none" aria-hidden="true">
+          <path d={PATHS[arrow]} pathLength={1} stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}
     </span>
