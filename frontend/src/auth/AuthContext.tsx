@@ -15,6 +15,7 @@ interface AuthValue {
   /** Увеличивается при каждом входе: по нему экраны перезагружают данные. */
   epoch: number;
   login: (login: string, password: string) => Promise<void>;
+  telegramLogin: (initData: string) => Promise<void>;
   logout: () => Promise<void>;
   reload: () => Promise<void>;
 }
@@ -48,6 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setEpoch((n) => n + 1);
   }, [reload]);
 
+  const telegramLogin = useCallback(async (initData: string) => {
+    await api.telegramLogin(initData);
+    await reload();
+    setEpoch((n) => n + 1);
+  }, [reload]);
+
   const logout = useCallback(async () => {
     try {
       await api.logout();
@@ -56,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ state, epoch, login, logout, reload }), [state, epoch, login, logout, reload]);
+  const value = useMemo(() => ({ state, epoch, login, telegramLogin, logout, reload }), [state, epoch, login, telegramLogin, logout, reload]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
