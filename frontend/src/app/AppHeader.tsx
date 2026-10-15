@@ -12,6 +12,7 @@ import { RiskCounter } from "../pages/today";
 import { useBadges } from "./BadgesContext";
 import { useClock } from "./ClockContext";
 import { useConnection } from "./ConnectionContext";
+import { ThemeToggle } from "./ThemeToggle";
 
 const connLabel = { online: "На связи", offline: "Нет связи", connecting: "Подключение…" } as const;
 const connColor = { online: "var(--urgency-ok-fg)", offline: "var(--urgency-critical-fg)", connecting: "var(--urgency-warn-fg)" } as const;
@@ -80,6 +81,7 @@ export function AppHeader() {
       {unconfirmed != null && unconfirmed > 0 && (
         <UrgencyCounter def={{ ...BATCH_STATES.expiring, label: "Срок не подтверждён" }} n={unconfirmed} text="без подтверждённого срока" href="#/receiving" />
       )}
+      <ThemeToggle />
       <span role="status" data-testid="connection" style={{ color: connColor[conn], font: "var(--type-label)" }}>
         ● {connLabel[conn]}
       </span>

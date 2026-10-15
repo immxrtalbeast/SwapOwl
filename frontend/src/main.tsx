@@ -27,11 +27,11 @@ import { AuthProvider } from "./auth/AuthContext";
 import { LandingGate } from "./landing/LandingGate";
 import { RescueGate } from "./pages/rescue";
 import { theme } from "./theme/theme";
-import { cssVariablesResolver } from "./theme/tokens";
+import { cssVariablesResolver } from "./theme/dark";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} forceColorScheme="light">
+    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver} defaultColorScheme="light">
       <Notifications position="bottom-right" />
       <RescueGate>
       <LandingGate>
