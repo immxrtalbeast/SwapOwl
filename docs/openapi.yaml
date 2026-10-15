@@ -682,6 +682,27 @@ paths:
                 - {dish_id: soup, dish_name: Крем-суп, status: stopped}
         '404': {$ref: '#/components/responses/NotFound'}
         '429': {description: Слишком много запросов}
+  /api/analytics/forecast-accuracy:
+    get:
+      tags: [analytics]
+      summary: Точность прогноза спроса — насколько движок угадывал прошедшие сутки (viewer)
+      description: |
+        Для каждых из последних `days` суток берётся λ, какой её посчитал бы движок на начало суток (только заказы
+        до этого момента, окно N и априор n0 — те же, что у горячих предложений), и сравнивается с фактом суток.
+        `wape_pct` = Σ|прогноз − факт| / Σ факт × 100; `baseline_wape_pct` — то же для прогноза «только априор»
+        без обучения. Сутки с прыжком времени стенда и сутки до начала истории пропускаются. Отклонённый заказ входит
+        в факт не больше чем `RejectedCap` порциями (как в оценке спроса). `enough_data=false`, если дней с
+        историей меньше 3 или фактического спроса нет: проценты тогда 0. Ничего не пишется.
+      parameters:
+        - {name: days, in: query, description: "Сколько прошедших суток проверять, 1…30, по умолчанию 7", schema: {type: integer, minimum: 1, maximum: 30, default: 7}}
+      responses:
+        '200':
+          description: Точность по всему меню и по блюдам (с наибольшей ошибкой сверху)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ForecastAccuracy'}
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /api/dish-holds:
     get:
       tags: [menu]
@@ -1848,6 +1869,25 @@ components:
           type: string
           format: date-time
           description: Время отмены принятого заказа (`POST /api/orders/{id}/cancel`); только в `GET /api/orders`, у неотменённых поля нет.
+    ForecastAccuracy:
+      type: object
+      properties:
+        days: {type: integer}
+        days_used: {type: integer}
+        enough_data: {type: boolean}
+        wape_pct: {type: number, description: "Ошибка прогноза с обучением, %"}
+        baseline_wape_pct: {type: number, description: "Ошибка прогноза только по априору, %"}
+        dishes:
+          type: array
+          items:
+            type: object
+            properties:
+              dish_id: {type: string}
+              dish_name: {type: string}
+              actual_per_day: {type: number}
+              predicted_per_day: {type: number}
+              wape_pct: {type: number}
+              baseline_wape_pct: {type: number}
     DishHold:
       type: object
       properties:
