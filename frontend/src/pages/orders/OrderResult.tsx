@@ -73,7 +73,7 @@ export function OrderResult({ order, onCancelled }: { order: Order; onCancelled?
             <CancelOrder key={order.id} orderId={order.id} onCancelled={onCancelled} />
           </>
         ) : (
-          <span style={{ font: "var(--type-body)" }}>{rejectionReason(order.missing)}</span>
+          <span style={{ font: "var(--type-body)" }}>{rejectionReason(order.missing, order.held)}</span>
         )}
       </div>
     </div>

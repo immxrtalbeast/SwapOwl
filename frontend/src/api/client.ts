@@ -1,6 +1,6 @@
 import type { Role } from "../auth/roles";
 import { ApiError, NetworkError } from "./types";
-import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, InvoiceDraft, ExpiryPatch, ReceivingBatch, Dish, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, ForecastReport, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput, WhatIfRequest, WhatIfResponse } from "./types";
+import type { Alert, ApiKeyInfo, Batch, CreatedApiKey, UserAccount, DeliveryInput, DeliveryResult, InvoiceDraft, ExpiryPatch, ReceivingBatch, Dish, DishHold, DishServings, HotAlgo, HotOffersResponse, Order, SupplySuggestion, ForecastReport, MoneyReport, ShortagesReport, BenchResult, OrderItemInput, OrdersPage, ProductStock, SupplyOrder, SupplyOrderInput, WhatIfRequest, WhatIfResponse } from "./types";
 
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
@@ -105,7 +105,13 @@ export const api = {
     const total = Number(headers.get("X-Total-Count"));
     return { orders: body, total: Number.isFinite(total) && headers.has("X-Total-Count") ? total : body.length };
   },
-  // Заказ, отклонённый по нехватке (409 insufficient_stock), приходит как обычный результат со статусом rejected.
+  // Блюда на паузе у менеджера (ручная пауза блюда).
+  dishHolds: () => request<DishHold[]>("/api/dish-holds"),
+  setDishHold: (dishId: string, note = "") =>
+    request<DishHold>(`/api/dish-holds/${encodeURIComponent(dishId)}`, { method: "PUT", body: JSON.stringify({ note }) }),
+  deleteDishHold: (dishId: string) =>
+    request<null>(`/api/dish-holds/${encodeURIComponent(dishId)}`, { method: "DELETE" }),
+  // Заказ, отклонённый по нехватке (409 insufficient_stock) или паузе блюда (409 dish_on_hold), приходит как обычный результат со статусом rejected.
   placeOrder: async (id: string, items: OrderItemInput[]): Promise<Order> => {
     try {
       return await request<Order>("/api/orders", { method: "POST", body: JSON.stringify({ id, items }) });
@@ -113,6 +119,10 @@ export const api = {
       if (e instanceof ApiError && e.code === "insufficient_stock") {
         const d = e.details as unknown as Pick<Order, "status" | "at" | "replayed" | "missing"> & { order_id: string };
         return { id: d.order_id, status: d.status, at: d.at, replayed: d.replayed, items, writeoffs: [], missing: d.missing };
+      }
+      if (e instanceof ApiError && e.code === "dish_on_hold") {
+        const d = e.details as unknown as Pick<Order, "status" | "at" | "replayed"> & { order_id: string; dishes: NonNullable<Order["held"]> };
+        return { id: d.order_id, status: d.status, at: d.at, replayed: d.replayed, items, writeoffs: [], missing: [], held: d.dishes };
       }
       throw e;
     }

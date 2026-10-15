@@ -46,6 +46,7 @@ type Dish struct {
 	Available bool
 	Servings  int64
 	Missing   []Missing
+	Held      bool // менеджер поставил блюдо на паузу: заказать нельзя, даже если продукты есть
 }
 
 // Supply — предложение поставки.
@@ -269,6 +270,9 @@ func productText(p Product, f Facts) string {
 }
 
 func dishText(d Dish) string {
+	if d.Held {
+		return fmt.Sprintf("%s: на паузе у менеджера — заказать нельзя.", d.Name)
+	}
 	if d.Available {
 		return fmt.Sprintf("%s: можно приготовить %s.", d.Name, portionsWord(d.Servings))
 	}
@@ -300,6 +304,9 @@ func stopText(f Facts) string {
 }
 
 func missingOrStop(d Dish) string {
+	if d.Held {
+		return "на паузе у менеджера"
+	}
 	if len(d.Missing) == 0 {
 		return "в стопе"
 	}

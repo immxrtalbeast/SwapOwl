@@ -35,7 +35,7 @@ func newAccessEnv(t *testing.T) *accessEnv {
 	rt := NewRouter(Deps{
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DB: fakeDB{}, Now: func() time.Time { return hotNow },
 		Auth: svc, Telegram: &memLinks{byID: map[int64]string{}, users: map[string]bool{}}, TelegramBotToken: tgToken,
-		HotOffers: fakeSnap{snap}, HotOverrides: &fakeOverrides{},
+		HotOffers: fakeSnap{snap}, HotOverrides: &fakeOverrides{}, DishHolds: &fakeHolds{},
 		HotConfig:   HotOffersConfig{DefaultAlgo: "b", Rank: hotoffers.Config{TopN: 3, WMin: 0.5, CoverHours: 12, MaxIter: 200}},
 		Corrections: &fakeCorrections{}, Stock: &fakeStock{}, Supply: fakeSupply{},
 	})
@@ -83,6 +83,9 @@ func TestRouteAccessByRole(t *testing.T) {
 		{"PUT override", "PUT", "/api/hot-offers/overrides/soup", `{"mode":"pin"}`, 200, 0},
 		{"DELETE override", "DELETE", "/api/hot-offers/overrides/soup", ``, 204, 0},
 		{"GET overrides", "GET", "/api/hot-offers/overrides", ``, 200, 200},
+		{"PUT hold", "PUT", "/api/dish-holds/soup", `{"note":"плита"}`, 200, 0},
+		{"DELETE hold", "DELETE", "/api/dish-holds/soup", ``, 204, 0},
+		{"GET holds", "GET", "/api/dish-holds", ``, 200, 200},
 		{"POST cancel", "POST", "/api/orders/" + oid + "/cancel", `{"id":"c1"}`, 201, 0},
 		{"POST delivery", "POST", "/api/deliveries", delivery, 201, 0},
 		{"GET supply", "GET", "/api/supply-suggestions", ``, 200, 200},

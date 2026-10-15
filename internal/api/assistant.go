@@ -82,8 +82,12 @@ func (rt *Router) assistantFacts(ctx context.Context) (assistant.Facts, error) {
 		if err != nil {
 			return f, err
 		}
+		held, err := rt.heldSet(ctx)
+		if err != nil {
+			return f, err
+		}
 		for _, d := range menuAvailability(snap) {
-			dish := assistant.Dish{Name: d.Name, Available: d.Available, Servings: d.Servings}
+			dish := assistant.Dish{Name: d.Name, Available: d.Available && !held[d.ID], Servings: d.Servings, Held: held[d.ID]}
 			for _, m := range d.Missing {
 				dish.Missing = append(dish.Missing, assistant.Missing{ProductName: m.ProductName,
 					Required: qty(m.Required), Present: qty(m.Available)})
@@ -120,6 +124,9 @@ func (rt *Router) assistantHot(ctx context.Context, now time.Time) ([]assistant.
 	}
 	snap, err := rt.deps.HotOffers.Snapshot(ctx, now)
 	if err != nil {
+		return nil, err
+	}
+	if err := rt.withHolds(ctx, &snap); err != nil {
 		return nil, err
 	}
 	resp := buildHotOffers(snap, algo, cfg.Rank)

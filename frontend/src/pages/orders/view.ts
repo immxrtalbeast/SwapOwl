@@ -28,8 +28,12 @@ export function writeoffLines(order: Pick<Order, "writeoffs">): string[] {
   return [...merged.values()].map(writeoffText);
 }
 
-/** Причина отказа человеческим языком: «Не хватает: сливки 200 мл на заказ». */
-export function rejectionReason(missing: readonly OrderMissing[]): string {
+/** Причина отказа человеческим языком: «Не хватает: сливки 200 мл на заказ» или «Блюдо на паузе: сломана плита». */
+export function rejectionReason(missing: readonly OrderMissing[], held?: readonly { note: string }[]): string {
+  if (held && held.length > 0) {
+    const notes = held.map((h) => h.note).filter((n) => n !== "");
+    return `Блюдо на паузе у менеджера${notes.length > 0 ? `: ${notes.join("; ")}` : ""}`;
+  }
   if (missing.length === 0) return "Не хватает продуктов на заказ";
   return `Не хватает: ${missing.map((m) => `${lower(m.product_name)} ${formatQty(m.missing)}`).join(", ")} на заказ`;
 }
