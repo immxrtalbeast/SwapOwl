@@ -293,12 +293,13 @@ func dishMargin(snap store.Snapshot, dishID string) (int64, bool) {
 	return 0, false
 }
 
-// tieBreakByMargin — порядок задаёт алгоритм; внутри подряд идущих предложений со строго равным приоритетом
-// выше то, что приносит больше маржи (стабильно). Приоритет и порядок между разными приоритетами не меняются.
+// tieBreakByMargin — порядок задаёт алгоритм (.ai/solution.md 2.7: при равном приоритете раньше срок опорной
+// партии, затем id). Маржа решает только внутри подряд идущих предложений со строго равным приоритетом И равным
+// сроком (sell_until): выше то, что приносит больше маржи (стабильно). Остальной порядок не меняется.
 func tieBreakByMargin(offers []OfferJSON) []OfferJSON {
 	for i := 0; i < len(offers); {
 		j := i + 1
-		for j < len(offers) && offers[j].Priority == offers[i].Priority {
+		for j < len(offers) && offers[j].Priority == offers[i].Priority && offers[j].SellUntil.Equal(offers[i].SellUntil) {
 			j++
 		}
 		if j-i > 1 {
