@@ -197,6 +197,18 @@ func (c *APIClient) Receiving(ctx context.Context) (bs []ReceivingBatch, err err
 	return
 }
 
+// DishName — блюдо меню: id и название (GET /api/dishes).
+type DishName struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Dishes — GET /api/dishes (нужны id и название).
+func (c *APIClient) Dishes(ctx context.Context) (ds []DishName, err error) {
+	err = c.get(ctx, "/api/dishes", nil, &ds)
+	return
+}
+
 // StopList — GET /api/stop-list.
 func (c *APIClient) StopList(ctx context.Context) (ds []StopDish, err error) {
 	err = c.get(ctx, "/api/stop-list", nil, &ds)

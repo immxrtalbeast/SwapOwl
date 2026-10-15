@@ -39,6 +39,7 @@ type Notifier struct {
 	recvSent   map[int64]bool // партии без срока, о которых уже написали
 	sendMu     sync.Mutex     // сериализует отправку и защищает sent
 	sent       map[int64]bool // партии, о которых уже написали
+	reminded   map[string]bool // напоминания «меньше часа до срока», уже отправленные (под sendMu)
 	mu         sync.Mutex
 	digestDate string // дата последней сводки
 	weeklyDate string // дата последнего недельного отчёта
@@ -57,6 +58,10 @@ func (n *Notifier) Handle(ctx context.Context, ev Event) {
 		return
 	}
 	if ev.Type == "stoplist.changed" {
+		if e, ok := parseHoldEvent(ev.Data); ok {
+			n.notifyHold(ctx, e)
+			return
+		}
 		n.onStopChanged(ctx)
 		return
 	}
@@ -97,6 +102,7 @@ func (n *Notifier) CatchUp(ctx context.Context) {
 			n.notifyAlert(ctx, a)
 		}
 	}
+	n.RemindTick(ctx, alerts)
 }
 
 // SeedSent при старте помечает уже истекающие партии отправленными, ничего не отправляя,

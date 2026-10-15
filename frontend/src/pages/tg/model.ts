@@ -27,6 +27,24 @@ export function tgHash(tab: TgTab): string {
   return tab === "hall" ? "#/tg" : `#/tg/${tab}`;
 }
 
+/** Схема оформления мини-приложения. */
+export type Scheme = "light" | "dark";
+
+const asScheme = (v: unknown): Scheme | null => (v === "light" || v === "dark" ? v : null);
+
+/**
+ * Какую схему включить: выбор пользователя в самом мини-приложении главнее, иначе схема Telegram; нет ни того ни другого
+ * (страница открыта не в Telegram) — null, остаётся то, что есть.
+ */
+export function tgSchemeToApply(telegram: unknown, manual: unknown): Scheme | null {
+  return asScheme(manual) ?? asScheme(telegram);
+}
+
+/** Цвета Telegram (themeParams) накладываем только когда текущая схема совпала со схемой Telegram: иначе тёмные цвета Telegram попали бы на светлые токены и наоборот. */
+export function overlayAllowed(telegram: unknown, current: Scheme): boolean {
+  return asScheme(telegram) === current;
+}
+
 /** Параметры темы Telegram (themeParams): ключи snake_case, значения — цвета #rrggbb. */
 export type ThemeParams = Partial<Record<string, string>>;
 

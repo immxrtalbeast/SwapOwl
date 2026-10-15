@@ -18,6 +18,8 @@ export interface TgWebApp {
   platform?: string;
   expand(): void;
   themeParams?: Record<string, string>;
+  /** Схема, которую выбрал пользователь в Telegram. */
+  colorScheme?: "light" | "dark";
   onEvent?(name: string, cb: () => void): void;
   offEvent?(name: string, cb: () => void): void;
   BackButton?: TgButton;

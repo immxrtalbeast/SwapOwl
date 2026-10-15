@@ -1,15 +1,36 @@
 import { useEffect, useState } from "react";
 import { IconChefHat, IconClipboardCheck, IconChartBar } from "@tabler/icons-react";
+import { useMantineColorScheme } from "@mantine/core";
+import { ThemeToggle } from "../../app/ThemeToggle";
 import { ConnectionProvider, useConnection } from "../../app/ConnectionContext";
 import { events } from "../../api/events";
 import { OfflineBanner } from "../../components";
 import { HallTab } from "./HallTab";
 import { ManagerTab } from "./ManagerTab";
 import { ReceivingTab } from "./ReceivingTab";
-import { TG_TABS, tgHash, tgTabFromHash, themeToVars } from "./model";
-import type { TgTab } from "./model";
+import { TG_TABS, overlayAllowed, tgHash, tgSchemeToApply, tgTabFromHash, themeToVars } from "./model";
+import type { Scheme, TgTab } from "./model";
 import { getWebApp, loadTelegramSdk } from "./sdk";
 import { useBackButton } from "./ui";
+
+const MANUAL_KEY = "so-tg-theme-manual";
+
+/** Выбор темы кнопкой в мини-приложении помнит браузер; без хранилища работает следование теме Telegram. */
+function readManual(): Scheme | null {
+  try {
+    const v = window.localStorage.getItem(MANUAL_KEY);
+    return v === "light" || v === "dark" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function writeManual(v: Scheme): void {
+  try {
+    window.localStorage.setItem(MANUAL_KEY, v);
+  } catch {
+    /* хранилища нет — тема останется до закрытия */
+  }
+}
 
 const ICONS = { hall: IconChefHat, receiving: IconClipboardCheck, manager: IconChartBar } as const;
 
@@ -22,6 +43,9 @@ function Offline() {
 function Body() {
   const [tab, setTab] = useState<TgTab>(() => tgTabFromHash(window.location.hash));
   const [theme, setTheme] = useState(() => themeToVars(getWebApp()?.themeParams));
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const current: Scheme = colorScheme === "dark" ? "dark" : "light";
+  const [tgScheme, setTgScheme] = useState<string | undefined>(() => getWebApp()?.colorScheme);
   // SDK грузится динамически: после onload перечитываем getWebApp() (кнопки и тема подхватываются перерисовкой).
   const [sdkReady, setSdkReady] = useState(() => getWebApp() !== null);
   useEffect(() => {
@@ -41,18 +65,29 @@ function Body() {
     if (!app) return;
     app.ready();
     app.expand();
-    const onTheme = () => setTheme(themeToVars(app.themeParams));
+    const onTheme = () => {
+      setTheme(themeToVars(app.themeParams));
+      setTgScheme(app.colorScheme);
+      // Схема Telegram — по умолчанию; выбор в мини-приложении главнее.
+      const next = tgSchemeToApply(app.colorScheme, readManual());
+      if (next) setColorScheme(next);
+    };
     app.onEvent?.("themeChanged", onTheme);
     onTheme();
     return () => app.offEvent?.("themeChanged", onTheme);
+    // setColorScheme стабилен для провайдера; перечитываем только при готовности SDK.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sdkReady]);
 
   // «Назад» Telegram возвращает на первую вкладку; вложенные экраны вкладок перехватывают её раньше (useBackButton в них).
   useBackButton(tab !== "hall" ? () => { window.location.hash = tgHash("hall"); } : null, 0);
 
   return (
-    <div style={{ ...theme, minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--paper)", color: "var(--text)", overflowX: "hidden" }}>
+    <div style={{ ...(overlayAllowed(tgScheme, current) ? theme : {}), minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--paper)", color: "var(--text)", overflowX: "hidden" }}>
       <main style={{ flex: 1, minWidth: 0, boxSizing: "border-box", padding: "16px 12px 88px", width: "100%", maxWidth: 480, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <ThemeToggle onChange={writeManual} />
+        </div>
         <Offline />
         {tab === "hall" && <HallTab />}
         {tab === "receiving" && <ReceivingTab />}
