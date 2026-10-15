@@ -10,14 +10,36 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
 // Button — инлайн-кнопка под сообщением.
 type Button struct {
-	Text string `json:"text"`
-	Data string `json:"callback_data"`
+	Text   string      `json:"text"`
+	Data   string      `json:"callback_data,omitempty"`
+	WebApp *WebAppInfo `json:"web_app,omitempty"`
 }
+
+// WebAppInfo — адрес mini-app для кнопки web_app.
+type WebAppInfo struct {
+	URL string `json:"url"`
+}
+
+// SetChatMenuButton ставит в чате кнопку меню, открывающую mini-app.
+func (t *Telegram) SetChatMenuButton(ctx context.Context, url string) error {
+	chat, err := strconv.ParseInt(t.ChatID, 10, 64)
+	if err != nil {
+		return errors.New("telegram: нужен числовой id чата")
+	}
+	return t.call(ctx, "setChatMenuButton", map[string]any{
+		"chat_id":     chat,
+		"menu_button": map[string]any{"type": "web_app", "text": MiniAppText, "web_app": WebAppInfo{URL: url}},
+	}, nil)
+}
+
+// MiniAppText — подпись кнопки открытия mini-app.
+const MiniAppText = "Открыть SwapOwl"
 
 // ButtonSender шлёт сообщение с кнопками (один ряд).
 type ButtonSender interface {

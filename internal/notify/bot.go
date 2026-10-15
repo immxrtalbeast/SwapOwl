@@ -16,9 +16,12 @@ type Bot struct {
 	TG     *Telegram
 	ChatID int64 // единственный чат, из которого принимаются команды
 	Logf   func(string, ...any)
+	// MiniAppURL — адрес mini-app; задан — /start отвечает кнопкой «Открыть SwapOwl».
+	MiniAppURL string
 
-	mu      sync.Mutex
-	pending int64 // партия, для которой ждём новый срок («Изменить срок»)
+	mu         sync.Mutex
+	pending    int64  // партия, для которой ждём новый срок («Изменить срок»)
+	pendingSup string // продукт, для которого ждём срок годности поставки («Принять»)
 }
 
 func (b *Bot) logf(f string, a ...any) {
@@ -83,6 +86,7 @@ func (b *Bot) onText(ctx context.Context, text string) {
 		cmd := strings.ToLower(strings.SplitN(strings.Fields(text + " ")[0], "@", 2)[0])
 		b.mu.Lock()
 		b.pending = 0
+		b.pendingSup = ""
 		b.mu.Unlock()
 		switch cmd {
 		case "/hot":
@@ -95,16 +99,36 @@ func (b *Bot) onText(ctx context.Context, text string) {
 			b.reply(ctx, b.N.SummaryText(ctx))
 		case "/week":
 			b.week(ctx)
+		case "/order":
+			if msg := b.N.SendSuggestions(ctx); msg != "" {
+				b.reply(ctx, msg)
+			}
 		case "/start", "/help":
-			b.reply(ctx, "Команды: /hot, /stop, /expiring, /summary, /week")
+			b.start(ctx, cmd == "/start")
 		default:
-			b.reply(ctx, "Неизвестная команда. Доступно: /hot, /stop, /expiring, /summary, /week")
+			b.reply(ctx, "Неизвестная команда. Доступно: "+commandList)
 		}
 		return
 	}
 	b.mu.Lock()
-	id := b.pending
+	id, sup := b.pending, b.pendingSup
 	b.mu.Unlock()
+	if sup != "" {
+		now := time.Now()
+		if c, err := b.N.API.Clock(ctx); err == nil {
+			now = c.Now.In(b.N.loc(ctx))
+		}
+		on, hours, ok := ParseSupplyExpiry(text, now)
+		if !ok {
+			b.reply(ctx, "Не понял срок. Напишите «годен до ДД.ММ» или «72 ч».")
+			return
+		}
+		b.mu.Lock()
+		b.pendingSup = ""
+		b.mu.Unlock()
+		b.reply(ctx, b.N.AcceptSuggestion(ctx, sup, on, hours))
+		return
+	}
 	if id == 0 {
 		return
 	}
@@ -119,7 +143,35 @@ func (b *Bot) onText(ctx context.Context, text string) {
 	b.reply(ctx, b.N.ApplyExpiry(ctx, id, on, hours))
 }
 
+const commandList = "/hot, /stop, /expiring, /summary, /week, /order"
+
+func (b *Bot) start(ctx context.Context, withApp bool) {
+	text := "Команды: " + commandList
+	if withApp && b.MiniAppURL != "" {
+		err := b.TG.SendButtons(ctx, text, []Button{{Text: MiniAppText, WebApp: &WebAppInfo{URL: b.MiniAppURL}}})
+		if err != nil {
+			b.logf("/start: %v", err)
+		}
+		return
+	}
+	b.reply(ctx, text)
+}
+
 func (b *Bot) onButton(ctx context.Context, data string) {
+	if pid, ok := strings.CutPrefix(data, "acc:"); ok && pid != "" {
+		text, ok := b.N.AcceptPrompt(ctx, pid)
+		if !ok {
+			b.reply(ctx, text)
+			return
+		}
+		b.mu.Lock()
+		b.pending, b.pendingSup = 0, pid
+		b.mu.Unlock()
+		if err := b.TG.ForceReply(ctx, text); err != nil {
+			b.logf("запрос срока: %v", err)
+		}
+		return
+	}
 	kind, rest, _ := strings.Cut(data, ":")
 	id, err := strconv.ParseInt(rest, 10, 64)
 	if err != nil || id < 1 {
@@ -130,7 +182,7 @@ func (b *Bot) onButton(ctx context.Context, data string) {
 		b.reply(ctx, b.N.ConfirmExpiry(ctx, id))
 	case "ed":
 		b.mu.Lock()
-		b.pending = id
+		b.pending, b.pendingSup = id, ""
 		b.mu.Unlock()
 		if err := b.TG.ForceReply(ctx, fmt.Sprintf("Партия №%d: пришлите новый срок — число часов от приёмки или дату ДД.ММ.ГГГГ.", id)); err != nil {
 			b.logf("запрос срока: %v", err)
@@ -240,7 +292,7 @@ func (n *Notifier) notifyReceiving(ctx context.Context) {
 		}
 		text := fmt.Sprintf("📦 Партия пришла без срока: %s\nПартия №%d, поставка %s, %s\nСрок по умолчанию: %s\nПодтвердите или измените срок.",
 			it.ProductName, it.ID, it.DeliveryNumber, FormatQty(it.Quantity), it.ExpiresAt.In(loc).Format("02.01 15:04"))
-		btns := []Button{{"Подтвердить срок", fmt.Sprintf("ok:%d", it.ID)}, {"Изменить срок", fmt.Sprintf("ed:%d", it.ID)}}
+		btns := []Button{{Text: "Подтвердить срок", Data: fmt.Sprintf("ok:%d", it.ID)}, {Text: "Изменить срок", Data: fmt.Sprintf("ed:%d", it.ID)}}
 		if err := n.Buttons.SendButtons(ctx, text, btns); err != nil {
 			n.logf("партия %d: %v", it.ID, err)
 			return

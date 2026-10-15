@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -44,6 +45,22 @@ func run() error {
 	if _, err := time.Parse("15:04", digestAt); err != nil {
 		return fmt.Errorf("NOTIFY_DIGEST_AT: нужен формат ЧЧ:ММ")
 	}
+	shiftAt := env("NOTIFY_SHIFT_AT", "10:00")
+	if _, err := time.Parse("15:04", shiftAt); err != nil {
+		return fmt.Errorf("NOTIFY_SHIFT_AT: нужен формат ЧЧ:ММ")
+	}
+	hallChat := os.Getenv("NOTIFY_HALL_CHAT")
+	if hallChat != "" {
+		if _, err := strconv.ParseInt(hallChat, 10, 64); err != nil {
+			return fmt.Errorf("NOTIFY_HALL_CHAT: нужен числовой id чата")
+		}
+	}
+	miniApp := os.Getenv("MINIAPP_URL")
+	if miniApp != "" {
+		if u, err := url.Parse(miniApp); err != nil || u.Scheme != "https" || u.Host == "" {
+			return fmt.Errorf("MINIAPP_URL: нужен адрес https://…")
+		}
+	}
 	lg := log.New(os.Stderr, "notifier: ", log.LstdFlags)
 	hc := &http.Client{Timeout: 30 * time.Second}
 	api := &notify.APIClient{Base: os.Getenv("API_URL"), Key: os.Getenv("API_KEY"), HC: hc}
@@ -68,9 +85,19 @@ func run() error {
 		otg := &notify.Telegram{Base: tg.Base, Token: tg.Token, ChatID: owner, HC: tg.HC}
 		n.Weekly = &notify.WeeklyConfig{At: weeklyAt, Text: otg, Photo: otg, StandURL: os.Getenv("NOTIFY_STAND_URL")}
 	}
-	bot := &notify.Bot{N: n, TG: tg, ChatID: chatID, Logf: lg.Printf}
+	if hallChat != "" {
+		n.Hall = &notify.HallConfig{At: shiftAt, Out: &notify.Telegram{Base: tg.Base, Token: tg.Token, ChatID: hallChat, HC: tg.HC}}
+	}
+	bot := &notify.Bot{N: n, TG: tg, ChatID: chatID, Logf: lg.Printf, MiniAppURL: miniApp}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if miniApp != "" {
+		if err := tg.SetChatMenuButton(ctx, miniApp); err != nil {
+			lg.Printf("кнопка mini-app: %v", err)
+		}
+	}
+	n.MarkHallStartup(ctx)
+	n.SeedStop(ctx)
 	n.MarkDigestStartup(ctx)
 	n.MarkWeeklyStartup(ctx)
 	n.SeedSent(ctx)
