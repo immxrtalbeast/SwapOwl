@@ -114,8 +114,10 @@ func msgUpdate(chat int64, text string) Update {
 	return Update{Message: &Message{Chat: Chat{ID: chat}, Text: text}}
 }
 
-func cbUpdate(chat int64, data string) Update {
-	return Update{Callback: &Callback{ID: "cb", Data: data, Message: &Message{Chat: Chat{ID: chat}}}}
+func cbUpdate(chat int64, data string) Update { return cbUpdateID(chat, "cb1", data) }
+
+func cbUpdateID(chat int64, id, data string) Update {
+	return Update{Callback: &Callback{ID: id, Data: data, Message: &Message{Chat: Chat{ID: chat}}}}
 }
 
 func TestForeignChatIgnored(t *testing.T) {

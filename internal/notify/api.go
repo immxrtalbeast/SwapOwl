@@ -69,6 +69,8 @@ type Suggestion struct {
 	Quantity    Qty    `json:"quantity"`
 	Urgency     string `json:"urgency"`
 	Explanation string `json:"explanation"`
+	// ShelfLifeHours — обычный срок поставщика (FS-160); nil — неизвестен.
+	ShelfLifeHours *int `json:"shelf_life_hours"`
 }
 
 // ProductInfo — продукт из GET /api/products; ShelfLifeHours — обычный срок из карточки, если API его отдаёт.
@@ -256,8 +258,8 @@ func (c *APIClient) Products(ctx context.Context) (r []ProductInfo, err error) {
 }
 
 // PostDelivery — POST /api/deliveries с одной позицией и явным сроком (ровно одно из expiresOn и shelfHours).
-// Идемпотентна по id: повтор возвращает ту же поставку.
-func (c *APIClient) PostDelivery(ctx context.Context, id string, createdAt time.Time, productID string, q Qty, expiresOn string, shelfHours int) error {
+// Идемпотентна по id: повтор возвращает ту же поставку (200), новая — 201; created=true только для 201.
+func (c *APIClient) PostDelivery(ctx context.Context, id string, createdAt time.Time, productID string, q Qty, expiresOn string, shelfHours int) (created bool, err error) {
 	item := map[string]any{"product_id": productID, "quantity": strconv.FormatInt(q.Qty, 10), "unit": q.Unit}
 	if expiresOn != "" {
 		item["expires_on"] = expiresOn
@@ -267,18 +269,18 @@ func (c *APIClient) PostDelivery(ctx context.Context, id string, createdAt time.
 	body, _ := json.Marshal(map[string]any{"id": id, "number": id, "created_at": createdAt.Format(time.RFC3339), "items": []any{item}})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.Base, "/")+"/api/deliveries", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Key)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.HC.Do(req)
 	if err != nil {
-		return fmt.Errorf("api deliveries: %w", err)
+		return false, fmt.Errorf("api deliveries: %w", err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode/100 != 2 {
-		return &APIError{Status: resp.StatusCode, Body: strings.TrimSpace(string(b))}
+		return false, &APIError{Status: resp.StatusCode, Body: strings.TrimSpace(string(b))}
 	}
-	return nil
+	return resp.StatusCode == http.StatusCreated, nil
 }

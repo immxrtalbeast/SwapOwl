@@ -20,9 +20,12 @@ type Bot struct {
 	MiniAppURL string
 
 	mu         sync.Mutex
-	pending    int64  // партия, для которой ждём новый срок («Изменить срок»)
-	pendingSup string // продукт, для которого ждём срок годности поставки («Принять»)
+	pending    int64         // партия, для которой ждём новый срок («Изменить срок»)
+	pendingSup pendingSupply // поставка, для которой ждём срок годности («Принять»)
 }
+
+// pendingSupply — нажатое «Принять»: продукт и id нажатия (callback_query.id), из него строится id поставки.
+type pendingSupply struct{ product, callbackID string }
 
 func (b *Bot) logf(f string, a ...any) {
 	if b.Logf != nil {
@@ -65,7 +68,7 @@ func (b *Bot) HandleUpdate(ctx context.Context, u Update) {
 			return
 		}
 		_ = b.TG.AnswerCallback(ctx, u.Callback.ID)
-		b.onButton(ctx, u.Callback.Data)
+		b.onButton(ctx, u.Callback.ID, u.Callback.Data)
 	case u.Message != nil:
 		if u.Message.Chat.ID != b.ChatID {
 			b.logf("игнорирую сообщение из чужого чата %d", u.Message.Chat.ID)
@@ -86,7 +89,7 @@ func (b *Bot) onText(ctx context.Context, text string) {
 		cmd := strings.ToLower(strings.SplitN(strings.Fields(text + " ")[0], "@", 2)[0])
 		b.mu.Lock()
 		b.pending = 0
-		b.pendingSup = ""
+		b.pendingSup = pendingSupply{}
 		b.mu.Unlock()
 		switch cmd {
 		case "/hot":
@@ -100,7 +103,7 @@ func (b *Bot) onText(ctx context.Context, text string) {
 		case "/week":
 			b.week(ctx)
 		case "/order":
-			if msg := b.N.SendSuggestions(ctx); msg != "" {
+			if msg, _ := b.N.SendSuggestions(ctx); msg != "" {
 				b.reply(ctx, msg)
 			}
 		case "/start", "/help":
@@ -113,7 +116,7 @@ func (b *Bot) onText(ctx context.Context, text string) {
 	b.mu.Lock()
 	id, sup := b.pending, b.pendingSup
 	b.mu.Unlock()
-	if sup != "" {
+	if sup.product != "" {
 		now := time.Now()
 		if c, err := b.N.API.Clock(ctx); err == nil {
 			now = c.Now.In(b.N.loc(ctx))
@@ -123,10 +126,14 @@ func (b *Bot) onText(ctx context.Context, text string) {
 			b.reply(ctx, "Не понял срок. Напишите «годен до ДД.ММ» или «72 ч».")
 			return
 		}
+		if on != "" && on < now.Format("2006-01-02") {
+			b.reply(ctx, "Дата в прошлом — партия уже просрочена. Напишите будущую дату или «72 ч».")
+			return
+		}
 		b.mu.Lock()
-		b.pendingSup = ""
+		b.pendingSup = pendingSupply{}
 		b.mu.Unlock()
-		b.reply(ctx, b.N.AcceptSuggestion(ctx, sup, on, hours))
+		b.reply(ctx, b.N.AcceptSuggestion(ctx, sup.product, sup.callbackID, on, hours))
 		return
 	}
 	if id == 0 {
@@ -157,7 +164,7 @@ func (b *Bot) start(ctx context.Context, withApp bool) {
 	b.reply(ctx, text)
 }
 
-func (b *Bot) onButton(ctx context.Context, data string) {
+func (b *Bot) onButton(ctx context.Context, callbackID, data string) {
 	if pid, ok := strings.CutPrefix(data, "acc:"); ok && pid != "" {
 		text, ok := b.N.AcceptPrompt(ctx, pid)
 		if !ok {
@@ -165,7 +172,7 @@ func (b *Bot) onButton(ctx context.Context, data string) {
 			return
 		}
 		b.mu.Lock()
-		b.pending, b.pendingSup = 0, pid
+		b.pending, b.pendingSup = 0, pendingSupply{product: pid, callbackID: callbackID}
 		b.mu.Unlock()
 		if err := b.TG.ForceReply(ctx, text); err != nil {
 			b.logf("запрос срока: %v", err)
@@ -182,7 +189,7 @@ func (b *Bot) onButton(ctx context.Context, data string) {
 		b.reply(ctx, b.N.ConfirmExpiry(ctx, id))
 	case "ed":
 		b.mu.Lock()
-		b.pending, b.pendingSup = id, ""
+		b.pending, b.pendingSup = id, pendingSupply{}
 		b.mu.Unlock()
 		if err := b.TG.ForceReply(ctx, fmt.Sprintf("Партия №%d: пришлите новый срок — число часов от приёмки или дату ДД.ММ.ГГГГ.", id)); err != nil {
 			b.logf("запрос срока: %v", err)

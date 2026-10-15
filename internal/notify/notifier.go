@@ -242,7 +242,7 @@ func (n *Notifier) sendDigest(ctx context.Context, from, to time.Time, date stri
 	if err := n.Out.Send(ctx, FormatDigest(date, wo, sf, alerts, n.prices(ctx))); err != nil {
 		return err
 	}
-	if msg := n.SendSuggestions(ctx); msg != "" && !strings.Contains(msg, "нечего") {
+	if msg, none := n.SendSuggestions(ctx); msg != "" && !none {
 		n.logf("предложения поставок: %s", msg)
 	}
 	return nil

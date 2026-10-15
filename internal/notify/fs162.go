@@ -134,18 +134,19 @@ func nowSuggestions(ss []Suggestion) []Suggestion {
 }
 
 // SendSuggestions шлёт строки «сейчас» из /api/supply-suggestions по сообщению с кнопкой «Принять».
-// Возвращает текст для ответа, если слать нечего или API недоступен (пустая строка — всё отправлено).
-func (n *Notifier) SendSuggestions(ctx context.Context) string {
+// Возвращает текст для ответа, если слать нечего или API недоступен (пустая строка — всё отправлено);
+// none=true — предложений «сейчас» нет (не ошибка).
+func (n *Notifier) SendSuggestions(ctx context.Context) (msg string, none bool) {
 	ss, err := n.API.SupplySuggestions(ctx)
 	if err != nil {
-		return n.apiFail(err)
+		return n.apiFail(err), false
 	}
 	ss = nowSuggestions(ss)
 	if len(ss) == 0 {
-		return "📦 Заказывать прямо сейчас нечего."
+		return "📦 Заказывать прямо сейчас нечего.", true
 	}
 	if n.Buttons == nil {
-		return ""
+		return "", false
 	}
 	for _, s := range ss {
 		text := fmt.Sprintf("📦 Заказать сейчас: %s — %s", s.ProductName, FormatQty(s.Quantity))
@@ -154,10 +155,10 @@ func (n *Notifier) SendSuggestions(ctx context.Context) string {
 		}
 		if err := n.Buttons.SendButtons(ctx, text, []Button{{Text: "Принять", Data: "acc:" + s.ProductID}}); err != nil {
 			n.logf("предложение %s: %v", s.ProductID, err)
-			return ""
+			return "", false
 		}
 	}
-	return ""
+	return "", false
 }
 
 // AcceptPrompt — вопрос о сроке после нажатия «Принять»; ok=false — предложение уже неактуально.
@@ -167,12 +168,8 @@ func (n *Notifier) AcceptPrompt(ctx context.Context, productID string) (string, 
 		return "Предложение уже неактуально — ничего не принято.", false
 	}
 	text := fmt.Sprintf("Поставка: %s, %s. Укажите срок годности: «годен до ДД.ММ» или «72 ч».", s.ProductName, FormatQty(s.Quantity))
-	if ps, err := n.API.Products(ctx); err == nil {
-		for _, p := range ps {
-			if p.ID == productID && p.ShelfLifeHours != nil && *p.ShelfLifeHours > 0 {
-				text += fmt.Sprintf(" Обычно — %d ч.", *p.ShelfLifeHours)
-			}
-		}
+	if s.ShelfLifeHours != nil && *s.ShelfLifeHours > 0 {
+		text += fmt.Sprintf(" Обычно — %d ч.", *s.ShelfLifeHours)
 	}
 	return text, true
 }
@@ -191,9 +188,10 @@ func (n *Notifier) findSuggestion(ctx context.Context, productID string) (Sugges
 	return Suggestion{}, false
 }
 
-// AcceptSuggestion принимает поставку по предложению с явным сроком. id поставки зависит от продукта,
-// дня и количества, поэтому повторное нажатие даёт тот же id и API не создаёт вторую поставку.
-func (n *Notifier) AcceptSuggestion(ctx context.Context, productID, expiresOn string, hours int) string {
+// AcceptSuggestion принимает поставку по предложению с явным сроком. id поставки строится из id нажатия
+// кнопки «Принять» (callback_query.id): две настоящие поставки одного продукта за день не склеиваются,
+// а повторная доставка того же нажатия даёт тот же id, и API отвечает 200 без второй партии.
+func (n *Notifier) AcceptSuggestion(ctx context.Context, productID, callbackID, expiresOn string, hours int) string {
 	s, ok := n.findSuggestion(ctx, productID)
 	if !ok {
 		return "Предложение уже принято или неактуально — вторая поставка не создана."
@@ -202,11 +200,20 @@ func (n *Notifier) AcceptSuggestion(ctx context.Context, productID, expiresOn st
 	if err != nil {
 		return n.apiFail(err)
 	}
-	day := clk.Now.In(n.loc(ctx)).Format("2006-01-02")
-	id := fmt.Sprintf("TG-%s-%s-%d", productID, day, s.Quantity.Qty)
-	err = n.API.PostDelivery(ctx, id, clk.Now, productID, s.Quantity, expiresOn, hours)
+	id := "TG-" + productID + "-" + callbackID
+	created, err := n.API.PostDelivery(ctx, id, clk.Now, productID, s.Quantity, expiresOn, hours)
 	if err == nil {
-		return fmt.Sprintf("✅ Поставка принята: %s, %s.", s.ProductName, FormatQty(s.Quantity))
+		until := expiresOn
+		if until == "" {
+			until = clk.Now.In(n.loc(ctx)).Add(time.Duration(hours) * time.Hour).Format("2006-01-02")
+		}
+		if t, perr := time.Parse("2006-01-02", until); perr == nil {
+			until = t.Format("02.01.2006")
+		}
+		if !created {
+			return fmt.Sprintf("ℹ️ Эта поставка уже была принята ранее (повтор не создал партию): %s, %s, годен до %s.", s.ProductName, FormatQty(s.Quantity), until)
+		}
+		return fmt.Sprintf("✅ Поставка принята: %s, %s, годен до %s.", s.ProductName, FormatQty(s.Quantity), until)
 	}
 	var ae *APIError
 	if errors.As(err, &ae) {
@@ -228,7 +235,9 @@ var (
 	reDate  = regexp.MustCompile(`^(?:годен\s+)?(?:до\s+)?(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$`)
 )
 
-// ParseSupplyExpiry разбирает «годен до ДД.ММ[.ГГГГ]», «ДД.ММ» или «72 ч». Год по умолчанию — ближайшая будущая дата.
+// ParseSupplyExpiry разбирает «годен до ДД.ММ[.ГГГГ]», «ДД.ММ» или «72 ч». Дата без года, которая уже прошла, считается
+// датой следующего года только при переходе декабрь→январь; иначе возвращается эта же (прошедшая) дата,
+// и вызывающий отвечает «дата в прошлом».
 func ParseSupplyExpiry(s string, now time.Time) (expiresOn string, hours int, ok bool) {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if m := reHours.FindStringSubmatch(s); m != nil {
@@ -260,7 +269,7 @@ func ParseSupplyExpiry(s string, now time.Time) (expiresOn string, hours int, ok
 	if !ok {
 		return "", 0, false
 	}
-	if t.Before(today) {
+	if t.Before(today) && now.Month() == time.December && mo == int(time.January) {
 		if t, ok = mk(now.Year() + 1); !ok {
 			return "", 0, false
 		}

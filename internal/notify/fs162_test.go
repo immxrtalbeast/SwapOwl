@@ -19,6 +19,7 @@ type fakeAPI2 struct {
 	hot         string
 	deliveries  []string
 	delCode     int
+	seen        map[string]bool
 }
 
 func (f *fakeAPI2) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +41,13 @@ func (f *fakeAPI2) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.deliveries = append(f.deliveries, string(b))
 		if f.delCode != 0 {
 			w.WriteHeader(f.delCode)
+		} else if seen := f.seen[string(b)]; seen {
+			w.WriteHeader(200)
 		} else {
+			if f.seen == nil {
+				f.seen = map[string]bool{}
+			}
+			f.seen[string(b)] = true
 			w.WriteHeader(201)
 		}
 		_, _ = w.Write([]byte(`{}`))
@@ -114,7 +121,7 @@ func TestStopListBurstMerged(t *testing.T) {
 	}
 }
 
-const sugNow = `[{"product_id":"salmon","product_name":"Лосось","quantity":{"qty":4000,"unit":"g"},"urgency":"now","explanation":"Кончится сегодня"},
+const sugNow = `[{"product_id":"salmon","product_name":"Лосось","quantity":{"qty":4000,"unit":"g"},"urgency":"now","explanation":"Кончится сегодня","shelf_life_hours":72},
 {"product_id":"rice","product_name":"Рис","quantity":{"qty":1000,"unit":"g"},"urgency":"soon"}]`
 
 func TestOrderFlow(t *testing.T) {
@@ -136,20 +143,49 @@ func TestOrderFlow(t *testing.T) {
 	}
 	b.HandleUpdate(ctx, msgUpdate(botChat, "годен до 15.10"))
 	if len(api.deliveries) != 1 || !strings.Contains(api.deliveries[0], `"expires_on":"2026-10-15"`) ||
-		!strings.Contains(api.deliveries[0], `"id":"TG-salmon-2026-10-12-4000"`) {
+		!strings.Contains(api.deliveries[0], `"id":"TG-salmon-cb1"`) {
 		t.Fatalf("поставка: %v", api.deliveries)
 	}
-	// повтор: тот же id (API идемпотентен по id)
-	b.HandleUpdate(ctx, cbUpdate(botChat, "acc:salmon"))
+	if m := tgf.sent("sendMessage"); !strings.Contains(m[len(m)-1], "✅ Поставка принята: Лосось, 4 кг, годен до 15.10.2026") {
+		t.Fatalf("ответ без итоговой даты: %v", m[len(m)-1])
+	}
+	// вторая настоящая поставка в тот же день и с тем же количеством — другое нажатие, другой id, новая партия
+	b.HandleUpdate(ctx, cbUpdateID(botChat, "cb2", "acc:salmon"))
 	b.HandleUpdate(ctx, msgUpdate(botChat, "72 ч"))
-	if len(api.deliveries) != 2 {
+	if len(api.deliveries) != 2 || !strings.Contains(api.deliveries[1], `"id":"TG-salmon-cb2"`) {
 		t.Fatalf("поставки: %v", api.deliveries)
 	}
-	id := func(s string) string { return s[strings.Index(s, `"id"`):][:34] }
-	if id(api.deliveries[0]) != id(api.deliveries[1]) {
-		t.Fatal("id поставки недетерминирован")
+	if m := tgf.sent("sendMessage"); !strings.Contains(m[len(m)-1], "✅ Поставка принята") || !strings.Contains(m[len(m)-1], "годен до 15.10.2026") {
+		t.Fatalf("201 должен быть «принята», 72 ч от 12.10 10:30 = 15.10: %v", m[len(m)-1])
+	}
+	// повторная доставка того же нажатия: 200 от API — отдельный ответ, не «принята»
+	b.HandleUpdate(ctx, cbUpdateID(botChat, "cb2", "acc:salmon"))
+	b.HandleUpdate(ctx, msgUpdate(botChat, "72 ч"))
+	if m := tgf.sent("sendMessage"); !strings.Contains(m[len(m)-1], "уже была принята ранее") || strings.Contains(m[len(m)-1], "✅") {
+		t.Fatalf("replay: %v", m[len(m)-1])
 	}
 	_ = n
+}
+
+func TestOrderPastDateRejected(t *testing.T) {
+	_, b, tgf, api := newN(t)
+	ctx := context.Background()
+	api.set(func() { api.suggestions = sugNow })
+	b.HandleUpdate(ctx, cbUpdate(botChat, "acc:salmon"))
+	b.HandleUpdate(ctx, msgUpdate(botChat, "годен до 10.10"))
+	if len(api.deliveries) != 0 {
+		t.Fatalf("прошедшая дата принята: %v", api.deliveries)
+	}
+	if m := tgf.sent("sendMessage"); !strings.Contains(m[len(m)-1], "в прошлом") {
+		t.Fatalf("нет отказа: %v", m[len(m)-1])
+	}
+}
+
+func TestSendSuggestionsNoneFlag(t *testing.T) {
+	n, _, _, _ := newN(t)
+	if msg, none := n.SendSuggestions(context.Background()); !none || msg == "" {
+		t.Fatalf("нечего слать: %q %v", msg, none)
+	}
 }
 
 func TestOrderNoRightsAndGone(t *testing.T) {
@@ -172,7 +208,7 @@ func newBot2(t *testing.T) (*Notifier, *Bot, *fakeTG, *fakeAPI2) { return newN(t
 func TestParseSupplyExpiry(t *testing.T) {
 	now := time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC)
 	for in, want := range map[string]string{
-		"годен до 15.10": "2026-10-15", "15.10": "2026-10-15", "до 01.02": "2027-02-01", "12.10": "2026-10-12", "годен до 01.02.2027": "2027-02-01",
+		"годен до 15.10": "2026-10-15", "15.10": "2026-10-15", "до 01.02": "2026-02-01", "12.10": "2026-10-12", "годен до 01.02.2027": "2027-02-01",
 	} {
 		on, h, ok := ParseSupplyExpiry(in, now)
 		if !ok || on != want || h != 0 {
@@ -184,6 +220,17 @@ func TestParseSupplyExpiry(t *testing.T) {
 		if !ok || on != "" || h != want {
 			t.Errorf("%q: %q %d %v", in, on, h, ok)
 		}
+	}
+	// прошедшая дата без года — не следующий год (годен до 10.10 при сегодня 12.10)
+	if on, _, ok := ParseSupplyExpiry("годен до 10.10", now); !ok || on != "2026-10-10" {
+		t.Errorf("прошедшая дата должна остаться прошедшей: %q %v", on, ok)
+	}
+	dec := time.Date(2026, 12, 30, 10, 0, 0, 0, time.UTC)
+	if on, _, ok := ParseSupplyExpiry("05.01", dec); !ok || on != "2027-01-05" {
+		t.Errorf("декабрь→январь переносится на следующий год: %q %v", on, ok)
+	}
+	if on, _, _ := ParseSupplyExpiry("10.12", dec); on != "2026-12-10" {
+		t.Errorf("прошедшая дата в декабре: %q", on)
 	}
 	for _, in := range []string{"", "завтра", "31.02", "0 ч", "99999 ч", "годен"} {
 		if _, _, ok := ParseSupplyExpiry(in, now); ok {
