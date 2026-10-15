@@ -169,3 +169,22 @@ func TestLadderRouteEmptyIsArray(t *testing.T) {
 		t.Fatalf("без зависимостей: %d", rec.Code)
 	}
 }
+
+// Витрина строится из того же горячего предложения: порции скидки того же блюда уже входят в цель продажи
+// и второй раз не засчитываются (иначе «не спишем ≈ N ₽» завышено).
+func TestLadderDoesNotDoubleCountSameDish(t *testing.T) {
+	// 10 кг лосося, стейк по 200 г, цель 30 порций (6 кг); витрина по тому же стейку даёт ещё 20 порций.
+	in := ladderIn{Alerts: []store.AlertView{salmonAlert(10000)}, Offers: []OfferJSON{steakOffer(30)},
+		Rescue: []RescueJSON{{DishID: "steak", DishName: "Стейк из лосося", ServingsLeft: 20, DiscountPercent: 20}}, Snap: ladderSnap(), Loc: ladderLoc}
+	b := buildLadder(in)[0]
+	sell, disc := step(t, b, LadderSell), step(t, b, LadderDiscount)
+	if sell.SavedMinor != 540000 { // 6000 г × 90 коп/г
+		t.Fatalf("sell: %+v", sell)
+	}
+	if disc.SavedMinor != 0 || disc.Status != "unavailable" {
+		t.Fatalf("скидка по тому же блюду засчитана второй раз: %+v", disc)
+	}
+	if b.CombinedMinor != 540000 {
+		t.Fatalf("combined %d, ждали 540000 (только продажа)", b.CombinedMinor)
+	}
+}

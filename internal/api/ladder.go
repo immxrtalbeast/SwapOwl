@@ -136,7 +136,8 @@ func buildLadder(in ladderIn) []LadderBatchJSON {
 			var bestCover int64
 			for i, r := range in.Rescue {
 				n := in.norm(r.DishID, a.ProductID)
-				if n <= 0 || r.ServingsLeft <= 0 {
+				// Порции витрины того же блюда уже входят в цель продажи: второй раз их не засчитываем.
+				if n <= 0 || r.ServingsLeft <= 0 || r.DishID == sellDish {
 					continue
 				}
 				if c := minI64(remainder, r.ServingsLeft*n); c > bestCover {
