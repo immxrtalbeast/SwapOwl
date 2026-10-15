@@ -92,6 +92,8 @@ func newValidationEnv(t *testing.T) *validationEnv {
 		DB: db, Now: clk.Now, Auth: svc, Audit: db, Stock: db, Receiving: db, Catalog: db, Orders: db,
 		Corrections: db, Menu: db, Outbox: db, Analytics: db, Location: loc, Events: events.New(clk.Now),
 		Demo: st, DemoToken: vDemoToken, NotSimulated: stand.ErrNotSimulated, Gate: gate,
+		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{WindowDays: 14, PriorDays: 28,
+			Schedule: domain.Schedule{Location: time.UTC, OpenAt: 10 * time.Hour, CloseAt: 23 * time.Hour}}},
 	})
 	env := &validationEnv{h: rt.Handler(), rt: rt, db: db}
 
@@ -535,6 +537,12 @@ func (e *validationEnv) routes() map[string]vRoute {
 			{"missing", `{}`, "", ""},
 			{"string", `{"hours":"1"}`, "", ""},
 			{"unknown field", `{"hours":1,"bogus":1}`, "", ""},
+		}},
+		"POST /api/what-if": {path: "/api/what-if", valid: `{"horizon_days":3,"scenarios":[{"type":"demand","dish_id":"` + e.dish + `","factor":1}]}`, cases: []vCase{
+			{"no horizon", `{"scenarios":[]}`, "horizon_days", ""},
+			{"horizon 8", `{"horizon_days":8}`, "horizon_days", ""},
+			{"bad type", `{"horizon_days":1,"scenarios":[{"type":"x"}]}`, "scenarios[0].type", ""},
+			{"unknown field", `{"horizon_days":1,"bogus":1}`, "", ""},
 		}},
 		"POST /api/demo/reset": {path: "/api/demo/reset", noBody: true, headers: bearer()},
 	}

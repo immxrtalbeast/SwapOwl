@@ -142,6 +142,7 @@ func (rt *Router) Routes() {
 	rt.hotOffersRoutes()
 	rt.rescueRoutes()
 	rt.forecastRoutes()
+	rt.whatIfRoutes()
 	rt.supplyRoutes()
 	rt.supplyOrderRoutes()
 	rt.analyticsRoutes()

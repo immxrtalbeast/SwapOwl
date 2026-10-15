@@ -198,7 +198,24 @@ curl -X POST http://localhost:8080/api/orders \
 
 `usual_portions` — сколько порций блюда ожидается при обычном спросе до `sell_until`. У алгоритма `a` `target_portions` равен 0.
 
-### `GET /api/public/rescue` (без входа)
+## «Что если»: `POST /api/what-if` (viewer, ничего не записывает)
+
+Пересчёт прогноза списаний по сценариям на копии снимка склада; часы — часы API, случайности нет (тот же снимок и тело → тот же ответ).
+
+```bash
+curl -X POST http://localhost:8080/api/what-if -H 'Authorization: Bearer <key>' -H 'Content-Type: application/json' \
+  -d '{"horizon_days": 3, "scenarios": [
+        {"type": "discount", "dish_id": "caesar", "percent": 20},
+        {"type": "order_less", "product_id": "chicken", "percent": 30},
+        {"type": "demand", "dish_id": "caesar", "factor": 0.5}]}'
+```
+
+- `horizon_days` 1…7; до 5 сценариев; расчёт ограничен 5 с (`503 overloaded` с текстом, что уменьшить).
+- `discount`: `dish_id`, `percent` 5…50 — спрос ×(1 + 1,5·percent/100); коэффициент — допущение (`simulator.DiscountElasticity`). `order_less`: `product_id`, `percent` 10…100 — из остатка убирается доля, начиная с самых свежих партий. `demand`: `dish_id`, `factor` 0.5…2.
+- Ответ: `base` (`total_minor` и продукты — как `GET /api/forecast/writeoffs`) и по каждому сценарию `total_minor`, `delta_minor`, `delta_pct`, `products` и `assumptions` словами. Пример — в `docs/openapi.yaml`.
+- `400 validation_error` с `details.field` вида `scenarios[0].percent`.
+
+## `GET /api/public/rescue` (без входа)
 
 Витрина «Спаси продукты»: блюда из горячих предложений, которые выгодно заказать сегодня со скидкой. Только чтение. Включается `PUBLIC_RESCUE=true` (по умолчанию выключено — `404`). Не больше 50 строк, лимит 60 запросов в минуту с адреса (`429`), `Cache-Control: public, max-age=15`.
 

@@ -492,6 +492,73 @@ paths:
                 days:
                   - {date: '2026-10-09', total_minor: 126000}
                 generated_at: '2026-10-09T11:00:00+03:00'
+  /api/what-if:
+    post:
+      tags: [menu]
+      summary: «Что если»: пересчёт списаний по сценариям (viewer, ничего не пишет)
+      description: |
+        Считает на копии снимка склада прогноз списаний по сроку на `horizon_days` суток для базы («если ничего не делать»,
+        как `GET /api/forecast/writeoffs`) и для каждого сценария отдельно. До 5 сценариев, горизонт 1…7 суток.
+        Расчёт детерминирован (случайности нет): тот же снимок и тело дают тот же ответ. Таймаут расчёта 5 с, иначе `503 overloaded`.
+        Типы: `discount` (`dish_id`, `percent` 5…50; спрос растёт в `1 + 1,5·percent/100` раза — допущение), `order_less`
+        (`product_id`, `percent` 10…100; из остатка убирается доля, сначала самые свежие партии), `demand` (`dish_id`, `factor` 0.5…2).
+        Допущения каждого сценария возвращаются словами в `assumptions`. Ошибки валидации — `400 validation_error` с `details.field`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [horizon_days]
+              additionalProperties: false
+              properties:
+                horizon_days: {type: integer, minimum: 1, maximum: 7}
+                scenarios:
+                  type: array
+                  maxItems: 5
+                  items:
+                    type: object
+                    required: [type]
+                    additionalProperties: false
+                    properties:
+                      type: {type: string, enum: [discount, order_less, demand]}
+                      dish_id: {type: string, description: Для discount и demand}
+                      product_id: {type: string, description: Для order_less}
+                      percent: {type: number, description: "discount: 5…50; order_less: 10…100"}
+                      factor: {type: number, minimum: 0.5, maximum: 2, description: Для demand}
+            example:
+              horizon_days: 3
+              scenarios:
+                - {type: discount, dish_id: steak, percent: 20}
+                - {type: order_less, product_id: salmon, percent: 50}
+      responses:
+        '200':
+          description: База и сценарии в порядке запроса; суммы в копейках, `delta_pct` — к базе, %
+          content:
+            application/json:
+              example:
+                horizon_days: 3
+                base:
+                  total_minor: 36000
+                  products:
+                    - {product_id: salmon, product_name: Лосось, base_minor: 36000, scenario_minor: 36000, delta_minor: 0}
+                scenarios:
+                  - type: discount
+                    dish_id: steak
+                    percent: 20
+                    total_minor: 9000
+                    delta_minor: -27000
+                    delta_pct: -75
+                    products:
+                      - {product_id: salmon, product_name: Лосось, base_minor: 36000, scenario_minor: 9000, delta_minor: -27000}
+                    assumptions:
+                      - Скидка 20% на «Стейк из лосося» поднимает спрос в 1,3 раза (эластичность 1,5 — допущение, не измерение).
+                      - 'Цена и выручка в расчёте не участвуют: считаются только списания по сроку.'
+                generated_at: '2026-10-10T10:00:00Z'
+        '400': {$ref: '#/components/responses/Validation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '503':
+          description: Расчёт не уложился в 5 с (`overloaded`, в `message` — что уменьшить)
   /api/hot-offers:
     get:
       tags: [menu]
