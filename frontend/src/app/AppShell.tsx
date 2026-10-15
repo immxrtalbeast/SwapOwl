@@ -29,6 +29,7 @@ import { ConnectionProvider, useConnection } from "./ConnectionContext";
 import { useAuth } from "../auth/AuthContext";
 import { hasRole } from "../auth/roles";
 import { SCREENS, screenFromHash } from "./screens";
+import { TgApp, isTgHash } from "../pages/tg";
 
 function ScreenView({ id }: { id: string }) {
   switch (id) {
@@ -66,6 +67,16 @@ function Offline() {
 
 /** Каркас: боковая панель, белая шапка, содержимое экрана; навигация по хэшу адреса (без библиотеки маршрутизации). */
 export function AppShell() {
+  const [tg, setTg] = useState(() => isTgHash(window.location.hash));
+  useEffect(() => {
+    const on = () => setTg(isTgHash(window.location.hash));
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
+  return tg ? <TgApp /> : <MainShell />;
+}
+
+function MainShell() {
   const [screen, setScreen] = useState(() => screenFromHash(window.location.hash));
   const [labelId, setLabelId] = useState(() => labelBatchIdFromHash(window.location.hash));
   useEffect(() => {
