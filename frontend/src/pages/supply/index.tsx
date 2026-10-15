@@ -29,7 +29,8 @@ function AcceptCell({ row, pending, onSent }: { row: SupplySuggestion; pending: 
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<AcceptOutcome | null>(null);
   const [hours, setHours] = useState("");
-  const needHours = outcome?.kind === "need-shelf-life";
+  // Без срока поставщика в строке срок вводит оператор сразу: поставка без срока не принимается (FS-160).
+  const needHours = outcome?.kind === "need-shelf-life" || row.shelf_life_hours === null;
 
   async function accept() {
     const h = needHours && hours.trim() !== "" ? Number(hours) : undefined;

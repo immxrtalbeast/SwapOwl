@@ -36,6 +36,17 @@ describe("photoInvoice", () => {
     expect(rowErrors({ ...rows[2], decision: "reject" }, products)).toEqual([]);
   });
 
+  it("строку без срока не принять, пока не введён «годен до» с упаковки (FS-160)", () => {
+    const noExpiry = { ...draftRows(draft)[0], line: { ...draft.lines[0], shelf_life_hours: null } };
+    expect(rowErrors(noExpiry, products)).toContain("Укажите «годен до» с упаковки: без срока позицию не принять");
+    expect(rowErrors({ ...noExpiry, decision: "reject" }, products)).toEqual([]);
+    const filled = { ...noExpiry, expires: "2026-10-20" };
+    expect(rowErrors(filled, products)).toEqual([]);
+    const d = buildPhotoDelivery(draft, "4471", draft.supplier!, [filled], new Date("2026-10-13T08:00:00Z"));
+    expect(d.items[0]).toMatchObject({ product_id: "milk", expires_on: "2026-10-20" });
+    expect(d.items[0]).not.toHaveProperty("shelf_life_hours");
+  });
+
   it("недовоз и брак попадают в акт, принятое — в поставку", () => {
     const rows = draftRows(draft);
     rows[1] = { ...rows[1], accepted: "1,0" };

@@ -11,10 +11,12 @@ export interface DraftRow {
   /** Принятое количество в line.unit; меньше line.quantity — недовоз. */
   accepted: string;
   decision: Decision;
+  /** «Годен до» с упаковки (YYYY-MM-DD), если в накладной срока нет: без срока позицию не принять (FS-160). */
+  expires: string;
 }
 
 export function draftRows(d: InvoiceDraft): DraftRow[] {
-  return d.lines.map((line, key) => ({ key, line, productId: line.product_id ?? "", accepted: line.quantity, decision: "accept" }));
+  return d.lines.map((line, key) => ({ key, line, productId: line.product_id ?? "", accepted: line.quantity, decision: "accept", expires: "" }));
 }
 
 const UNIT_RU: Record<InvoiceLine["unit"], string> = { g: "г", kg: "кг", ml: "мл", l: "л", pcs: "шт" };
@@ -45,8 +47,12 @@ export function rowErrors(r: DraftRow, products: readonly ProductStock[]): strin
     const inv = normQty(r.line.quantity);
     if (inv && Number(q) > Number(inv)) out.push("Принято больше, чем в накладной");
   }
+  if (!hasLineExpiry(r.line) && !/^\d{4}-\d{2}-\d{2}$/.test(r.expires)) out.push("Укажите «годен до» с упаковки: без срока позицию не принять");
   return out;
 }
+
+/** В строке накладной напечатан срок: «годен до» или срок хранения. */
+export const hasLineExpiry = (l: InvoiceLine) => Boolean(l.expires_on || l.shelf_life_hours);
 
 /** Расхождения для претензии: брак — вся строка, недовоз — разница. */
 export interface Discrepancy { name: string; kind: "брак" | "недовоз"; qty: string; unit: InvoiceLine["unit"] }
@@ -92,7 +98,7 @@ export function buildPhotoDelivery(d: InvoiceDraft, number: string, supplier: st
       name: r.line.raw_name,
       quantity: normQty(r.accepted)!,
       unit: r.line.unit,
-      ...(r.line.expires_on ? { expires_on: r.line.expires_on } : r.line.shelf_life_hours ? { shelf_life_hours: r.line.shelf_life_hours } : {}),
+      ...(r.line.expires_on ? { expires_on: r.line.expires_on } : r.line.shelf_life_hours ? { shelf_life_hours: r.line.shelf_life_hours } : { expires_on: r.expires }),
     }));
   const created = d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date) && !Number.isNaN(Date.parse(d.date)) ? new Date(`${d.date}T00:00:00Z`) : recognizedAt;
   return { id: `photo-${sha256Hex(JSON.stringify([number.trim(), normSupplier(supplier)])).slice(0, 32)}`, number: number.trim(), created_at: created.toISOString(), items };

@@ -21,7 +21,8 @@ var ErrDeliveryConflict = errors.New("store: delivery id reused with different c
 // ErrUnitMismatch — единица продукта в БД не совпала с единицей позиции.
 var ErrUnitMismatch = errors.New("store: product unit mismatch")
 
-// ErrNoShelfLife — у позиции нет срока, а у продукта нет срока по умолчанию.
+// ErrNoShelfLife — у позиции нет срока. Срок годности — обязательная часть поставки (его даёт поставщик):
+// срока по умолчанию из карточки продукта для поставки нет (FS-160, ответ эксперта «Флагмана»).
 var ErrNoShelfLife = errors.New("store: no shelf life for item")
 
 // NoShelfLifeError указывает позицию (с 0); errors.Is(err, ErrNoShelfLife) истинно.
@@ -31,7 +32,7 @@ type NoShelfLifeError struct {
 }
 
 func (e *NoShelfLifeError) Error() string {
-	return fmt.Sprintf("store: item %d: product %s has no default shelf life", e.Index, e.ProductID)
+	return fmt.Sprintf("store: item %d: product %s has no expiry in the delivery", e.Index, e.ProductID)
 }
 func (e *NoShelfLifeError) Is(target error) bool { return target == ErrNoShelfLife }
 
@@ -238,20 +239,18 @@ func (d *DB) ReceiveDelivery(ctx context.Context, in DeliveryInput, now func() t
 			return err
 		}
 		units := map[string]domain.Unit{}
-		shelf := map[string]*int{}
 		for _, id := range ids {
 			var u string
-			var h *int
-			if err := tx.QueryRow(ctx, `SELECT unit, shelf_life_hours FROM products WHERE id = $1`, id).Scan(&u, &h); err != nil {
+			if err := tx.QueryRow(ctx, `SELECT unit FROM products WHERE id = $1`, id).Scan(&u); err != nil {
 				return fmt.Errorf("store: product unit: %w", err)
 			}
-			units[id], shelf[id] = domain.Unit(u), h
+			units[id] = domain.Unit(u)
 		}
 		for i, it := range in.Items {
 			if units[it.ProductID] != it.Unit {
 				return fmt.Errorf("%w: %s is %s", ErrUnitMismatch, it.ProductID, units[it.ProductID])
 			}
-			if it.ExpiresOn == "" && it.ShelfLifeHours == 0 && shelf[it.ProductID] == nil {
+			if it.ExpiresOn == "" && it.ShelfLifeHours == 0 {
 				return &NoShelfLifeError{Index: i, ProductID: it.ProductID}
 			}
 		}
@@ -268,11 +267,8 @@ func (d *DB) ReceiveDelivery(ctx context.Context, in DeliveryInput, now func() t
 			Batches: []BatchJSON{}, Warnings: []WarningJSON{}}
 		for i, it := range in.Items {
 			line := i + 1
-			hours, source := it.ShelfLifeHours, ExpirySourceDelivery
-			if hours == 0 && it.ExpiresOn == "" {
-				hours, source = *shelf[it.ProductID], ExpirySourceProductDefault
-			}
-			expires := received.Add(time.Duration(hours) * time.Hour)
+			source := ExpirySourceDelivery
+			expires := received.Add(time.Duration(it.ShelfLifeHours) * time.Hour)
 			if it.ExpiresOn != "" {
 				day, err := time.ParseInLocation("2006-01-02", it.ExpiresOn, loc)
 				if err != nil {

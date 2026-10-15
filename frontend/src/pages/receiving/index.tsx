@@ -93,15 +93,16 @@ export function ReceivingPage() {
     <section>
       <ScreenTitle stale={stale}>Приёмка</ScreenTitle>
       <ScanPanel onSent={reload} />
-      <p style={{ margin: "0 0 16px", color: "var(--text-muted)" }}>
-        Срок этих партий взят из справочника продукта: накладная его не содержала. Подтвердите или поправьте.
+      <p style={{ margin: "0 0 16px", color: "var(--text-muted)", maxWidth: 760 }}>
+        Срок годности — обязательная часть поставки: позицию без срока система не примет. Сканер читает «годен до» из
+        маркировки (DataMatrix / GS1, AI 17); если в коде срока нет — перепишите его с упаковки.
       </p>
       {state.kind === "loading" && <ScreenStates.Loading label="Загрузка приёмки" rows={3} />}
       {state.kind === "error" && <ScreenStates.Error what="приёмку" reason={state.message} onRetry={() => void reload()} />}
-      {state.kind === "ready" && state.rows.length === 0 && (
-        <Card>
-          <ScreenStates.Empty title="Все сроки подтверждены" text="За последние 48 часов партий без подтверждённого срока нет." />
-        </Card>
+      {state.kind === "ready" && state.rows.length > 0 && (
+        <p style={{ margin: "0 0 12px", font: "var(--type-label)" }}>
+          Партии, принятые до этого правила со сроком из справочника, — подтвердите или поправьте срок:
+        </p>
       )}
       {state.kind === "ready" && state.rows.length > 0 && (
         <ul style={{ margin: 0, padding: 0, display: "grid", gap: 12, maxWidth: 760 }}>
