@@ -45,6 +45,10 @@ type Config struct {
 	SeedOnEmpty  bool
 	AuthRequired bool
 
+	// TelegramBotToken — токен бота, из которого открывается mini-app; пустой — вход через Telegram
+	// (POST /api/auth/telegram) выключен. Токен секретный: в журнал и ответы не попадает.
+	TelegramBotToken string
+
 	AdminLogin    string
 	AdminPassword string
 
@@ -99,6 +103,7 @@ func Load(getenv func(string) string) (Config, error) {
 		DemoToken:         getenv("DEMO_TOKEN"),
 		SeedOnEmpty:       p.bool("SEED_ON_EMPTY", true),
 		AuthRequired:      p.bool("AUTH_REQUIRED", true),
+		TelegramBotToken:  getenv("TELEGRAM_BOT_TOKEN"),
 		AdminLogin:        getenv("ADMIN_LOGIN"),
 		AdminPassword:     getenv("ADMIN_PASSWORD"),
 		SessionTTLHours:   p.int("SESSION_TTL_HOURS", 12),

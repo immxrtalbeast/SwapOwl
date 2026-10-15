@@ -158,7 +158,7 @@ func run() error {
 		defer cancel()
 		return float64(countOutbox(c, db))
 	})
-	router := api.NewRouter(api.Deps{Metrics: reg, MetricsToken: os.Getenv("METRICS_TOKEN"), Log: log, DB: db, Now: now, Auth: authSvc, Audit: db, Clock: clockInfo(st), Demo: demo, Sim: sim, DemoToken: cfg.DemoToken,
+	router := api.NewRouter(api.Deps{Metrics: reg, MetricsToken: os.Getenv("METRICS_TOKEN"), Log: log, DB: db, Now: now, Auth: authSvc, Telegram: db, TelegramBotToken: cfg.TelegramBotToken, Audit: db, Clock: clockInfo(st), Demo: demo, Sim: sim, DemoToken: cfg.DemoToken,
 		NotSimulated: stand.ErrNotSimulated, Gate: gate,
 		Stock: pubStock{db, pub}, Receiving: pubReceiving{db, pub}, Catalog: pubCatalog{db, pub}, Orders: orders, Corrections: pubCorrections{db, pub}, Menu: db, Outbox: db, SupplyOrders: db, Monitor: monitor, Analytics: db, Location: cfg.Location, Events: bus,
 		HotOffers: store.Snapshotter{DB: db, Params: store.SnapshotParams{

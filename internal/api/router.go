@@ -29,6 +29,11 @@ type Deps struct {
 	// как при AUTH_REQUIRED=false, а маршруты /api/auth, /api/users и /api/api-keys не регистрируются.
 	Auth *auth.Service
 
+	// Telegram и TelegramBotToken — вход в mini-app (FS-163). Нужны оба и Auth; иначе
+	// POST /api/auth/telegram и PUT/DELETE /api/users/{login}/telegram не регистрируются.
+	Telegram         TelegramLinks
+	TelegramBotToken string
+
 	// Audit — журнал действий в БД (2.9, 8.3 п. 6). nil — записи идут только в журнал запросов,
 	// а GET /api/audit не регистрируется.
 	Audit AuditLog
@@ -122,6 +127,7 @@ func (rt *Router) Routes() {
 	rt.HandlePublic(http.MethodGet, "/healthz", rt.healthz)
 	rt.metricsRoutes()
 	rt.authRoutes()
+	rt.telegramRoutes()
 	rt.stockRoutes()
 	rt.receivingRoutes()
 	rt.invoiceRoutes()

@@ -170,3 +170,14 @@ func TestSimDefaultsAndValidation(t *testing.T) {
 		t.Error("неизвестный SEED_PROFILE must fail")
 	}
 }
+
+func TestTelegramBotToken(t *testing.T) {
+	c, err := Load(env(map[string]string{"DATABASE_URL": "postgres://x"}))
+	if err != nil || c.TelegramBotToken != "" {
+		t.Fatalf("по умолчанию токена нет: %q %v", c.TelegramBotToken, err)
+	}
+	c, err = Load(env(map[string]string{"DATABASE_URL": "postgres://x", "TELEGRAM_BOT_TOKEN": "1:abc"}))
+	if err != nil || c.TelegramBotToken != "1:abc" {
+		t.Fatalf("%q %v", c.TelegramBotToken, err)
+	}
+}

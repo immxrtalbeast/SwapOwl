@@ -30,6 +30,7 @@ type (
 	allDemo         struct{ Demo }
 	allSim          struct{ SimControl }
 	allAudit        struct{ AuditLog }
+	allTelegram     struct{ TelegramLinks }
 	allHotOverrides struct{ HotOverrides }
 )
 
@@ -37,7 +38,7 @@ type (
 // HEAD — автоматический двойник GET, в спецификации не описывается.
 func routerPairs() map[string]bool {
 	rt := NewRouter(Deps{
-		Auth: &auth.Service{}, Audit: allAudit{}, Stock: allStock{}, Catalog: allCatalog{},
+		Auth: &auth.Service{}, Telegram: allTelegram{}, TelegramBotToken: "t", Audit: allAudit{}, Stock: allStock{}, Catalog: allCatalog{},
 		Orders: allOrders{}, Corrections: allCorrections{}, Menu: allMenu{}, HotOffers: allHot{},
 		Supply: allSupply{}, SupplyOrders: allSupplyOrd{}, Outbox: allOutbox{}, Analytics: allAnalytics{}, Monitor: allMonitor{},
 		Events: events.New(nil), Demo: allDemo{}, Sim: allSim{}, Metrics: metrics.New(), Invoices: &Invoices{}, HotOverrides: allHotOverrides{},
