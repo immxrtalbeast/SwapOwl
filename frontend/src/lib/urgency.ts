@@ -1,4 +1,4 @@
-// Единая шкала срочности SwapOwl (.ai/frontend-prompt.md, «Шкала срочности»).
+// Единая шкала срочности SwapOwl (docs/design/design-system.md, «Шкала срочности»).
 // Статус приходит с бэкенда, фронт только выбирает тон, иконку и метку. Иконка и метка показываются всегда.
 
 export type Tone = "ok" | "warn" | "risk" | "critical" | "neutral" | "info";

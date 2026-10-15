@@ -15,7 +15,7 @@ type AlertParams struct {
 	WMin     float64
 }
 
-// AlertView — строка GET /api/alerts (.ai/solution.md, 7.4).
+// AlertView — строка GET /api/alerts (спецификация, 7.4).
 type AlertView struct {
 	BatchID         int64     `json:"batch_id"`
 	ProductID       string    `json:"product_id"`

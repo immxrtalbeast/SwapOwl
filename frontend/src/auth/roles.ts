@@ -1,4 +1,4 @@
-// Роли и права (.ai/solution.md, 2.9): viewer < operator < admin.
+// Роли и права (спецификация, 2.9): viewer < operator < admin.
 export type Role = "viewer" | "operator" | "admin";
 
 const rank: Record<Role, number> = { viewer: 0, operator: 1, admin: 2 };

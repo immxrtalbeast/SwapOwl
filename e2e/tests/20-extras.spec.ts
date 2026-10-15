@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Stand } from "./stand";
 
-// Шаги 1, 9, 10 и 11 демо-сценария v2 (.ai/demo.md): «Сегодня», приёмка сканом маркировки, вскрытая упаковка
+// Шаги 1, 9, 10 и 11 демо-сценария v2 (docs/demo-script.md): «Сегодня», приёмка сканом маркировки, вскрытая упаковка
 // с этикеткой, экран «Сеть». Идут после 10-demo на свежем сбросе и от него не зависят.
 
 test.describe.configure({ mode: "serial" });

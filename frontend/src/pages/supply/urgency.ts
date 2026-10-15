@@ -1,6 +1,6 @@
 import type { SupplySuggestion } from "../../api/types";
 
-// Общая шкала срочности (.ai/frontend-prompt.md): now → risk, soon → warn, planned → нейтральный тон.
+// Общая шкала срочности (docs/design/design-system.md): now → risk, soon → warn, planned → нейтральный тон.
 export type SupplyUrgency = SupplySuggestion["urgency"];
 
 export interface SupplyUrgencyView {

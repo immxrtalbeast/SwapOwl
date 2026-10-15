@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Демо-сценарий .ai/demo.md против запущенного стенда.
+// Демо-сценарий docs/demo-script.md против запущенного стенда.
 // E2E_BASE_URL — адрес фронта (API на том же адресе: /api, /events); E2E_DEMO_TOKEN — DEMO_TOKEN стенда.
 export default defineConfig({
   testDir: "./tests",

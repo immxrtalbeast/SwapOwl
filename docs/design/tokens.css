@@ -1,5 +1,5 @@
 /* SwapOwl — токены дизайн-системы (палитра «Свежесть», язык линейки Swap «Флагмана»).
-   Источник: .ai/frontend-prompt.md, раздел «Дизайн-система»; макет docs/design/swapowl/mockup.html.
+   Источник: docs/design/design-system.md, раздел «Дизайн-система»; макет docs/design/swapowl/mockup.html.
    Шрифты: Onest 400/500/600/700 (текст и цифры), Roboto Mono 500 (номера партий) — @fontsource, cyrillic + latin.
    Оболочка (фон, шапка, боковая панель, KPI) — стекло (--glass-*), таблицы и формы — чёткие, с линиями (FS-161). Иконки: Tabler Icons.
    Тема одна, светлая. Имена токенов = имена CSS-переменных (src/theme/tokens.ts, cssVariablesResolver). */

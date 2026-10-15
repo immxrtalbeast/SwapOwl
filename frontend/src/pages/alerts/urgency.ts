@@ -1,6 +1,6 @@
 import type { Alert } from "../../api/types";
 
-// Шкала срочности партии (.ai/frontend-prompt.md): doomed → risk, expiring → warn, expired → critical.
+// Шкала срочности партии (docs/design/design-system.md): doomed → risk, expiring → warn, expired → critical.
 // Статус и doomed приходят с бэкенда; здесь только выбор тона. Цвета — токены дизайн-системы с запасными значениями.
 export type Urgency = "doomed" | "expiring" | "expired";
 

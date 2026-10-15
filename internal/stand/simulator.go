@@ -11,7 +11,7 @@ import (
 )
 
 // creamDishes — блюда со сливками. Демо-профиль их не заказывает: сливки С-1 нужны сценарию
-// для шага 5 (.ai/demo.md), и после шага 4 их остаётся на S = 2 порции крем-супа.
+// для шага 5 (docs/demo-script.md), и после шага 4 их остаётся на S = 2 порции крем-супа.
 func creamDishes() map[string]bool {
 	out := map[string]bool{}
 	for _, d := range seed.Dishes() {

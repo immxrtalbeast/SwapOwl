@@ -3,7 +3,7 @@ import { Skeleton } from "@mantine/core";
 import { IconAlertCircle, IconInbox, IconLock, IconWifiOff } from "@tabler/icons-react";
 import { PrimaryButton, SecondaryButton } from "./Buttons";
 
-// Пять состояний экрана (.ai/frontend-prompt.md, «Состояния экранов»): загрузка, пусто, ошибка, нет связи, нет прав.
+// Пять состояний экрана (docs/design/design-system.md, «Состояния экранов»): загрузка, пусто, ошибка, нет связи, нет прав.
 
 /** Загрузка: скелетоны в форме будущего контента. Спиннера на весь экран нет. */
 export function LoadingState({ rows = 5, label = "Загрузка" }: { rows?: number; label?: string }) {

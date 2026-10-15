@@ -82,7 +82,7 @@ func TestHistoryConsistentWithJournal(t *testing.T) {
 	}
 }
 
-// Состояние на t0 соответствует условиям демо-сценария (.ai/demo.md).
+// Состояние на t0 соответствует условиям демо-сценария (docs/demo-script.md).
 func TestHistoryDemoConditionsAtT0(t *testing.T) {
 	h, err := buildHistory(testT0)
 	if err != nil {

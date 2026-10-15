@@ -99,7 +99,7 @@ jobs:
           github_token: ${{ github.token }}
           prompt: |
             Ты — ревьюер PR #${{ env.PR }} в репозитории ${{ github.repository }}.
-            Правила ревью — в файле .ai/review-prompt.md. Прочитай его целиком и следуй ему, включая раздел «Протокол».
+            Правила ревью — в файле .github/review-prompt.md. Прочитай его целиком и следуй ему, включая раздел «Протокол».
             Номер раунда: ${{ steps.pr.outputs.n }}.
             Head-коммит: ${{ steps.pr.outputs.head }} (ветка PR уже извлечена).
             Прошлые итоги и ответы исполнителя — в файле prior-rounds.md.

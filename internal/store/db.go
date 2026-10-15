@@ -10,7 +10,7 @@ import (
 	"umirhack/internal/domain"
 )
 
-// acquireTimeout — сколько запрос ждёт свободное соединение пула (.ai/solution.md, 7.6).
+// acquireTimeout — сколько запрос ждёт свободное соединение пула (спецификация, 7.6).
 const acquireTimeout = 5 * time.Second
 
 // ErrPoolTimeout возвращается, когда свободного соединения не нашлось за acquireTimeout.
@@ -24,7 +24,7 @@ type DB struct {
 	// [now − LateEvents, now], «дворник» списывает партию не раньше expires_at + LateEvents.
 	// Ноль — окна нет (как до 2.4а).
 	LateEvents time.Duration
-	// Expiry — порог «истекает» для поля expiring в GET /api/products (.ai/solution.md, 2.4).
+	// Expiry — порог «истекает» для поля expiring в GET /api/products (спецификация, 2.4).
 	Expiry domain.ExpiryConfig
 }
 

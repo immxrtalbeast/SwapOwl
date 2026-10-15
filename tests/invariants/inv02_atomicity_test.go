@@ -23,7 +23,7 @@ func TestInv02OrderAtomicity(t *testing.T) {
 	}
 }
 
-// Инвариант 2 (БД), продажа из кассы (source: "pos", .ai/solution.md 2.3а): продажа уже
+// Инвариант 2 (БД), продажа из кассы (source: "pos", спецификация 2.3а): продажа уже
 // состоялась, поэтому отказа нет. Списывается по FEFO всё доступное, недостача по продукту
 // пишется в shortfalls; sale + shortfalls = суммарная потребность, ни одна партия не в минусе.
 func TestInv02PosSaleWritesOffAvailableAndRecordsShortfall(t *testing.T) {

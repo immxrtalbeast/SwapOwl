@@ -1,4 +1,4 @@
--- Схема по .ai/solution.md, раздел 7.1. Времена — timestamptz, количества — bigint
+-- Схема по спецификация, раздел 7.1. Времена — timestamptz, количества — bigint
 -- в базовой единице продукта, деньги — bigint в копейках.
 -- movements.kind и movements.reason намеренно без CHECK и enum (раздел 8.2).
 

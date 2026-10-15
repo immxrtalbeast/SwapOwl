@@ -9,7 +9,7 @@ import (
 	"umirhack/internal/hotoffers"
 )
 
-// Якоря К3 (.ai/scale.md, критерий 3, 9 баллов) на чистой функции Rank алгоритма Bg.
+// Якоря К3 (критерии кейса, критерий 3, 9 баллов) на чистой функции Rank алгоритма Bg.
 
 func indexOf(offers []hotoffers.Offer, id string) int {
 	for i, o := range offers {
