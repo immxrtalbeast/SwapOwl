@@ -158,20 +158,35 @@ export function TodayPage() {
             {offers.length === 0 ? (
               <EmptyState title="Продвигать нечего" text="Партий под риском нет." />
             ) : (
-              <ul style={list}>
-                {offers.map((o) => {
+              // Каждое блюдо — отдельный блок через линию (FS-161): название и «спасёт ₽» в одной строке,
+              // цель — плашкой с числом, остаток и что с ним делать — таблицей ниже.
+              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {offers.map((o, i) => {
                   const real = realisticTarget(o);
                   const portions = real ? real.real : o.target_today > 0 ? o.target_today : o.target_portions;
                   // Урезанная цель спасает только проданную часть: остаток считает RealisticBlock рядом.
                   const saved = real ? Math.round((offerSaved(o, prices) * real.real) / real.target) : offerSaved(o, prices);
                   return (
-                    <li key={o.dish_id} className={cls(`h${o.dish_id}`)} style={row}>
-                      <a href={hotOffersUrl(o.reasons[0]?.product_id ?? "")} style={{ font: "var(--type-body-strong)", color: "var(--brand-ink)" }}>{o.dish_name}</a>
-                      <span style={{ font: "var(--type-body)" }}>
-                        {real ? "реально " : ""}{portions} {portionsWord(portions)}{o.target_today > 0 ? " сегодня" : ""}
-                      </span>
+                    <li
+                      key={o.dish_id}
+                      className={cls(`h${o.dish_id}`)}
+                      style={{ display: "grid", gap: 8, padding: "12px 0", borderTop: i > 0 ? "1px solid var(--border-cell)" : undefined }}
+                    >
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                        <a href={hotOffersUrl(o.reasons[0]?.product_id ?? "")} style={{ font: "var(--type-h3)", fontSize: 16, color: "var(--brand-ink)", textDecoration: "none" }}>{o.dish_name}</a>
+                        {saved > 0 && (
+                          <span className="so-num" style={{ padding: "2px 10px", borderRadius: "var(--radius-pill)", background: "var(--brand-tint)", color: "var(--brand-ink)", font: "600 13px/20px var(--font-body)", whiteSpace: "nowrap" }}>
+                            спасёт {formatRub(saved)}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>продать{o.target_today > 0 || real ? " сегодня" : ""}</span>
+                        <span className="so-num" style={{ font: "700 22px/26px var(--font-display)", color: "var(--primary)" }}>{portions}</span>
+                        <span style={{ font: "var(--type-label)" }}>{portionsWord(portions)}</span>
+                        {real && <span style={{ font: "var(--type-small)", color: "var(--text-subtle)" }}>· обычно {o.usual_portions} в день</span>}
+                      </div>
                       {real && <RealisticBlock offer={o} prices={prices} compact />}
-                      {saved > 0 && <span style={{ font: "var(--type-body-strong)", color: "var(--urgency-ok-fg)" }}>спасёт {formatRub(saved)}</span>}
                     </li>
                   );
                 })}
