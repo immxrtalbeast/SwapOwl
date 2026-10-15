@@ -206,7 +206,7 @@ export function StockPage() {
           </Card>
         </div>
         <RoleGate min="operator">
-          <div style={{ flex: "0 1 340px", minWidth: "min(100%, 300px)" }}>
+          <div style={{ flex: "0 1 400px", minWidth: "min(100%, 340px)" }}>
             {narrow && (
               <SecondaryButton aria-expanded={formOpen} aria-controls="delivery-form" onClick={() => setFormOpen((o) => !o)} style={{ marginBottom: 12 }}>
                 {formOpen ? "Скрыть приём поставки" : "Приём поставки"}

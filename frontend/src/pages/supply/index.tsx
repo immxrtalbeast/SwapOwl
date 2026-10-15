@@ -158,9 +158,11 @@ export function SupplyPage() {
     {
       key: "select",
       header: "Выбор",
+      align: "center",
       cell: (r) => (
         <input
           type="checkbox"
+          className="so-check"
           aria-label={`Выбрать ${r.product_name} для заказа`}
           checked={selected.has(offerKey(r))}
           onChange={(e) =>
@@ -189,7 +191,12 @@ export function SupplyPage() {
     {
       key: "stockout",
       header: "Закончится",
-      cell: (r) => <span style={r.usable_stock.qty <= 0 ? { color: "var(--urgency-risk-fg, #a3330a)" } : undefined} title={r.stockout_at ? fmt.exact(r.stockout_at) : undefined}>{formatStockout(r.stockout_at, nowMs, r.usable_stock.qty)}</span>,
+      cell: (r) => (
+        <span style={{ display: "grid", whiteSpace: "nowrap", ...(r.usable_stock.qty <= 0 ? { color: "var(--urgency-risk-fg, #a3330a)" } : {}) }} title={r.stockout_at ? fmt.exact(r.stockout_at) : undefined}>
+          {formatStockout(r.stockout_at, nowMs, r.usable_stock.qty)}
+          {r.stockout_at && r.usable_stock.qty > 0 && <span style={{ font: "var(--type-small)", color: "var(--text-muted)" }}>{fmt.dateTime(r.stockout_at)}</span>}
+        </span>
+      ),
     },
     { key: "urgency", header: "Срочность", cell: (r) => <UrgencyBadge def={SUPPLY_STATES[r.urgency]} /> },
     { key: "explanation", header: "Объяснение", cell: (r) => <span style={{ font: "var(--type-small)" }}>{explainSupply(r.explanation, r.quantity.unit)}</span> },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Order } from "../../api/types";
-import { dayOf, dishLines, sumMinor, sumPortions } from "./report";
+import { dayOf, dishLines, sumMinor, sumPortions, shiftDay } from "./report";
 
 const order = (at: string, items: { dish_id: string; portions: number }[]): Order => ({
   id: at, status: "accepted", at, replayed: false, items, writeoffs: [], missing: [],
@@ -31,5 +31,13 @@ describe("dishLines", () => {
   it("без цен сумма в рублях неизвестна, а не ноль", () => {
     const lines = dishLines(orders, [{ id: "a", name: "Борщ" }], "2026-10-13", "UTC");
     expect(sumMinor(lines)).toBeNull();
+  });
+});
+
+describe("shiftDay", () => {
+  it("соседние сутки через границу месяца и года", () => {
+    expect(shiftDay("2026-10-15", -1)).toBe("2026-10-14");
+    expect(shiftDay("2026-10-31", 1)).toBe("2026-11-01");
+    expect(shiftDay("2026-01-01", -1)).toBe("2025-12-31");
   });
 });

@@ -14,9 +14,10 @@ export function HallPage() {
       {state.kind === "loading" && <LoadingState rows={3} label="Загрузка предложений" />}
       {state.kind === "error" && <ErrorState what="предложения для зала" reason={state.message} onRetry={() => void reload()} />}
       {state.kind === "ready" && cards.length === 0 && <EmptyState title="Сегодня без особых предложений" text="Рекомендуйте блюда как обычно." />}
-      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+      {/* Ширина карточки — по тексту (название блюда в одну строку, если влезает), ряд добивается растяжением. */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
         {cards.map((c) => (
-          <article key={c.dishId} data-testid="hall-card" style={{ display: "grid", gap: 10, alignContent: "start", padding: 24, borderRadius: "var(--radius-card)", background: "var(--surface)", border: `${c.byManager ? 2 : 1}px solid ${c.byManager ? "var(--primary)" : "var(--border)"}`, boxShadow: "var(--shadow-sm)" }}>
+          <article key={c.dishId} data-testid="hall-card" style={{ flex: "1 1 auto", minWidth: "min(100%, 280px)", maxWidth: "100%", boxSizing: "border-box", display: "grid", gap: 10, alignContent: "start", padding: 24, borderRadius: "var(--radius-card)", background: "var(--surface)", border: `${c.byManager ? 2 : 1}px solid ${c.byManager ? "var(--primary)" : "var(--border)"}`, boxShadow: "var(--shadow-sm)" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 6, font: "var(--type-small)", color: c.byManager ? "var(--primary)" : "var(--urgency-expiring-fg, var(--text-muted))" }}>
               {c.byManager ? <IconPin size={16} aria-hidden="true" /> : <IconFlame size={16} aria-hidden="true" />}
               {c.byManager ? "советует менеджер" : "предложите гостю"}

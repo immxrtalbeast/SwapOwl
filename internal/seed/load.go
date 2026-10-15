@@ -109,11 +109,14 @@ func LoadCatalog(ctx context.Context, tx pgx.Tx, products []Product, dishes []Di
 
 func queueCatalog(b *pgx.Batch, products []Product, dishes []Dish) {
 	for _, p := range products {
-		b.Queue(`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size, shelf_after_open_hours) VALUES ($1,$2,$3,$4,$5,$6,$7)
+		// shelf_life_hours — обычный срок поставщика: его явно передаёт «Принять предложенное» (FS-160); без него
+		// поставка из предложения требует ввода срока вручную.
+		b.Queue(`INSERT INTO products (id, name, unit, price_minor_per_1000, lead_days, pack_size, shelf_after_open_hours, shelf_life_hours) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 			ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, unit = EXCLUDED.unit,
 				price_minor_per_1000 = EXCLUDED.price_minor_per_1000, lead_days = EXCLUDED.lead_days,
-				pack_size = EXCLUDED.pack_size, shelf_after_open_hours = EXCLUDED.shelf_after_open_hours, auto_created = false`,
-			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, int64(p.PackSize), nullableHours(p.ShelfAfterOpenHours))
+				pack_size = EXCLUDED.pack_size, shelf_after_open_hours = EXCLUDED.shelf_after_open_hours,
+				shelf_life_hours = EXCLUDED.shelf_life_hours, auto_created = false`,
+			p.ID, p.Name, string(p.Unit), p.PriceMinorPer1000, p.LeadDays, int64(p.PackSize), nullableHours(p.ShelfAfterOpenHours), nullableHours(p.ShelfLifeHours))
 	}
 	for _, d := range dishes {
 		b.Queue(`INSERT INTO dishes (id, name, price_minor, prior_daily) VALUES ($1,$2,$3,$4)

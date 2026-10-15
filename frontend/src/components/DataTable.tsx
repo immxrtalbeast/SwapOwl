@@ -8,6 +8,8 @@ export interface Column<T> {
   cell: (row: T) => ReactNode;
   /** Числа и количества: --type-num, выравнивание вправо. */
   numeric?: boolean;
+  /** Выравнивание колонки; по умолчанию числа — вправо, остальное — влево. */
+  align?: "left" | "center" | "right";
   width?: number | string;
 }
 
@@ -41,7 +43,7 @@ export function DataTable<T>({ columns, rows, rowKey, rowTone, changed, caption,
                 scope="col"
                 style={{
                   padding: "var(--cell-py) var(--cell-px)",
-                  textAlign: c.numeric ? "right" : "left",
+                  textAlign: c.align ?? (c.numeric ? "right" : "left"),
                   font: "var(--type-caption)",
                   textTransform: "uppercase",
                   letterSpacing: ".04em",
@@ -74,7 +76,7 @@ export function DataTable<T>({ columns, rows, rowKey, rowTone, changed, caption,
                     key={c.key}
                     className={c.numeric ? "so-num" : undefined}
                     style={{
-                      padding: "var(--cell-py) var(--cell-px)", textAlign: c.numeric ? "right" : "left", verticalAlign: "middle",
+                      padding: "var(--cell-py) var(--cell-px)", textAlign: c.align ?? (c.numeric ? "right" : "left"), verticalAlign: "middle",
                       // Чёткая сетка (FS-161): линия между колонками; числа не переносятся.
                       borderLeft: i > 0 ? "1px solid var(--border-cell)" : undefined,
                       whiteSpace: c.numeric ? "nowrap" : undefined,

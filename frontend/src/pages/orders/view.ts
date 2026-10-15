@@ -60,9 +60,9 @@ export function appendPage(rows: readonly Order[], next: readonly Order[]): Orde
 export function dishOptionLabel(d: Pick<DishServings, "name" | "available" | "servings" | "missing">): string {
   if (!d.available) {
     const what = d.missing.map((m) => m.product_name.toLowerCase()).join(", ");
-    return `${d.name} — стоп-лист${what ? ` (нет: ${what})` : ""}`;
+    return `${d.name} · стоп-лист${what ? ` (нет: ${what})` : ""}`;
   }
-  return `${d.name} — можно ${d.servings}`;
+  return `${d.name} · хватит на ${d.servings} порц.`;
 }
 
 /** Строки заказа с блюдом, ушедшим в стоп-лист после выбора: их нужно убрать, иначе заказ не оформить. */
